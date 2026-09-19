@@ -10,11 +10,13 @@
     "dev": "node scripts/dev.mjs",
     "build:hook": "pnpm build:hooks",
     "build:hooks": "pnpm --dir packages/doudian-hook build && pnpm --dir packages/kuaishou-hook build",
-    "pretest": "pnpm build:hooks",
-    "pretypecheck": "pnpm build:hooks",
+    "pretest": "pnpm build:packages",
+    "pretypecheck": "pnpm build:packages",
     "build": "pnpm typecheck && electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.node.json && vue-tsc --noEmit -p tsconfig.web.json",
+    "build:foundation": "pnpm --dir packages/hook-sdk build && pnpm --dir packages/hook-host build && pnpm --dir packages/fake-hook build",
+    "build:packages": "pnpm build:foundation && pnpm build:hooks",
+    "typecheck": "pnpm --dir packages/hook-sdk typecheck && pnpm --dir packages/hook-host typecheck && pnpm --dir packages/fake-hook typecheck && pnpm --dir packages/doudian-hook typecheck && pnpm --dir packages/kuaishou-hook typecheck && vue-tsc --noEmit -p tsconfig.node.json && vue-tsc --noEmit -p tsconfig.web.json",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
