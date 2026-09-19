@@ -1,0 +1,30 @@
+{
+  "name": "@idle-fish/goofish-messaging",
+  "version": "0.1.0",
+  "description": "Reusable Goofish messaging client for Electron applications",
+  "main": "src/index.cjs",
+  "types": "types/index.d.ts",
+  "files": [
+    "assets",
+    "src",
+    "types",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "require": "./src/index.cjs"
+    },
+    "./renderer": {
+      "types": "./types/index.d.ts",
+      "require": "./src/renderer-api.cjs"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "electron": ">=28"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,28 @@
+{
+  "id": "douyin-shop",
+  "label": "抖店",
+  "version": "3.5.0",
+  "url": "https://im.jinritemai.com/pc_seller_v2/main/workspace",
+  "match": ["*.jinritemai.com/*"],
+  "capabilities": [
+    "messages.listen",
+    "messages.history",
+    "messages.send",
+    "messages.file",
+    "sessions.list",
+    "products.collect",
+    "products.detail",
+    "orders.read",
+    "orders.listen",
+    "session.transfer"
+  ],
+  "entry": "dist/runtime.js",
+  "runtimePages": [
+    {
+      "id": "products",
+      "url": "https://fxg.jinritemai.com/ffa/g/list?tab=all",
+      "methods": ["collectProducts", "getProductDetail"],
+      "refreshBeforeInvoke": true
+    }
+  ]
+}
