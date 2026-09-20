@@ -31,6 +31,7 @@ export declare class WorkerPageManager {
     private scheduleIdleDispose;
     private clearIdleTimer;
     private disposeEntry;
+    private refreshRuntime;
     private subscribeToPage;
     private contextFor;
     private waitForAvailability;

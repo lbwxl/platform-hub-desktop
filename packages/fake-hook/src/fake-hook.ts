@@ -1,6 +1,7 @@
 import { HookHost, HookSession, type HookPageAdapter, type HookPageContext, type HookPageFactory } from '@platform-hub/hook-host'
 import {
   fail,
+  HOOK_PROTOCOL_VERSION,
   hookError,
   ok,
   OutboundCorrelationTracker,
@@ -30,6 +31,7 @@ interface FakeShopState {
   challengeWaiters: Set<() => void>
   failNextOperations: Set<string>
   operationDelays: Map<string, number>
+  runtimeOverrides: Map<string, FakeRuntimeDescriptionOverride>
   ordersListening: boolean
   outbound: OutboundCorrelationTracker
   handoffTargets: HookHandoffTarget[]
@@ -41,6 +43,20 @@ interface FakeShopState {
 export interface FakeHookPageFactoryOptions {
   pushEvents?: boolean
   drainDelayMs?: number
+}
+
+export interface FakeRuntimeDescriptionOverride {
+  protocolVersion?: number
+  platform?: string
+  pageId?: string
+  operations?: HookOperation[]
+  capabilities?: HookOperation[]
+}
+
+export interface FakeRuntimeRecord {
+  id: string
+  pageId: string
+  disposeCount: number
 }
 
 const defaultProducts = (): HookProduct[] => [{
@@ -61,6 +77,7 @@ export class FakeHookPageFactory implements HookPageFactory {
   readonly pages: FakeHookPageAdapter[] = []
   readonly pushEvents: boolean
   readonly drainDelayMs: number
+  readonly runtimeRecords: FakeRuntimeRecord[] = []
   createCount = 0
   closeCount = 0
   installCount = 0
@@ -150,6 +167,10 @@ export class FakeHookPageFactory implements HookPageFactory {
     this.stateFor(shopId).operationDelays.set(`${pageId}:${operation}`, Math.max(0, delayMs))
   }
 
+  setRuntimeDescriptionOverride(shopId: string, pageId: string, override: FakeRuntimeDescriptionOverride): void {
+    this.stateFor(shopId).runtimeOverrides.set(pageId, override)
+  }
+
   failNextStart(shopId: string): void { this.stateFor(shopId).failStart = true }
   failNextStop(shopId: string): void { this.stateFor(shopId).failStop = true }
 
@@ -167,6 +188,7 @@ export class FakeHookPageFactory implements HookPageFactory {
         challengeWaiters: new Set(),
         failNextOperations: new Set(),
         operationDelays: new Map(),
+        runtimeOverrides: new Map(),
         ordersListening: false,
         outbound: new OutboundCorrelationTracker(),
         handoffTargets: [{ id: 'agent-1', name: 'Fake 客服' }],
@@ -245,6 +267,12 @@ export class FakeHookPageFactory implements HookPageFactory {
     })
     return this.emitPlatformOutgoing(state, input)
   }
+
+  createRuntimeRecord(pageId: string): FakeRuntimeRecord {
+    const record = { id: `runtime-${this.runtimeRecords.length + 1}`, pageId, disposeCount: 0 }
+    this.runtimeRecords.push(record)
+    return record
+  }
 }
 
 export class FakeHook {
@@ -279,6 +307,7 @@ export class FakeHook {
   completeChallenge(operation: HookOperation, pageId = pageForOperation(operation)): void { this.factory.solveChallenge(this.shopId, pageId, operation) }
   failNext(operation: HookOperation, pageId = pageForOperation(operation)): void { this.factory.failNext(this.shopId, pageId, operation) }
   setOperationDelay(operation: HookOperation, delayMs: number, pageId = pageForOperation(operation)): void { this.factory.setOperationDelay(this.shopId, pageId, operation, delayMs) }
+  setRuntimeDescriptionOverride(pageId: string, override: FakeRuntimeDescriptionOverride): void { this.factory.setRuntimeDescriptionOverride(this.shopId, pageId, override) }
   failNextStart(): void { this.factory.failNextStart(this.shopId) }
   failNextStop(): void { this.factory.failNextStop(this.shopId) }
   workerPageCount(): number { return this.session.workerPages.size }
@@ -311,7 +340,13 @@ export class FakeHookPageAdapter implements HookPageAdapter {
       throw new Error('Fake start failure')
     }
     this.owner.installCount += 1
-    return new FakePageRuntime(this.context, this.state, this.owner)
+    return new FakePageRuntime(
+      this.context,
+      this.state,
+      this.owner,
+      this.owner.createRuntimeRecord(this.definition.id),
+      this.state.runtimeOverrides.get(this.definition.id),
+    )
   }
 
   async show(): Promise<void> { this.visible = true }
@@ -340,25 +375,29 @@ export class FakeHookPageAdapter implements HookPageAdapter {
 }
 
 class FakePageRuntime implements PageHookRuntime {
-  readonly protocolVersion = 1
+  readonly protocolVersion: number
   private disposed = false
 
   constructor(
     private readonly context: HookPageContext,
     private readonly state: FakeShopState,
     private readonly owner: FakeHookPageFactory,
-  ) {}
+    private readonly record: FakeRuntimeRecord,
+    private readonly override?: FakeRuntimeDescriptionOverride,
+  ) {
+    this.protocolVersion = override?.protocolVersion ?? HOOK_PROTOCOL_VERSION
+  }
 
   describe(): HookRuntimeDescription {
     const operations = Object.entries(this.context.manifest.operations)
       .filter(([, route]) => route?.page === this.context.definition.id)
       .map(([operation]) => operation as HookOperation)
     return {
-      protocolVersion: this.protocolVersion,
-      platform: this.context.manifest.platform,
-      pageId: this.context.definition.id,
-      capabilities: operations,
-      operations,
+      protocolVersion: this.override?.protocolVersion ?? this.protocolVersion,
+      platform: this.override?.platform ?? this.context.manifest.platform,
+      pageId: this.override?.pageId ?? this.context.definition.id,
+      capabilities: this.override?.capabilities ?? operations,
+      operations: this.override?.operations ?? operations,
     }
   }
 
@@ -408,6 +447,7 @@ class FakePageRuntime implements PageHookRuntime {
   }
 
   async dispose(): Promise<void> {
+    this.record.disposeCount += 1
     this.disposed = true
     this.state.outbound.clear()
     if (this.state.failStop) {

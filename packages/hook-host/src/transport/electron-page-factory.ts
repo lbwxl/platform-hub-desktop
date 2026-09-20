@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from 'electron'
-import type { PageHookRuntime } from '@platform-hub/hook-sdk'
+import type { HookEvent, PageHookRuntime } from '@platform-hub/hook-sdk'
 import type { HookPageAdapter, HookPageContext, HookPageFactory } from '../pages/types.js'
 
 export interface ElectronPageFactoryOptions {
@@ -8,6 +8,12 @@ export interface ElectronPageFactoryOptions {
   installRuntime(context: HookPageContext, contents: WebContents): Promise<PageHookRuntime>
   /** Optional readiness check used after a user completes an official challenge. */
   isRuntimeReady?(context: HookPageContext, contents: WebContents): Promise<boolean>
+  /** Optional native/CDP event bridge. Polling remains the fallback when omitted. */
+  subscribeEvents?(
+    context: HookPageContext,
+    contents: WebContents,
+    listener: (event: HookEvent) => void,
+  ): Promise<() => void> | (() => void)
   createWindow?(context: HookPageContext): BrowserWindow
   windowOptions?: Omit<BrowserWindowConstructorOptions, 'webPreferences'>
 }
@@ -45,8 +51,8 @@ class ElectronHookPageAdapter implements HookPageAdapter {
   readonly id: string
   readonly partition: string
   readonly definition: HookPageContext['definition']
+  readonly subscribeEvents?: (listener: (event: HookEvent) => void) => Promise<() => void> | (() => void)
   private alive = true
-  private runtime?: PageHookRuntime
 
   constructor(
     private readonly context: HookPageContext,
@@ -56,6 +62,9 @@ class ElectronHookPageAdapter implements HookPageAdapter {
     this.id = context.definition.id
     this.partition = context.partition
     this.definition = context.definition
+    if (options.subscribeEvents) {
+      this.subscribeEvents = (listener) => options.subscribeEvents!(context, window.webContents, listener)
+    }
     this.window.on('closed', () => { this.alive = false })
   }
 
@@ -65,8 +74,7 @@ class ElectronHookPageAdapter implements HookPageAdapter {
 
   async installRuntime(): Promise<PageHookRuntime> {
     if (!this.alive || this.window.isDestroyed()) throw new Error(`页面 ${this.id} 已关闭`)
-    this.runtime = await this.options.installRuntime(this.context, this.window.webContents)
-    return this.runtime
+    return this.options.installRuntime(this.context, this.window.webContents)
   }
 
   async show(): Promise<void> {
@@ -91,8 +99,6 @@ class ElectronHookPageAdapter implements HookPageAdapter {
 
   async close(): Promise<void> {
     if (!this.window.isDestroyed()) this.window.close()
-    try { await this.runtime?.dispose() } catch { /* renderer teardown */ }
-    this.runtime = undefined
     this.alive = false
   }
 

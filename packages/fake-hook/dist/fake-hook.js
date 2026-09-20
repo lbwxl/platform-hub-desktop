@@ -1,5 +1,5 @@
 import { HookHost, HookSession } from '@platform-hub/hook-host';
-import { fail, hookError, ok, OutboundCorrelationTracker, } from '@platform-hub/hook-sdk';
+import { fail, HOOK_PROTOCOL_VERSION, hookError, ok, OutboundCorrelationTracker, } from '@platform-hub/hook-sdk';
 import { fakeHookManifest } from './manifest.js';
 const defaultProducts = () => [{
         id: 'product-1',
@@ -18,6 +18,7 @@ export class FakeHookPageFactory {
     pages = [];
     pushEvents;
     drainDelayMs;
+    runtimeRecords = [];
     createCount = 0;
     closeCount = 0;
     installCount = 0;
@@ -99,6 +100,9 @@ export class FakeHookPageFactory {
     setOperationDelay(shopId, pageId, operation, delayMs) {
         this.stateFor(shopId).operationDelays.set(`${pageId}:${operation}`, Math.max(0, delayMs));
     }
+    setRuntimeDescriptionOverride(shopId, pageId, override) {
+        this.stateFor(shopId).runtimeOverrides.set(pageId, override);
+    }
     failNextStart(shopId) { this.stateFor(shopId).failStart = true; }
     failNextStop(shopId) { this.stateFor(shopId).failStop = true; }
     stateFor(shopId) {
@@ -115,6 +119,7 @@ export class FakeHookPageFactory {
                 challengeWaiters: new Set(),
                 failNextOperations: new Set(),
                 operationDelays: new Map(),
+                runtimeOverrides: new Map(),
                 ordersListening: false,
                 outbound: new OutboundCorrelationTracker(),
                 handoffTargets: [{ id: 'agent-1', name: 'Fake 客服' }],
@@ -186,6 +191,11 @@ export class FakeHookPageFactory {
         });
         return this.emitPlatformOutgoing(state, input);
     }
+    createRuntimeRecord(pageId) {
+        const record = { id: `runtime-${this.runtimeRecords.length + 1}`, pageId, disposeCount: 0 };
+        this.runtimeRecords.push(record);
+        return record;
+    }
 }
 export class FakeHook {
     shopId;
@@ -216,6 +226,7 @@ export class FakeHook {
     completeChallenge(operation, pageId = pageForOperation(operation)) { this.factory.solveChallenge(this.shopId, pageId, operation); }
     failNext(operation, pageId = pageForOperation(operation)) { this.factory.failNext(this.shopId, pageId, operation); }
     setOperationDelay(operation, delayMs, pageId = pageForOperation(operation)) { this.factory.setOperationDelay(this.shopId, pageId, operation, delayMs); }
+    setRuntimeDescriptionOverride(pageId, override) { this.factory.setRuntimeDescriptionOverride(this.shopId, pageId, override); }
     failNextStart() { this.factory.failNextStart(this.shopId); }
     failNextStop() { this.factory.failNextStop(this.shopId); }
     workerPageCount() { return this.session.workerPages.size; }
@@ -249,7 +260,7 @@ export class FakeHookPageAdapter {
             throw new Error('Fake start failure');
         }
         this.owner.installCount += 1;
-        return new FakePageRuntime(this.context, this.state, this.owner);
+        return new FakePageRuntime(this.context, this.state, this.owner, this.owner.createRuntimeRecord(this.definition.id), this.state.runtimeOverrides.get(this.definition.id));
     }
     async show() { this.visible = true; }
     async waitForRuntimeReady(signal) {
@@ -278,23 +289,28 @@ class FakePageRuntime {
     context;
     state;
     owner;
-    protocolVersion = 1;
+    record;
+    override;
+    protocolVersion;
     disposed = false;
-    constructor(context, state, owner) {
+    constructor(context, state, owner, record, override) {
         this.context = context;
         this.state = state;
         this.owner = owner;
+        this.record = record;
+        this.override = override;
+        this.protocolVersion = override?.protocolVersion ?? HOOK_PROTOCOL_VERSION;
     }
     describe() {
         const operations = Object.entries(this.context.manifest.operations)
             .filter(([, route]) => route?.page === this.context.definition.id)
             .map(([operation]) => operation);
         return {
-            protocolVersion: this.protocolVersion,
-            platform: this.context.manifest.platform,
-            pageId: this.context.definition.id,
-            capabilities: operations,
-            operations,
+            protocolVersion: this.override?.protocolVersion ?? this.protocolVersion,
+            platform: this.override?.platform ?? this.context.manifest.platform,
+            pageId: this.override?.pageId ?? this.context.definition.id,
+            capabilities: this.override?.capabilities ?? operations,
+            operations: this.override?.operations ?? operations,
         };
     }
     async invoke(operation, input) {
@@ -350,6 +366,7 @@ class FakePageRuntime {
         }
     }
     async dispose() {
+        this.record.disposeCount += 1;
         this.disposed = true;
         this.state.outbound.clear();
         if (this.state.failStop) {

@@ -11,6 +11,7 @@ interface FakeShopState {
     challengeWaiters: Set<() => void>;
     failNextOperations: Set<string>;
     operationDelays: Map<string, number>;
+    runtimeOverrides: Map<string, FakeRuntimeDescriptionOverride>;
     ordersListening: boolean;
     outbound: OutboundCorrelationTracker;
     handoffTargets: HookHandoffTarget[];
@@ -22,11 +23,24 @@ export interface FakeHookPageFactoryOptions {
     pushEvents?: boolean;
     drainDelayMs?: number;
 }
+export interface FakeRuntimeDescriptionOverride {
+    protocolVersion?: number;
+    platform?: string;
+    pageId?: string;
+    operations?: HookOperation[];
+    capabilities?: HookOperation[];
+}
+export interface FakeRuntimeRecord {
+    id: string;
+    pageId: string;
+    disposeCount: number;
+}
 export declare class FakeHookPageFactory implements HookPageFactory {
     private readonly shops;
     readonly pages: FakeHookPageAdapter[];
     readonly pushEvents: boolean;
     readonly drainDelayMs: number;
+    readonly runtimeRecords: FakeRuntimeRecord[];
     createCount: number;
     closeCount: number;
     installCount: number;
@@ -48,6 +62,7 @@ export declare class FakeHookPageFactory implements HookPageFactory {
     solveChallenge(shopId: string, pageId: string, operation: HookOperation): void;
     failNext(shopId: string, pageId: string, operation: HookOperation): void;
     setOperationDelay(shopId: string, pageId: string, operation: HookOperation, delayMs: number): void;
+    setRuntimeDescriptionOverride(shopId: string, pageId: string, override: FakeRuntimeDescriptionOverride): void;
     failNextStart(shopId: string): void;
     failNextStop(shopId: string): void;
     stateFor(shopId: string): FakeShopState;
@@ -61,6 +76,7 @@ export declare class FakeHookPageFactory implements HookPageFactory {
         type: HookMessageType;
         attachments?: HookMessage['attachments'];
     }): HookMessage;
+    createRuntimeRecord(pageId: string): FakeRuntimeRecord;
 }
 export declare class FakeHook {
     readonly shopId: string;
@@ -89,6 +105,7 @@ export declare class FakeHook {
     completeChallenge(operation: HookOperation, pageId?: string): void;
     failNext(operation: HookOperation, pageId?: string): void;
     setOperationDelay(operation: HookOperation, delayMs: number, pageId?: string): void;
+    setRuntimeDescriptionOverride(pageId: string, override: FakeRuntimeDescriptionOverride): void;
     failNextStart(): void;
     failNextStop(): void;
     workerPageCount(): number;

@@ -1,4 +1,4 @@
-import { fail, hookError, HOOK_OPERATION_PRIORITIES, noopHookLogger, } from '@platform-hub/hook-sdk';
+import { assertPageHookRuntime, fail, hookError, HOOK_OPERATION_PRIORITIES, noopHookLogger, } from '@platform-hub/hook-sdk';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
 import { schedulerErrorResult, WorkerScheduler, WorkerSchedulerError } from '../scheduler/worker-scheduler.js';
 export class HookSession {
@@ -7,6 +7,7 @@ export class HookSession {
     workerPages;
     primaryPage;
     primaryRuntime;
+    primaryRuntimeUncertain = false;
     primaryPushUnsubscribe;
     listeners = new Set();
     lifecycleController = new AbortController();
@@ -61,6 +62,7 @@ export class HookSession {
                 definition,
             });
             runtime = await page.installRuntime();
+            assertPageHookRuntime(runtime, this.options.manifest, definition);
             if (page.subscribeEvents) {
                 try {
                     unsubscribe = await page.subscribeEvents((event) => this.emit(event));
@@ -71,6 +73,7 @@ export class HookSession {
             }
             this.primaryPage = page;
             this.primaryRuntime = runtime;
+            this.primaryRuntimeUncertain = false;
             this.primaryPushUnsubscribe = unsubscribe;
             this.started = true;
             this.scheduleEventPoll();
@@ -104,10 +107,7 @@ export class HookSession {
         const linked = linkAbortSignals(this.lifecycleController.signal, options?.signal);
         try {
             if (definition.kind === 'primary') {
-                return await this.invokeWithRecovery(this.primaryPage, this.primaryRuntime, operation, input, linked.signal, async () => {
-                    this.primaryRuntime = await this.primaryPage.installRuntime();
-                    return this.primaryRuntime;
-                }, options?.timeoutMs);
+                return await this.invokePrimary(operation, input, linked.signal, options?.timeoutMs);
             }
             return await this.options.scheduler.schedule({
                 manager: this.workerPages,
@@ -178,8 +178,10 @@ export class HookSession {
         }
         this.primaryPushUnsubscribe = undefined;
         await this.workerPages.dispose();
+        const runtime = this.primaryRuntime;
+        this.primaryRuntime = undefined;
         try {
-            await this.primaryRuntime?.dispose();
+            await runtime?.dispose();
         }
         catch (error) {
             this.logger.warn('Primary runtime dispose failed', { error: errorMessage(error) });
@@ -190,15 +192,102 @@ export class HookSession {
         catch (error) {
             this.logger.warn('Primary page close failed', { error: errorMessage(error) });
         }
-        this.primaryRuntime = undefined;
         this.primaryPage = undefined;
         this.listeners.clear();
         this.logger.info('Hook session disposed');
+    }
+    async invokePrimary(operation, input, parentSignal, timeoutMs) {
+        const deadline = operationSignal(parentSignal, timeoutMs);
+        let invocationStarted = false;
+        const pending = (async () => {
+            if (this.primaryRuntimeUncertain)
+                await this.refreshPrimaryRuntime();
+            if (deadline.signal.aborted)
+                return fail(hookError('TIMEOUT', 'Primary operation 已取消', undefined, true));
+            const page = this.primaryPage;
+            const runtime = this.primaryRuntime;
+            if (!page || !runtime)
+                return fail(hookError('RUNTIME_NOT_READY', 'Primary Runtime 不可用'));
+            invocationStarted = true;
+            return this.invokeWithRecovery(page, runtime, operation, input, deadline.signal, () => this.refreshPrimaryRuntime(), timeoutMs);
+        })();
+        const interrupted = Symbol('primary-operation-interrupted');
+        let onAbort;
+        const interruption = new Promise((resolve) => {
+            onAbort = () => resolve(interrupted);
+            if (deadline.signal.aborted)
+                onAbort();
+            else
+                deadline.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        try {
+            const outcome = await Promise.race([pending, interruption]);
+            if (outcome !== interrupted)
+                return outcome;
+            if (invocationStarted)
+                this.primaryRuntimeUncertain = true;
+            void pending.catch((error) => {
+                this.logger.warn('Interrupted primary operation settled with an error', { operation, error: errorMessage(error) });
+            });
+            return fail(hookError('TIMEOUT', deadline.timedOut() ? `Primary operation 超过 ${timeoutMs}ms` : 'Primary operation 已取消', undefined, true));
+        }
+        finally {
+            if (onAbort)
+                deadline.signal.removeEventListener('abort', onAbort);
+            deadline.cleanup();
+        }
+    }
+    async refreshPrimaryRuntime() {
+        const page = this.primaryPage;
+        if (!page)
+            throw new Error('Primary Page 不可用');
+        const previous = this.primaryRuntime;
+        this.primaryRuntime = undefined;
+        if (previous) {
+            try {
+                await previous.dispose();
+            }
+            catch (error) {
+                this.logger.warn('Previous primary runtime dispose failed during refresh', { error: errorMessage(error) });
+            }
+        }
+        let next;
+        try {
+            next = await page.installRuntime();
+            assertPageHookRuntime(next, this.options.manifest, page.definition);
+            this.primaryRuntime = next;
+            this.primaryRuntimeUncertain = false;
+            return next;
+        }
+        catch (error) {
+            try {
+                await next?.dispose();
+            }
+            catch (disposeError) {
+                this.logger.warn('Invalid primary runtime dispose failed', { error: errorMessage(disposeError) });
+            }
+            try {
+                this.primaryPushUnsubscribe?.();
+            }
+            catch { /* refresh failure cleanup */ }
+            this.primaryPushUnsubscribe = undefined;
+            try {
+                await page.close();
+            }
+            catch (closeError) {
+                this.logger.warn('Primary page close failed after refresh failure', { error: errorMessage(closeError) });
+            }
+            this.primaryPage = undefined;
+            this.started = false;
+            throw error;
+        }
     }
     async invokeWithRecovery(page, runtime, operation, input, signal, refresh, timeoutMs) {
         if (signal.aborted)
             return fail(hookError('TIMEOUT', 'Operation 已取消', undefined, true));
         let result = await runtime.invoke(operation, input);
+        if (signal.aborted)
+            return fail(hookError('TIMEOUT', 'Operation 已取消', undefined, true));
         if (result.ok || result.error.code !== 'CHALLENGE_REQUIRED')
             return result;
         await page.show();
@@ -303,6 +392,31 @@ function challengeSignal(parent, timeoutMs) {
         timedOut: () => timeoutReached,
         cleanup: () => {
             clearTimeout(timer);
+            parent.removeEventListener('abort', abort);
+        },
+    };
+}
+function operationSignal(parent, timeoutMs) {
+    const controller = new AbortController();
+    let timeoutReached = false;
+    const abort = () => controller.abort();
+    if (parent.aborted)
+        controller.abort();
+    else
+        parent.addEventListener('abort', abort, { once: true });
+    const timer = timeoutMs !== undefined && timeoutMs > 0
+        ? setTimeout(() => {
+            timeoutReached = true;
+            controller.abort();
+        }, timeoutMs)
+        : undefined;
+    timer?.unref?.();
+    return {
+        signal: controller.signal,
+        timedOut: () => timeoutReached,
+        cleanup: () => {
+            if (timer)
+                clearTimeout(timer);
             parent.removeEventListener('abort', abort);
         },
     };

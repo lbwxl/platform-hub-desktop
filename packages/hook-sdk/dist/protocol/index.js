@@ -1,6 +1,70 @@
 import { HOOK_CAPABILITIES } from '../capabilities/index.js';
+export const HOOK_PROTOCOL_VERSION = 1;
 export const ok = (data) => ({ ok: true, data });
 export const fail = (error) => ({ ok: false, error });
+export class HookProtocolCompatibilityError extends Error {
+    errors;
+    constructor(errors) {
+        super(`Hook Runtime 协议不兼容: ${errors.join('; ')}`);
+        this.errors = errors;
+        this.name = 'HookProtocolCompatibilityError';
+    }
+}
+export function validatePageHookRuntime(runtime, manifest, page) {
+    const errors = [];
+    let description;
+    try {
+        description = runtime.describe();
+    }
+    catch (error) {
+        return [`describe() 调用失败: ${error instanceof Error ? error.message : String(error)}`];
+    }
+    if (runtime.protocolVersion !== HOOK_PROTOCOL_VERSION) {
+        errors.push(`Runtime protocolVersion ${runtime.protocolVersion} != ${HOOK_PROTOCOL_VERSION}`);
+    }
+    if (description.protocolVersion !== HOOK_PROTOCOL_VERSION) {
+        errors.push(`Description protocolVersion ${description.protocolVersion} != ${HOOK_PROTOCOL_VERSION}`);
+    }
+    if (description.platform !== manifest.platform) {
+        errors.push(`Runtime platform ${description.platform} != ${manifest.platform}`);
+    }
+    if (description.pageId !== page.id) {
+        errors.push(`Runtime pageId ${description.pageId} != ${page.id}`);
+    }
+    const expectedOperations = new Set(Object.entries(manifest.operations)
+        .filter(([, route]) => route?.page === page.id)
+        .map(([operation]) => operation));
+    const runtimeOperations = new Set();
+    for (const operation of description.operations) {
+        if (runtimeOperations.has(operation))
+            errors.push(`Runtime operation 重复: ${operation}`);
+        runtimeOperations.add(operation);
+        if (!expectedOperations.has(operation))
+            errors.push(`Runtime operation 不属于页面 ${page.id}: ${operation}`);
+    }
+    const runtimeCapabilities = new Set();
+    for (const capability of description.capabilities) {
+        if (runtimeCapabilities.has(capability))
+            errors.push(`Runtime capability 重复: ${capability}`);
+        runtimeCapabilities.add(capability);
+        if (!expectedOperations.has(capability))
+            errors.push(`Runtime capability 不属于页面 ${page.id}: ${capability}`);
+    }
+    for (const operation of runtimeOperations) {
+        if (!runtimeCapabilities.has(operation))
+            errors.push(`Runtime operation 未声明对应 capability: ${operation}`);
+    }
+    for (const capability of runtimeCapabilities) {
+        if (!runtimeOperations.has(capability))
+            errors.push(`Runtime capability 未声明对应 operation: ${capability}`);
+    }
+    return errors;
+}
+export function assertPageHookRuntime(runtime, manifest, page) {
+    const errors = validatePageHookRuntime(runtime, manifest, page);
+    if (errors.length)
+        throw new HookProtocolCompatibilityError(errors);
+}
 export function validateHookManifest(manifest) {
     const errors = [];
     if (!manifest.platform)

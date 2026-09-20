@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { FakeHook, FakeHookPageFactory, fakeHookManifest } from '../packages/fake-hook/dist/index.js'
-import { HookHost } from '../packages/hook-host/dist/index.js'
-import { validateHookManifest } from '../packages/hook-sdk/dist/index.js'
+import { ElectronHookPageFactory, HookHost } from '../packages/hook-host/dist/index.js'
+import { HOOK_PROTOCOL_VERSION, ok, validateHookManifest } from '../packages/hook-sdk/dist/index.js'
 import { registerHookContractTests } from './hook-contract-suite.mjs'
 
 const createHarness = async (shopId = 'contract-shop', options = {}) => {
@@ -13,6 +13,157 @@ const createHarness = async (shopId = 'contract-shop', options = {}) => {
 }
 
 registerHookContractTests('FakeHook', createHarness)
+
+test('primary operation timeout returns TIMEOUT and refreshes before later work', async () => {
+  const fake = new FakeHook('primary-timeout')
+  await fake.start()
+  fake.setOperationDelay('auth.state', 50, 'primary')
+  const startedAt = Date.now()
+  const timedOut = await fake.session.invoke('auth.state', {}, { timeoutMs: 10 })
+  assert.equal(timedOut.ok, false)
+  assert.equal(timedOut.error.code, 'TIMEOUT')
+  assert.ok(Date.now() - startedAt < 45)
+
+  fake.setOperationDelay('auth.state', 0, 'primary')
+  const recovered = await fake.session.invoke('auth.state', {}, { timeoutMs: 100 })
+  assert.equal(recovered.ok, true)
+  assert.equal(recovered.data.authenticated, true)
+  assert.equal(fake.factory.installCount, 2)
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  assert.equal(fake.factory.runtimeRecords[0].disposeCount, 1)
+  await fake.stop()
+  assert.deepEqual(fake.factory.runtimeRecords.map((runtime) => runtime.disposeCount), [1, 1])
+})
+
+test('late primary rejection after timeout is handled', async () => {
+  const fake = new FakeHook('primary-late-rejection')
+  await fake.start()
+  fake.setOperationDelay('auth.state', 25, 'primary')
+  fake.failNext('auth.state', 'primary')
+  const timedOut = await fake.session.invoke('auth.state', {}, { timeoutMs: 5 })
+  assert.equal(timedOut.ok, false)
+  assert.equal(timedOut.error.code, 'TIMEOUT')
+  await new Promise((resolve) => setTimeout(resolve, 35))
+  fake.setOperationDelay('auth.state', 0, 'primary')
+  const recovered = await fake.session.invoke('auth.state', {}, { timeoutMs: 100 })
+  assert.equal(recovered.ok, true)
+  await fake.stop()
+})
+
+test('primary operation external abort returns TIMEOUT and session remains usable', async () => {
+  const fake = new FakeHook('primary-abort')
+  await fake.start()
+  fake.setOperationDelay('auth.state', 50, 'primary')
+  const controller = new AbortController()
+  const pending = fake.session.invoke('auth.state', {}, { signal: controller.signal })
+  setTimeout(() => controller.abort(), 5)
+  const aborted = await pending
+  assert.equal(aborted.ok, false)
+  assert.equal(aborted.error.code, 'TIMEOUT')
+
+  fake.setOperationDelay('auth.state', 0, 'primary')
+  const recovered = await fake.session.invoke('auth.state', {}, { timeoutMs: 100 })
+  assert.equal(recovered.ok, true)
+  await fake.stop()
+  assert.equal(fake.factory.runtimeRecords.every((runtime) => runtime.disposeCount === 1), true)
+})
+
+test('timed out side-effecting primary operation is never retried', async () => {
+  const fake = new FakeHook('primary-side-effect')
+  await fake.start()
+  fake.setOperationDelay('messages.send.text', 30, 'primary')
+  const result = await fake.session.invoke('messages.send.text', {
+    conversationId: 'conversation-1',
+    text: '只发送一次',
+  }, { timeoutMs: 5 })
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'TIMEOUT')
+  await new Promise((resolve) => setTimeout(resolve, 40))
+
+  fake.setOperationDelay('messages.send.text', 0, 'primary')
+  const history = await fake.session.invoke('messages.history', { conversationId: 'conversation-1' }, { timeoutMs: 100 })
+  assert.equal(history.ok, true)
+  assert.equal(history.data.filter((message) => message.content === '只发送一次').length, 1)
+  await fake.stop()
+})
+
+test('runtime refresh disposes old runtime once and final runtime once', async () => {
+  const fake = new FakeHook('runtime-owner')
+  await fake.start()
+  fake.requireChallenge('products.list')
+  const pending = fake.session.invoke('products.list')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  fake.completeChallenge('products.list')
+  const result = await pending
+  assert.equal(result.ok, true)
+
+  const productRuntimes = fake.factory.runtimeRecords.filter((runtime) => runtime.pageId === 'products')
+  assert.equal(productRuntimes.length, 2)
+  assert.deepEqual(productRuntimes.map((runtime) => runtime.disposeCount), [1, 0])
+  await fake.stop()
+  assert.equal(fake.factory.runtimeRecords.every((runtime) => runtime.disposeCount === 1), true)
+})
+
+test('Electron page adapter exposes optional push bridge without owning runtime disposal', async () => {
+  const window = createFakeElectronWindow()
+  let pushedListener
+  let unsubscribed = false
+  let runtimeDisposeCount = 0
+  const runtime = runtimeFor('fake', 'primary', ['auth.state'], () => { runtimeDisposeCount += 1 })
+  const factory = new ElectronHookPageFactory({
+    createWindow: () => window,
+    installRuntime: async () => runtime,
+    subscribeEvents: (context, contents, listener) => {
+      assert.equal(context.definition.id, 'primary')
+      assert.equal(contents, window.webContents)
+      pushedListener = listener
+      return () => { unsubscribed = true }
+    },
+  })
+  const page = await factory.create(pageContext())
+  const installed = await page.installRuntime()
+  assert.equal(typeof page.subscribeEvents, 'function')
+  const events = []
+  const unsubscribe = await page.subscribeEvents((event) => events.push(event))
+  pushedListener({ type: 'runtime.error', timestamp: 1, payload: { message: 'push' } })
+  assert.equal(events.length, 1)
+  unsubscribe()
+  assert.equal(unsubscribed, true)
+  await installed.dispose()
+  await page.close()
+  assert.equal(runtimeDisposeCount, 1)
+
+  const fallbackPage = await new ElectronHookPageFactory({
+    createWindow: () => createFakeElectronWindow(),
+    installRuntime: async () => runtimeFor('fake', 'primary', ['auth.state']),
+  }).create(pageContext())
+  assert.equal(fallbackPage.subscribeEvents, undefined)
+  await fallbackPage.close()
+})
+
+test('runtime protocol handshake rejects incompatible descriptions and cleans resources', async () => {
+  const cases = [
+    ['wrong platform', { platform: 'other' }, /Runtime platform/],
+    ['wrong pageId', { pageId: 'orders' }, /Runtime pageId/],
+    ['wrong protocolVersion', { protocolVersion: HOOK_PROTOCOL_VERSION + 1 }, /protocolVersion/],
+    ['illegal operation', { operations: ['auth.state', 'products.list'], capabilities: ['auth.state', 'products.list'] }, /不属于页面/],
+  ]
+  for (const [name, override, expected] of cases) {
+    const factory = new FakeHookPageFactory()
+    factory.setRuntimeDescriptionOverride(`handshake-${name}`, 'primary', override)
+    const host = new HookHost({ pageFactory: factory })
+    const session = host.createSession(fakeHookManifest, {
+      sessionId: `session-${name}`,
+      shopId: `handshake-${name}`,
+    })
+    await assert.rejects(session.start(), expected)
+    assert.equal(factory.runtimeRecords.length, 1)
+    assert.equal(factory.runtimeRecords[0].disposeCount, 1)
+    assert.equal(factory.closeCount, 1)
+    await host.dispose()
+    assert.equal(factory.runtimeRecords[0].disposeCount, 1)
+  }
+})
 
 test('optional capabilities and manifest consistency validation', () => {
   const minimal = {
@@ -225,3 +376,51 @@ test('HookHost foundation contains no platform-specific branch', async () => {
   ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
   assert.doesNotMatch(sources.join('\n'), /platform\s*===|switch\s*\(\s*platform|douyin|doudian|kuaishou|pinduoduo|goofish/)
 })
+
+function pageContext() {
+  return {
+    sessionId: 'electron-session',
+    shopId: 'electron-shop',
+    partition: 'persist:electron-test',
+    manifest: {
+      platform: 'fake',
+      version: '1.0.0',
+      capabilities: ['auth.state'],
+      pages: [{ id: 'primary', kind: 'primary', url: 'fake://primary' }],
+      operations: { 'auth.state': { page: 'primary', capability: 'auth.state' } },
+    },
+    definition: { id: 'primary', kind: 'primary', url: 'fake://primary' },
+  }
+}
+
+function runtimeFor(platform, pageId, operations, onDispose = () => {}) {
+  return {
+    protocolVersion: HOOK_PROTOCOL_VERSION,
+    describe: () => ({
+      protocolVersion: HOOK_PROTOCOL_VERSION,
+      platform,
+      pageId,
+      capabilities: operations,
+      operations,
+    }),
+    invoke: async () => ok(null),
+    drainEvents: async () => [],
+    dispose: async () => onDispose(),
+  }
+}
+
+function createFakeElectronWindow() {
+  const listeners = new Map()
+  return {
+    webContents: { id: `web-contents-${Math.random()}` },
+    destroyed: false,
+    async loadURL() {},
+    on(event, listener) { listeners.set(event, listener) },
+    isDestroyed() { return this.destroyed },
+    show() {},
+    close() {
+      this.destroyed = true
+      listeners.get('closed')?.()
+    },
+  }
+}

@@ -1,4 +1,4 @@
-import { noopHookLogger } from '@platform-hub/hook-sdk';
+import { assertPageHookRuntime, noopHookLogger } from '@platform-hub/hook-sdk';
 export class WorkerPageManager {
     options;
     workers = new Map();
@@ -33,8 +33,13 @@ export class WorkerPageManager {
                 let runtime;
                 try {
                     runtime = await page.installRuntime();
+                    assertPageHookRuntime(runtime, this.options.manifest, definition);
                 }
                 catch (error) {
+                    try {
+                        await runtime?.dispose();
+                    }
+                    catch { /* invalid runtime cleanup */ }
                     try {
                         await page.close();
                     }
@@ -76,6 +81,8 @@ export class WorkerPageManager {
         for (const entry of this.workers.values()) {
             if (entry.unsubscribeEvents)
                 continue;
+            if (!entry.runtime)
+                continue;
             try {
                 events.push(...await entry.runtime.drainEvents());
             }
@@ -95,11 +102,12 @@ export class WorkerPageManager {
     leaseFor(id, entry) {
         return {
             page: entry.page,
-            get runtime() { return entry.runtime; },
-            refreshRuntime: async () => {
-                entry.runtime = await entry.page.installRuntime();
+            get runtime() {
+                if (!entry.runtime)
+                    throw new Error(`Worker Runtime 不可用: ${id}`);
                 return entry.runtime;
             },
+            refreshRuntime: () => this.refreshRuntime(id, entry),
             release: () => {
                 if (!entry.inUse)
                     return;
@@ -134,6 +142,8 @@ export class WorkerPageManager {
     async disposeEntry(id, entry) {
         this.clearIdleTimer(entry);
         this.workers.delete(id);
+        const runtime = entry.runtime;
+        entry.runtime = undefined;
         try {
             entry.unsubscribeEvents?.();
         }
@@ -141,7 +151,7 @@ export class WorkerPageManager {
             this.logger.warn('Worker event subscription cleanup failed', { pageId: id, error: errorMessage(error) });
         }
         try {
-            await entry.runtime.dispose();
+            await runtime?.dispose();
         }
         catch (error) {
             this.logger.warn('Worker runtime dispose failed', { pageId: id, error: errorMessage(error) });
@@ -153,6 +163,49 @@ export class WorkerPageManager {
             this.logger.warn('Worker page close failed', { pageId: id, error: errorMessage(error) });
         }
         this.notifyAvailability();
+    }
+    async refreshRuntime(id, entry) {
+        const previous = entry.runtime;
+        entry.runtime = undefined;
+        if (previous) {
+            try {
+                await previous.dispose();
+            }
+            catch (error) {
+                this.logger.warn('Previous worker runtime dispose failed during refresh', { pageId: id, error: errorMessage(error) });
+            }
+        }
+        let next;
+        try {
+            next = await entry.page.installRuntime();
+            assertPageHookRuntime(next, this.options.manifest, entry.page.definition);
+            if (this.disposed || this.workers.get(id) !== entry)
+                throw new Error('WorkerPageManager 已停止');
+            entry.runtime = next;
+            return next;
+        }
+        catch (error) {
+            try {
+                await next?.dispose();
+            }
+            catch (disposeError) {
+                this.logger.warn('Invalid worker runtime dispose failed', { pageId: id, error: errorMessage(disposeError) });
+            }
+            this.clearIdleTimer(entry);
+            this.workers.delete(id);
+            try {
+                entry.unsubscribeEvents?.();
+            }
+            catch { /* refresh failure cleanup */ }
+            try {
+                await entry.page.close();
+            }
+            catch (closeError) {
+                this.logger.warn('Worker page close failed after refresh failure', { pageId: id, error: errorMessage(closeError) });
+            }
+            this.notifyAvailability();
+            throw error;
+        }
     }
     async subscribeToPage(page) {
         if (!page.subscribeEvents || !this.options.onEvent)

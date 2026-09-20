@@ -1,6 +1,7 @@
 import { type HookCapability, type HookOperation } from '../capabilities/index.js';
 import type { HookError } from '../errors/index.js';
 import type { HookEvent } from '../events/index.js';
+export declare const HOOK_PROTOCOL_VERSION = 1;
 export type HookResult<T> = {
     ok: true;
     data: T;
@@ -42,5 +43,11 @@ export interface HookManifest {
     pages: HookPageDefinition[];
     operations: Partial<Record<HookOperation, HookOperationDefinition>>;
 }
+export declare class HookProtocolCompatibilityError extends Error {
+    readonly errors: string[];
+    constructor(errors: string[]);
+}
+export declare function validatePageHookRuntime(runtime: PageHookRuntime, manifest: HookManifest, page: HookPageDefinition): string[];
+export declare function assertPageHookRuntime(runtime: PageHookRuntime, manifest: HookManifest, page: HookPageDefinition): void;
 export declare function validateHookManifest(manifest: HookManifest): string[];
 //# sourceMappingURL=index.d.ts.map

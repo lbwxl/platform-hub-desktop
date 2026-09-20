@@ -28,6 +28,7 @@ export declare class HookSession {
     readonly workerPages: WorkerPageManager;
     private primaryPage?;
     private primaryRuntime?;
+    private primaryRuntimeUncertain;
     private primaryPushUnsubscribe?;
     private readonly listeners;
     private readonly lifecycleController;
@@ -53,6 +54,8 @@ export declare class HookSession {
     subscribe(listener: HookEventListener): () => void;
     pollEvents(): Promise<number>;
     dispose(): Promise<void>;
+    private invokePrimary;
+    private refreshPrimaryRuntime;
     private invokeWithRecovery;
     private emit;
     private scheduleEventPoll;

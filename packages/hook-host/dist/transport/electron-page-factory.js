@@ -35,8 +35,8 @@ class ElectronHookPageAdapter {
     id;
     partition;
     definition;
+    subscribeEvents;
     alive = true;
-    runtime;
     constructor(context, window, options) {
         this.context = context;
         this.window = window;
@@ -44,6 +44,9 @@ class ElectronHookPageAdapter {
         this.id = context.definition.id;
         this.partition = context.partition;
         this.definition = context.definition;
+        if (options.subscribeEvents) {
+            this.subscribeEvents = (listener) => options.subscribeEvents(context, window.webContents, listener);
+        }
         this.window.on('closed', () => { this.alive = false; });
     }
     async load() {
@@ -53,8 +56,7 @@ class ElectronHookPageAdapter {
     async installRuntime() {
         if (!this.alive || this.window.isDestroyed())
             throw new Error(`页面 ${this.id} 已关闭`);
-        this.runtime = await this.options.installRuntime(this.context, this.window.webContents);
-        return this.runtime;
+        return this.options.installRuntime(this.context, this.window.webContents);
     }
     async show() {
         if (this.alive && !this.window.isDestroyed())
@@ -81,11 +83,6 @@ class ElectronHookPageAdapter {
     async close() {
         if (!this.window.isDestroyed())
             this.window.close();
-        try {
-            await this.runtime?.dispose();
-        }
-        catch { /* renderer teardown */ }
-        this.runtime = undefined;
         this.alive = false;
     }
     isAlive() { return this.alive && !this.window.isDestroyed(); }
