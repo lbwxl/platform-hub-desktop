@@ -1,4 +1,4 @@
-import { type HookErrorCode } from '@platform-hub/hook-sdk';
+import { type HookErrorCode, type HookLogger } from '@platform-hub/hook-sdk';
 import type { HookPageDefinition } from '@platform-hub/hook-sdk';
 import type { WorkerPageLease } from '../pages/types.js';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
@@ -21,14 +21,18 @@ export declare class WorkerScheduler {
     private active;
     private sequence;
     private stopped;
-    constructor(maxConcurrency?: number);
+    private readonly activeControllers;
+    private readonly logger;
+    constructor(maxConcurrency?: number, logger?: HookLogger);
     get activeCount(): number;
     get queuedCount(): number;
+    get concurrencyLimit(): number;
     schedule<T>(options: WorkerTaskOptions<T>): Promise<T>;
     stop(): void;
     private priorityOf;
     private pump;
     private run;
+    private removeQueueAbortListener;
 }
 export declare function schedulerErrorResult(error: unknown): import("@platform-hub/hook-sdk").HookError;
 //# sourceMappingURL=worker-scheduler.d.ts.map

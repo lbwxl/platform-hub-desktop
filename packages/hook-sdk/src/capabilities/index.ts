@@ -9,6 +9,8 @@ export const HOOK_CAPABILITIES = [
   'products.detail',
   'orders.list',
   'orders.listen',
+  'handoff.transfer',
+  'handoff.targets.list',
 ] as const
 
 export type HookCapability = typeof HOOK_CAPABILITIES[number]
@@ -25,4 +27,6 @@ export const HOOK_OPERATION_PRIORITIES: Record<HookOperation, 'message' | 'order
   'products.detail': 'product',
   'orders.list': 'order',
   'orders.listen': 'order',
+  'handoff.transfer': 'message',
+  'handoff.targets.list': 'message',
 }

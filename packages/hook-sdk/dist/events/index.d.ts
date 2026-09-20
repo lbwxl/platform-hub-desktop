@@ -10,6 +10,7 @@ export interface HookEventPayloadMap {
     'order.updated': {
         order: HookOrder;
         previous?: HookOrder;
+        changedFields?: string[];
     };
     'auth.changed': {
         auth: HookAuthState;

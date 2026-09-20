@@ -9,6 +9,8 @@ export const HOOK_CAPABILITIES = [
     'products.detail',
     'orders.list',
     'orders.listen',
+    'handoff.transfer',
+    'handoff.targets.list',
 ];
 export const HOOK_OPERATION_PRIORITIES = {
     'auth.state': 'auth',
@@ -21,5 +23,7 @@ export const HOOK_OPERATION_PRIORITIES = {
     'products.detail': 'product',
     'orders.list': 'order',
     'orders.listen': 'order',
+    'handoff.transfer': 'message',
+    'handoff.targets.list': 'message',
 };
 //# sourceMappingURL=index.js.map

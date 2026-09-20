@@ -1,4 +1,4 @@
-import type { HookManifest, HookPageDefinition, PageHookRuntime } from '@platform-hub/hook-sdk';
+import { type HookEvent, type HookLogger, type HookManifest, type HookPageDefinition } from '@platform-hub/hook-sdk';
 import type { HookPageFactory, WorkerPageLease } from './types.js';
 export interface WorkerPageManagerOptions {
     sessionId: string;
@@ -8,6 +8,9 @@ export interface WorkerPageManagerOptions {
     factory: HookPageFactory;
     maxWorkers?: number;
     defaultIdleTtlMs?: number;
+    logger?: HookLogger;
+    onEvent?: (event: HookEvent) => void;
+    onEventError?: (error: unknown) => void;
 }
 export declare class WorkerPageManager {
     private readonly options;
@@ -16,17 +19,19 @@ export declare class WorkerPageManager {
     private disposed;
     private readonly maxWorkers;
     private readonly defaultIdleTtlMs;
+    private readonly logger;
     constructor(options: WorkerPageManagerOptions);
     get size(): number;
     get ids(): string[];
     acquire(definition: HookPageDefinition, signal?: AbortSignal): Promise<WorkerPageLease>;
     show(pageId: string): Promise<void>;
-    drainEvents(): Promise<ReturnType<PageHookRuntime['drainEvents']>>;
+    drainEvents(): Promise<HookEvent[]>;
     dispose(): Promise<void>;
     private leaseFor;
     private scheduleIdleDispose;
     private clearIdleTimer;
     private disposeEntry;
+    private subscribeToPage;
     private contextFor;
     private waitForAvailability;
     private notifyAvailability;

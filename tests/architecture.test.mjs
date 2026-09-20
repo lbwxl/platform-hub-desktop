@@ -10,6 +10,32 @@ const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', imp
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer/src/App.vue', import.meta.url), 'utf8')
+const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/hook-sdk/package.json', import.meta.url), 'utf8'))
+const hookHostPackage = JSON.parse(await readFile(new URL('../packages/hook-host/package.json', import.meta.url), 'utf8'))
+const foundationSources = await Promise.all([
+  '../packages/hook-sdk/src/protocol/index.ts',
+  '../packages/hook-sdk/src/contracts/index.ts',
+  '../packages/hook-sdk/src/outbound/index.ts',
+  '../packages/hook-host/src/index.ts',
+  '../packages/hook-host/src/session/hook-session.ts',
+  '../packages/hook-host/src/pages/worker-page-manager.ts',
+  '../packages/hook-host/src/scheduler/worker-scheduler.ts',
+].map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
+
+test('Hook SDK stays platform and framework independent', () => {
+  const dependencies = { ...hookSdkPackage.dependencies, ...hookSdkPackage.devDependencies }
+  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/doudian-hook', '@platform-hub/kuaishou-hook']) {
+    assert.equal(dependencies[forbidden], undefined)
+  }
+  assert.doesNotMatch(foundationSources.slice(0, 3).join('\n'), /from ['"](?:electron|react|vue)/)
+})
+
+test('Hook foundation contains no platform branches or direct console logging', () => {
+  const source = foundationSources.join('\n')
+  assert.doesNotMatch(source, /platform\s*===|switch\s*\(\s*platform|douyin|doudian|kuaishou|pinduoduo|goofish/)
+  assert.doesNotMatch(source, /console\.(?:log|info|warn|error|debug)/)
+  assert.equal(hookHostPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
+})
 
 test('抖店 hook 不访问或操作 DOM', () => {
   assert.doesNotMatch(hook, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent/)

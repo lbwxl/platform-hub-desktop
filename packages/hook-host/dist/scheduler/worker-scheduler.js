@@ -1,6 +1,6 @@
-import { hookError } from '@platform-hub/hook-sdk';
+import { hookError, noopHookLogger } from '@platform-hub/hook-sdk';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
-const PRIORITY = { message: 300, order: 200, product: 100 };
+const PRIORITY = { auth: 400, message: 300, order: 200, product: 100 };
 export class WorkerSchedulerError extends Error {
     code;
     constructor(code, message) {
@@ -15,11 +15,16 @@ export class WorkerScheduler {
     active = 0;
     sequence = 0;
     stopped = false;
-    constructor(maxConcurrency = 4) {
+    activeControllers = new Set();
+    logger;
+    constructor(maxConcurrency = 4, logger = noopHookLogger) {
         this.maxConcurrency = maxConcurrency;
+        this.maxConcurrency = Math.max(1, maxConcurrency);
+        this.logger = logger;
     }
     get activeCount() { return this.active; }
     get queuedCount() { return this.queue.length; }
+    get concurrencyLimit() { return this.maxConcurrency; }
     schedule(options) {
         if (this.stopped)
             return Promise.reject(new WorkerSchedulerError('RUNTIME_NOT_READY', 'WorkerScheduler 已停止'));
@@ -36,6 +41,16 @@ export class WorkerScheduler {
                 return;
             }
             this.queue.push(item);
+            if (options.signal) {
+                item.abortListener = () => {
+                    const index = this.queue.indexOf(item);
+                    if (index < 0)
+                        return;
+                    this.queue.splice(index, 1);
+                    reject(new WorkerSchedulerError('TIMEOUT', '任务在排队时已取消'));
+                };
+                options.signal.addEventListener('abort', item.abortListener, { once: true });
+            }
             this.queue.sort((left, right) => right.priority - left.priority || left.sequence - right.sequence);
             this.pump();
         });
@@ -43,8 +58,13 @@ export class WorkerScheduler {
     stop() {
         this.stopped = true;
         const error = new WorkerSchedulerError('RUNTIME_NOT_READY', 'WorkerScheduler 已停止');
-        while (this.queue.length)
-            this.queue.shift()?.reject(error);
+        while (this.queue.length) {
+            const item = this.queue.shift();
+            this.removeQueueAbortListener(item);
+            item.reject(error);
+        }
+        for (const controller of this.activeControllers)
+            controller.abort();
     }
     priorityOf(priority) {
         if (typeof priority === 'number')
@@ -54,6 +74,7 @@ export class WorkerScheduler {
     pump() {
         while (!this.stopped && this.active < this.maxConcurrency && this.queue.length) {
             const item = this.queue.shift();
+            this.removeQueueAbortListener(item);
             this.active += 1;
             void this.run(item).finally(() => {
                 this.active -= 1;
@@ -70,11 +91,19 @@ export class WorkerScheduler {
         let lease;
         let timer;
         const controller = new AbortController();
+        this.activeControllers.add(controller);
         const abortForwarder = () => controller.abort();
         options.signal?.addEventListener('abort', abortForwarder, { once: true });
         try {
             lease = await options.manager.acquire(options.page, controller.signal);
             const operation = options.run(lease, controller.signal);
+            const aborted = new Promise((_, reject) => {
+                const rejectAborted = () => reject(new WorkerSchedulerError('TIMEOUT', 'Worker 操作已取消'));
+                if (controller.signal.aborted)
+                    rejectAborted();
+                else
+                    controller.signal.addEventListener('abort', rejectAborted, { once: true });
+            });
             const timeout = options.timeoutMs && options.timeoutMs > 0
                 ? new Promise((_, reject) => {
                     timer = setTimeout(() => {
@@ -84,20 +113,31 @@ export class WorkerScheduler {
                     timer.unref?.();
                 })
                 : undefined;
-            item.resolve(await (timeout ? Promise.race([operation, timeout]) : operation));
+            item.resolve(await Promise.race(timeout ? [operation, timeout, aborted] : [operation, aborted]));
         }
         catch (error) {
             if (error instanceof WorkerSchedulerError)
                 item.reject(error);
-            else
+            else {
+                this.logger.warn('Worker task failed', { pageId: options.page.id, error: error instanceof Error ? error.message : String(error) });
                 item.reject(error);
+            }
         }
         finally {
             if (timer)
                 clearTimeout(timer);
             options.signal?.removeEventListener('abort', abortForwarder);
-            lease?.release();
+            this.activeControllers.delete(controller);
+            if (controller.signal.aborted)
+                await lease?.discard();
+            else
+                lease?.release();
         }
+    }
+    removeQueueAbortListener(item) {
+        if (item.abortListener)
+            item.options.signal?.removeEventListener('abort', item.abortListener);
+        item.abortListener = undefined;
     }
 }
 export function schedulerErrorResult(error) {

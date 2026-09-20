@@ -1,4 +1,4 @@
-import type { HookManifest, HookPageDefinition, PageHookRuntime } from '@platform-hub/hook-sdk'
+import { noopHookLogger, type HookEvent, type HookLogger, type HookManifest, type HookPageDefinition, type PageHookRuntime } from '@platform-hub/hook-sdk'
 import type { HookPageAdapter, HookPageContext, HookPageFactory, WorkerPageLease } from './types.js'
 
 interface WorkerEntry {
@@ -7,6 +7,7 @@ interface WorkerEntry {
   inUse: boolean
   lastUsedAt: number
   idleTimer?: ReturnType<typeof setTimeout>
+  unsubscribeEvents?: () => void
 }
 
 export interface WorkerPageManagerOptions {
@@ -17,6 +18,9 @@ export interface WorkerPageManagerOptions {
   factory: HookPageFactory
   maxWorkers?: number
   defaultIdleTtlMs?: number
+  logger?: HookLogger
+  onEvent?: (event: HookEvent) => void
+  onEventError?: (error: unknown) => void
 }
 
 export class WorkerPageManager {
@@ -25,10 +29,12 @@ export class WorkerPageManager {
   private disposed = false
   private readonly maxWorkers: number
   private readonly defaultIdleTtlMs: number
+  private readonly logger: HookLogger
 
   constructor(private readonly options: WorkerPageManagerOptions) {
     this.maxWorkers = Math.max(1, options.maxWorkers ?? 2)
     this.defaultIdleTtlMs = Math.max(1, options.defaultIdleTtlMs ?? 30_000)
+    this.logger = options.logger ?? noopHookLogger
   }
 
   get size(): number { return this.workers.size }
@@ -47,8 +53,20 @@ export class WorkerPageManager {
       }
       if (!existing && this.workers.size < this.maxWorkers) {
         const page = await this.options.factory.create(this.contextFor(definition))
-        const runtime = await page.installRuntime()
+        let runtime: PageHookRuntime | undefined
+        try {
+          runtime = await page.installRuntime()
+        } catch (error) {
+          try { await page.close() } catch { /* creation failure cleanup */ }
+          throw error
+        }
+        if (this.disposed) {
+          try { await runtime.dispose() } catch { /* manager is stopping */ }
+          try { await page.close() } catch { /* manager is stopping */ }
+          throw new Error('WorkerPageManager 已停止')
+        }
         const entry: WorkerEntry = { page, runtime, inUse: true, lastUsedAt: Date.now() }
+        entry.unsubscribeEvents = await this.subscribeToPage(page)
         this.workers.set(definition.id, entry)
         return this.leaseFor(definition.id, entry)
       }
@@ -67,10 +85,11 @@ export class WorkerPageManager {
     if (entry) await entry.page.show()
   }
 
-  async drainEvents(): Promise<ReturnType<PageHookRuntime['drainEvents']>> {
-    const events = [] as ReturnType<PageHookRuntime['drainEvents']>
+  async drainEvents(): Promise<HookEvent[]> {
+    const events: HookEvent[] = []
     for (const entry of this.workers.values()) {
-      try { events.push(...entry.runtime.drainEvents()) } catch { /* session reports runtime errors */ }
+      if (entry.unsubscribeEvents) continue
+      try { events.push(...await entry.runtime.drainEvents()) } catch (error) { this.options.onEventError?.(error) }
     }
     return events
   }
@@ -93,9 +112,14 @@ export class WorkerPageManager {
       release: () => {
         if (!entry.inUse) return
         entry.inUse = false
+        if (this.disposed || this.workers.get(id) !== entry) return
         entry.lastUsedAt = Date.now()
         this.scheduleIdleDispose(id, entry)
         this.notifyAvailability()
+      },
+      discard: async () => {
+        entry.inUse = false
+        if (this.workers.get(id) === entry) await this.disposeEntry(id, entry)
       },
     }
   }
@@ -117,9 +141,20 @@ export class WorkerPageManager {
   private async disposeEntry(id: string, entry: WorkerEntry): Promise<void> {
     this.clearIdleTimer(entry)
     this.workers.delete(id)
-    try { await entry.runtime.dispose() } catch { /* renderer teardown is already complete */ }
-    try { await entry.page.close() } catch { /* renderer teardown is already complete */ }
+    try { entry.unsubscribeEvents?.() } catch (error) { this.logger.warn('Worker event subscription cleanup failed', { pageId: id, error: errorMessage(error) }) }
+    try { await entry.runtime.dispose() } catch (error) { this.logger.warn('Worker runtime dispose failed', { pageId: id, error: errorMessage(error) }) }
+    try { await entry.page.close() } catch (error) { this.logger.warn('Worker page close failed', { pageId: id, error: errorMessage(error) }) }
     this.notifyAvailability()
+  }
+
+  private async subscribeToPage(page: HookPageAdapter): Promise<(() => void) | undefined> {
+    if (!page.subscribeEvents || !this.options.onEvent) return undefined
+    try {
+      return await page.subscribeEvents(this.options.onEvent)
+    } catch (error) {
+      this.logger.warn('Worker push event subscription failed; polling fallback remains active', { pageId: page.id, error: errorMessage(error) })
+      return undefined
+    }
   }
 
   private contextFor(definition: HookPageDefinition): HookPageContext {
@@ -147,4 +182,8 @@ export class WorkerPageManager {
   }
 
   private notifyAvailability(): void { this.waiters.splice(0).forEach((wake) => wake()) }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

@@ -1,3 +1,4 @@
+import { noopHookLogger } from '@platform-hub/hook-sdk';
 export class WorkerPageManager {
     options;
     workers = new Map();
@@ -5,10 +6,12 @@ export class WorkerPageManager {
     disposed = false;
     maxWorkers;
     defaultIdleTtlMs;
+    logger;
     constructor(options) {
         this.options = options;
         this.maxWorkers = Math.max(1, options.maxWorkers ?? 2);
         this.defaultIdleTtlMs = Math.max(1, options.defaultIdleTtlMs ?? 30_000);
+        this.logger = options.logger ?? noopHookLogger;
     }
     get size() { return this.workers.size; }
     get ids() { return [...this.workers.keys()]; }
@@ -27,8 +30,30 @@ export class WorkerPageManager {
             }
             if (!existing && this.workers.size < this.maxWorkers) {
                 const page = await this.options.factory.create(this.contextFor(definition));
-                const runtime = await page.installRuntime();
+                let runtime;
+                try {
+                    runtime = await page.installRuntime();
+                }
+                catch (error) {
+                    try {
+                        await page.close();
+                    }
+                    catch { /* creation failure cleanup */ }
+                    throw error;
+                }
+                if (this.disposed) {
+                    try {
+                        await runtime.dispose();
+                    }
+                    catch { /* manager is stopping */ }
+                    try {
+                        await page.close();
+                    }
+                    catch { /* manager is stopping */ }
+                    throw new Error('WorkerPageManager 已停止');
+                }
                 const entry = { page, runtime, inUse: true, lastUsedAt: Date.now() };
+                entry.unsubscribeEvents = await this.subscribeToPage(page);
                 this.workers.set(definition.id, entry);
                 return this.leaseFor(definition.id, entry);
             }
@@ -49,10 +74,14 @@ export class WorkerPageManager {
     async drainEvents() {
         const events = [];
         for (const entry of this.workers.values()) {
+            if (entry.unsubscribeEvents)
+                continue;
             try {
-                events.push(...entry.runtime.drainEvents());
+                events.push(...await entry.runtime.drainEvents());
             }
-            catch { /* session reports runtime errors */ }
+            catch (error) {
+                this.options.onEventError?.(error);
+            }
         }
         return events;
     }
@@ -75,9 +104,16 @@ export class WorkerPageManager {
                 if (!entry.inUse)
                     return;
                 entry.inUse = false;
+                if (this.disposed || this.workers.get(id) !== entry)
+                    return;
                 entry.lastUsedAt = Date.now();
                 this.scheduleIdleDispose(id, entry);
                 this.notifyAvailability();
+            },
+            discard: async () => {
+                entry.inUse = false;
+                if (this.workers.get(id) === entry)
+                    await this.disposeEntry(id, entry);
             },
         };
     }
@@ -99,14 +135,35 @@ export class WorkerPageManager {
         this.clearIdleTimer(entry);
         this.workers.delete(id);
         try {
+            entry.unsubscribeEvents?.();
+        }
+        catch (error) {
+            this.logger.warn('Worker event subscription cleanup failed', { pageId: id, error: errorMessage(error) });
+        }
+        try {
             await entry.runtime.dispose();
         }
-        catch { /* renderer teardown is already complete */ }
+        catch (error) {
+            this.logger.warn('Worker runtime dispose failed', { pageId: id, error: errorMessage(error) });
+        }
         try {
             await entry.page.close();
         }
-        catch { /* renderer teardown is already complete */ }
+        catch (error) {
+            this.logger.warn('Worker page close failed', { pageId: id, error: errorMessage(error) });
+        }
         this.notifyAvailability();
+    }
+    async subscribeToPage(page) {
+        if (!page.subscribeEvents || !this.options.onEvent)
+            return undefined;
+        try {
+            return await page.subscribeEvents(this.options.onEvent);
+        }
+        catch (error) {
+            this.logger.warn('Worker push event subscription failed; polling fallback remains active', { pageId: page.id, error: errorMessage(error) });
+            return undefined;
+        }
     }
     contextFor(definition) {
         return {
@@ -132,5 +189,8 @@ export class WorkerPageManager {
         });
     }
     notifyAvailability() { this.waiters.splice(0).forEach((wake) => wake()); }
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
 }
 //# sourceMappingURL=worker-page-manager.js.map

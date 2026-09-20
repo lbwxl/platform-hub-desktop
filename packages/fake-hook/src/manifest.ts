@@ -14,6 +14,8 @@ export const fakeHookManifest: HookManifest = {
     'products.detail',
     'orders.list',
     'orders.listen',
+    'handoff.transfer',
+    'handoff.targets.list',
   ],
   pages: [
     { id: 'primary', kind: 'primary', url: 'fake://messages' },
@@ -31,5 +33,7 @@ export const fakeHookManifest: HookManifest = {
     'products.detail': { page: 'products', capability: 'products.detail' },
     'orders.list': { page: 'orders', capability: 'orders.list' },
     'orders.listen': { page: 'orders', capability: 'orders.listen' },
+    'handoff.transfer': { page: 'primary', capability: 'handoff.transfer' },
+    'handoff.targets.list': { page: 'primary', capability: 'handoff.targets.list' },
   },
 }

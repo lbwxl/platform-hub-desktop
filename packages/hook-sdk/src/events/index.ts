@@ -5,7 +5,7 @@ export type HookEventType = 'message.created' | 'order.created' | 'order.updated
 export interface HookEventPayloadMap {
   'message.created': { message: HookMessage }
   'order.created': { order: HookOrder }
-  'order.updated': { order: HookOrder; previous?: HookOrder }
+  'order.updated': { order: HookOrder; previous?: HookOrder; changedFields?: string[] }
   'auth.changed': { auth: HookAuthState }
   'runtime.error': { message: string; error?: unknown }
 }

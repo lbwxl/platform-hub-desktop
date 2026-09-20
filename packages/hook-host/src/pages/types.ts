@@ -1,4 +1,4 @@
-import type { HookManifest, HookPageDefinition, PageHookRuntime } from '@platform-hub/hook-sdk'
+import type { HookEvent, HookManifest, HookPageDefinition, PageHookRuntime } from '@platform-hub/hook-sdk'
 
 export interface HookPageContext {
   sessionId: string
@@ -14,6 +14,7 @@ export interface HookPageAdapter {
   readonly partition: string
   readonly definition: HookPageDefinition
   installRuntime(): Promise<PageHookRuntime>
+  subscribeEvents?: (listener: (event: HookEvent) => void) => (() => void) | Promise<() => void>
   show(): Promise<void>
   waitForRuntimeReady(signal?: AbortSignal): Promise<void>
   close(): Promise<void>
@@ -29,4 +30,5 @@ export interface WorkerPageLease {
   readonly runtime: PageHookRuntime
   refreshRuntime(): Promise<PageHookRuntime>
   release(): void
+  discard(): Promise<void>
 }

@@ -1,7 +1,13 @@
-import { type HookEvent, type HookManifest, type HookOperation, type HookResult } from '@platform-hub/hook-sdk';
+import { type HookEvent, type HookLogger, type HookManifest, type HookOperation, type HookResult } from '@platform-hub/hook-sdk';
 import type { HookPageFactory } from '../pages/types.js';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
 import { WorkerScheduler } from '../scheduler/worker-scheduler.js';
+export interface HookEventPollingOptions {
+    initialIntervalMs?: number;
+    activeIntervalMs?: number;
+    idleIntervalMs?: number;
+    backoffMultiplier?: number;
+}
 export interface HookSessionOptions {
     sessionId: string;
     shopId: string;
@@ -11,7 +17,9 @@ export interface HookSessionOptions {
     partition?: string;
     maxWorkers?: number;
     workerIdleTtlMs?: number;
-    eventPollMs?: number;
+    eventPolling?: false | HookEventPollingOptions;
+    challengeTimeoutMs?: number;
+    logger?: HookLogger;
 }
 export type HookEventListener = (event: HookEvent) => void;
 export declare class HookSession {
@@ -20,14 +28,20 @@ export declare class HookSession {
     readonly workerPages: WorkerPageManager;
     private primaryPage?;
     private primaryRuntime?;
+    private primaryPushUnsubscribe?;
     private readonly listeners;
+    private readonly lifecycleController;
     private eventTimer?;
     private eventPollBusy;
     private started;
     private disposed;
-    private readonly eventPollMs;
+    private readonly polling;
+    private eventPollDelayMs;
+    private readonly challengeTimeoutMs;
+    private readonly logger;
     constructor(options: HookSessionOptions);
     get isStarted(): boolean;
+    get isDisposed(): boolean;
     get sessionId(): string;
     get shopId(): string;
     get manifest(): HookManifest;
@@ -37,7 +51,7 @@ export declare class HookSession {
         timeoutMs?: number;
     }): Promise<HookResult<T>>;
     subscribe(listener: HookEventListener): () => void;
-    pollEvents(): Promise<void>;
+    pollEvents(): Promise<number>;
     dispose(): Promise<void>;
     private invokeWithRecovery;
     private emit;

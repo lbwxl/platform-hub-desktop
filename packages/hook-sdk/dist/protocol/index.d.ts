@@ -1,4 +1,4 @@
-import type { HookCapability, HookOperation } from '../capabilities/index.js';
+import { type HookCapability, type HookOperation } from '../capabilities/index.js';
 import type { HookError } from '../errors/index.js';
 import type { HookEvent } from '../events/index.js';
 export type HookResult<T> = {
@@ -22,7 +22,7 @@ export interface PageHookRuntime {
     protocolVersion: number;
     describe(): HookRuntimeDescription;
     invoke(operation: string, input: unknown): Promise<HookResult<unknown>>;
-    drainEvents(): HookEvent[];
+    drainEvents(): Promise<HookEvent[]>;
     dispose(): Promise<void>;
 }
 export interface HookPageDefinition {
@@ -40,7 +40,7 @@ export interface HookManifest {
     version: string;
     capabilities: HookCapability[];
     pages: HookPageDefinition[];
-    operations: Record<HookOperation, HookOperationDefinition>;
+    operations: Partial<Record<HookOperation, HookOperationDefinition>>;
 }
 export declare function validateHookManifest(manifest: HookManifest): string[];
 //# sourceMappingURL=index.d.ts.map
