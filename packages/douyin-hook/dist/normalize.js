@@ -190,7 +190,7 @@ export function normalizeDouyinOrderStatus(value) {
         return 'processing';
     if (/已付款|已支付|支付成功|paid/.test(status))
         return 'paid';
-    if (/待付款|未付款|新订单|created|pending.?pay/.test(status))
+    if (/待付款|待支付|未付款|新订单|created|pending.?pay/.test(status))
         return 'created';
     return 'unknown';
 }

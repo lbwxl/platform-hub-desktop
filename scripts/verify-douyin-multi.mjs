@@ -54,6 +54,12 @@ let shutdownStarted = false
 let lastCrossShopIdentityKey = ''
 
 app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('disable-gpu')
+app.commandLine.appendSwitch('disable-gpu-compositing')
+app.commandLine.appendSwitch('in-process-gpu')
+if (process.env.DOUYIN_VERIFY_PROXY_SERVER) {
+  app.commandLine.appendSwitch('proxy-server', process.env.DOUYIN_VERIFY_PROXY_SERVER)
+}
 app.setPath('userData', userDataPath)
 write('boot', { status: 'starting', slotCount: slots.length })
 
@@ -80,7 +86,7 @@ void app.whenReady().then(async () => {
     schedulerConcurrencyLimit: host.scheduler.concurrencyLimit,
     sameSchedulerInstance: true,
     slots: slots.map((slot) => publicSlot(states.get(slot.id))),
-    commands: ['status', 'snapshot', 'invoke', 'conversation.lookup', 'send.test', 'restart', 'dispose', 'create', 'identity.inspect', 'handoff.targets', 'handoff.transfer.test', 'quit'],
+    commands: ['status', 'snapshot', 'invoke', 'conversation.lookup', 'send.test', 'orders.prepare', 'orders.inspect', 'orders.scan', 'restart', 'dispose', 'create', 'identity.inspect', 'handoff.targets', 'handoff.inspect', 'handoff.transfer.test', 'quit'],
   })
 }).catch((error) => {
   write('fatal', { message: errorMessage(error) })
@@ -377,30 +383,52 @@ async function inspectIdentity(state) {
   const entries = await evaluate(String.raw`(() => {
     const current = window.ss?._frontStore || window.ss?.instance
     const getters = window.__STORE__GETTERS__
-    let getterUser
-    try { getterUser = typeof getters?.user === 'function' ? getters.user() : getters?.user } catch (_) {}
+    const getterValue = (name) => {
+      try {
+        const value = getters?.[name]
+        return typeof value === 'function' && value.length === 0 ? value() : value
+      } catch (_) { return undefined }
+    }
     const sources = {
       selfInfo: current?.selfInfo,
       shopInfo: current?.shopInfo,
+      frontStore: current,
       monaStore: window.__mona_store__,
-      getterUser,
+      getterUser: getterValue('user'),
+      getterShop: getterValue('shop'),
+      getterShopInfo: getterValue('shopInfo'),
+      getterCurrentShop: getterValue('currentShop'),
+      getterCurrentUser: getterValue('currentUser'),
+      getterMerchant: getterValue('merchant'),
+      initContextData: window.__mona_pigeon_event?.globalStore?.data?.initContextData,
     }
     const useful = /(id|name|nick|staff|employee|operator|account|user|shop|role|tenant|seller|merchant|sub|agent|service)/i
     const blocked = /(token|cookie|credential|secret|phone|mobile|address|email|session|auth|ticket|csrf|password)/i
     const result = []
     for (const [sourceName, source] of Object.entries(sources)) {
       if (!source || typeof source !== 'object') continue
-      let keys = []
-      try { keys = [...new Set([...Object.keys(source), ...Object.getOwnPropertyNames(source)])].slice(0, 120) } catch (_) {}
-      for (const key of keys) {
-        if (!useful.test(key) || blocked.test(key)) continue
-        let value
-        try { value = source[key] } catch (_) { continue }
-        if (!['string', 'number', 'boolean'].includes(typeof value)) continue
-        const text = String(value).trim()
-        if (!text || text.length > 256) continue
-        result.push({ path: sourceName + '.' + key, value: text, type: typeof value })
-        if (result.length >= 80) return result
+      const seen = new WeakSet()
+      const pending = [{ value: source, path: sourceName, depth: 0 }]
+      let visited = 0
+      while (pending.length && visited < 500) {
+        const node = pending.shift()
+        if (!node?.value || typeof node.value !== 'object' || seen.has(node.value)) continue
+        seen.add(node.value); visited += 1
+        let keys = []
+        try { keys = [...new Set([...Object.keys(node.value), ...Object.getOwnPropertyNames(node.value)])].slice(0, 120) } catch (_) {}
+        for (const key of keys) {
+          if (blocked.test(key)) continue
+          let value
+          try { value = node.value[key] } catch (_) { continue }
+          const path = node.path + '.' + key
+          if (['string', 'number', 'boolean'].includes(typeof value) && useful.test(key)) {
+            const text = String(value).trim()
+            if (text && text.length <= 256) result.push({ path, value: text, type: typeof value })
+            if (result.length >= 120) return result
+          } else if (value && typeof value === 'object' && node.depth < 4) {
+            pending.push({ value, path, depth: node.depth + 1 })
+          }
+        }
       }
     }
     return result
@@ -412,6 +440,388 @@ async function inspectIdentity(state) {
     ...(/name|nick|title/i.test(item.path) ? { nameHint: maskName(item.value) } : {}),
   }))
   write('identity.evidence', operationContext(state, { fields: summary }))
+  return summary
+}
+
+async function inspectHandoffRuntime(state, conversationId) {
+  const evaluate = evaluators.get(pageKey(state.slot.id, 'primary'))
+  if (!evaluate) throw new Error(`Primary evaluator is not ready: ${state.slot.id}`)
+  const inspected = await evaluate(`(async () => {
+    const conversationId = ${JSON.stringify(conversationId)}
+    const store = window.ss?._frontStore || window.ss?.instance
+    const chatRooms = store?.uiState?.chatRooms
+    const room = chatRooms?.getChatRoom?.(conversationId)
+    const shape = (value) => {
+      if (!value) return null
+      const levels = []
+      let current = value
+      for (let depth = 0; current && depth < 5; depth += 1) {
+        const members = []
+        for (const name of Object.getOwnPropertyNames(current)) {
+          let member
+          try { member = value[name] } catch (_) { continue }
+          if (typeof member === 'function') members.push({ name, type: 'function', arity: member.length, source: String(member).slice(0, 1600) })
+          else if (depth === 0 && member && typeof member === 'object') members.push({ name, type: Array.isArray(member) ? 'array' : 'object', keys: Object.keys(member).slice(0, 60) })
+          else if (depth === 0 && ['string', 'number', 'boolean'].includes(typeof member)) members.push({ name, type: typeof member })
+        }
+        levels.push({ depth, members })
+        current = Object.getPrototypeOf(current)
+      }
+      return levels
+    }
+    let lightRuntime
+    try { lightRuntime = await window.__get_light_runtime?.() } catch (_) {}
+    const roots = {
+      ss: window.ss,
+      store,
+      monaRemotePigeon: window.mona_remote_pigeon,
+      pluginLoader: window.__pigeonPluginLoader,
+      monaEvent: window.__mona_pigeon_event,
+      workbenchEvent: window.__WORKBENCH_EVENT_SDK_IN_WINDOW__,
+      lightRuntime,
+    }
+    const discover = (interesting) => {
+      const seen = new Set()
+      const pending = Object.entries(roots).map(([path, value]) => ({ path, value, depth: 0 }))
+      const found = []
+      while (pending.length && seen.size < 15000 && found.length < 300) {
+        const item = pending.shift()
+        const value = item.value
+        if (!value || !['object', 'function'].includes(typeof value) || seen.has(value)) continue
+        seen.add(value)
+        let names = []
+        try { names = Object.getOwnPropertyNames(value).slice(0, 1000) } catch (_) {}
+        const methods = []
+        for (const name of names) {
+          let child
+          try { child = value[name] } catch (_) { continue }
+          if (typeof child === 'function' && interesting.test(name)) methods.push({ name, arity: child.length, source: String(child).slice(0, 1600) })
+          if (item.depth < 7 && child && ['object', 'function'].includes(typeof child) && !/^(window|document|globalThis|parent|top|frames|prototype|__proto__|constructor|\$treenode)$/.test(name)) {
+            pending.push({ path: item.path + '.' + name, value: child, depth: item.depth + 1 })
+          }
+        }
+        if (methods.length) found.push({ path: item.path, methods })
+      }
+      return { visited: seen.size, found }
+    }
+    return {
+      globalTransfer: shape(chatRooms?.transferConv),
+      roomTransfer: shape(room?.transferConv),
+      chatRooms: shape(chatRooms),
+      room: shape(room),
+      discovery: discover(/(transfer|assign|handoff|staff|service|conversation)/i),
+      requestDiscovery: discover(/^(request|requestJson|post|postJson|http|callApi|invokeApi|fetchApi)$/i),
+    }
+  })()`)
+  write('handoff.runtime.evidence', operationContext(state, { conversationRef: ref(conversationId), inspected }))
+  return inspected
+}
+
+async function inspectOrderRuntime(state, conversationId, expectedOrderId = '') {
+  const evaluate = evaluators.get(pageKey(state.slot.id, 'primary'))
+  if (!evaluate) throw new Error(`Primary evaluator is not ready: ${state.slot.id}`)
+  const inspected = await evaluate(`(async () => {
+    const conversationId = ${JSON.stringify(conversationId)}
+    const expectedOrderId = ${JSON.stringify(expectedOrderId)}
+    const store = window.ss?._frontStore || window.ss?.instance
+    const values = (value) => {
+      if (!value) return []
+      if (Array.isArray(value)) return [...value]
+      try { if (typeof value.values === 'function') return [...value.values()] } catch (_) {}
+      try { return Object.values(value) } catch (_) { return [] }
+    }
+    const snapshot = (value) => {
+      try { return typeof value?.toJSON === 'function' ? value.toJSON() : value }
+      catch (_) { return value }
+    }
+    const conversations = []
+    for (const source of [store?.conversationsInfo?.unClosedConversations, store?.conversationsInfo?.closedConversations, store?.conversationsInfo?.conversations]) {
+      for (const raw of values(source)) {
+        const value = snapshot(raw) || raw || {}
+        if (String(value.id || value.conversationId || '') === conversationId) conversations.push({ raw, value })
+      }
+    }
+    const conversation = conversations[0]
+    const buyerId = String(conversation?.value?.buyerId || conversation?.value?.currentTalkId || conversation?.value?.userId || '').trim()
+    const post = window.__mona_pigeon_event?.globalStore?.data?.initContextData?.post
+    if (!buyerId || typeof post !== 'function') return { buyerId, postAvailable: typeof post === 'function' }
+    const endpoint = 'https://pigeon.jinritemai.com/backstage/cmpoent/order/query'
+    const response = await post(endpoint, { page_size: 200, user_id: buyerId })
+    const collectIds = (root, prefix) => {
+      const result = []
+      const seen = new Set()
+      const pending = [{ value: root, path: prefix, depth: 0 }]
+      while (pending.length && seen.size < 500 && result.length < 100) {
+        const item = pending.shift()
+        if (!item.value || typeof item.value !== 'object' || seen.has(item.value)) continue
+        seen.add(item.value)
+        let keys = []
+        try { keys = Object.getOwnPropertyNames(item.value).slice(0, 200) } catch (_) {}
+        for (const key of keys) {
+          let child
+          try { child = item.value[key] } catch (_) { continue }
+          const path = item.path + '.' + key
+          if (['string', 'number'].includes(typeof child) && /(id|uid|buyer|talk|user|customer|sender|from)/i.test(key) && !/(token|session|conversation|shop|self)/i.test(key)) {
+            const text = String(child).trim()
+            if (text && text.length <= 256) result.push({ path, value: text })
+          } else if (child && typeof child === 'object' && item.depth < 3) {
+            pending.push({ value: child, path, depth: item.depth + 1 })
+          }
+        }
+      }
+      return result
+    }
+    const directBuyerIds = [...new Set([
+      conversation?.value?.buyerId,
+      conversation?.value?.currentTalkId,
+      conversation?.value?.userId,
+      conversation?.raw?.buyerId,
+      conversation?.raw?.currentTalkId,
+      conversation?.raw?.userId,
+    ].map((value) => String(value || '').trim()).filter(Boolean))]
+    const talkers = directBuyerIds.map((id) => {
+      try { return store?.talkerMap?.getTalkerInfo?.(id) } catch (_) { return undefined }
+    }).filter(Boolean)
+    let messageSource
+    try { messageSource = store?.conversationsInfo?.messagesByConversationId?.get?.(conversationId) } catch (_) {}
+    const messageRows = values(messageSource?.sortedMessages || messageSource?.visibleMessages || messageSource?.value || messageSource).slice(-20)
+    const likelyCandidates = new Map()
+    const addCandidate = (label, value) => {
+      const id = String(value || '').trim()
+      if (id && !likelyCandidates.has(id)) likelyCandidates.set(id, label)
+    }
+    addCandidate('buyerId', buyerId)
+    addCandidate('currentTalkId', conversation?.value?.currentTalkId)
+    addCandidate('shortId', conversation?.value?.shortId)
+    addCandidate('conversationPrefix', String(conversationId).split(':')[0])
+    addCandidate('securityFusionUid', conversation?.value?.rawExt?.security_fusion_uid)
+    addCandidate('rawUserId', conversation?.value?.rawExt?.user_id)
+    for (const message of messageRows) {
+      const value = snapshot(message) || message || {}
+      if (value.sender && value.sender !== store?.shopInfo?.id && value.sender !== store?.selfInfo?.id) addCandidate('messageSender', value.sender)
+      addCandidate('messageExtFrom', value.ext?.from)
+      addCandidate('messageSecuritySender', value.ext?.security_sender_id)
+      addCandidate('messageSecurityUser', value.ext?.security_user_id)
+      addCandidate('messageSecurityPigeonUser', value.ext?.security_pigeon_uid)
+    }
+    const candidateResults = []
+    for (const [id, label] of [...likelyCandidates].slice(0, 12)) {
+      try {
+        const candidateResponse = id === buyerId ? response : await post(endpoint, { page_size: 200, user_id: id })
+        candidateResults.push({
+          id,
+          label,
+          code: candidateResponse?.code,
+          total: candidateResponse?.total,
+          size: candidateResponse?.size,
+          dataLength: Array.isArray(candidateResponse?.data) ? candidateResponse.data.length : undefined,
+        })
+      } catch (error) {
+        candidateResults.push({ id, label, error: String(error?.message || error || 'unknown error').slice(0, 160) })
+      }
+    }
+    const shape = (value, depth = 0, seen = new Set()) => {
+      if (value == null) return { type: String(value) }
+      if (Array.isArray(value)) return {
+        type: 'array',
+        length: value.length,
+        ...(depth < 5 && value.length ? { first: shape(value[0], depth + 1, seen) } : {}),
+      }
+      if (typeof value !== 'object') return { type: typeof value }
+      if (seen.has(value)) return { type: 'circular' }
+      seen.add(value)
+      const result = { type: 'object', keys: Object.keys(value).slice(0, 80) }
+      if (depth < 5) {
+        result.children = Object.fromEntries(result.keys.map((key) => {
+          let child
+          try { child = value[key] } catch (_) { child = undefined }
+          return [key, shape(child, depth + 1, seen)]
+        }))
+      }
+      return result
+    }
+    const scalar = (value) => ['string', 'number', 'boolean'].includes(typeof value) ? value : undefined
+    const orderScalars = (value) => {
+      if (!value || typeof value !== 'object') return {}
+      const result = {}
+      for (const key of Object.getOwnPropertyNames(value).slice(0, 200)) {
+        if (!/(order|status|amount|price|count|quantity|product|goods|sku|time)/i.test(key)) continue
+        let child
+        try { child = value[key] } catch (_) { continue }
+        const safe = scalar(child)
+        if (safe !== undefined && String(safe).length <= 240) result[key] = safe
+      }
+      return result
+    }
+    const findExpectedOrder = () => {
+      if (!expectedOrderId) return { visited: 0, matches: [] }
+      const roots = {
+        store,
+        storeGetters: window.__STORE__GETTERS__,
+        initContextData: window.__mona_pigeon_event?.globalStore?.data?.initContextData,
+        monaEvent: window.__mona_pigeon_event,
+      }
+      try {
+        for (let index = 0; index < Math.min(window.frames.length, 20); index += 1) {
+          const frame = window.frames[index]
+          roots['frame' + index + '.store'] = frame.ss?._frontStore || frame.ss?.instance
+          roots['frame' + index + '.storeGetters'] = frame.__STORE__GETTERS__
+          roots['frame' + index + '.monaEvent'] = frame.__mona_pigeon_event
+        }
+      } catch (_) {}
+      const seen = new Set()
+      const pending = Object.entries(roots).map(([path, value]) => ({ path, value, parent: undefined, depth: 0 }))
+      const matches = []
+      while (pending.length && seen.size < 30000 && matches.length < 40) {
+        const item = pending.shift()
+        const value = item.value
+        if (['string', 'number'].includes(typeof value)) {
+          if (String(value) === expectedOrderId) {
+            matches.push({
+              path: item.path,
+              parentKeys: item.parent && typeof item.parent === 'object' ? Object.keys(item.parent).slice(0, 100) : [],
+              parentOrderScalars: orderScalars(item.parent),
+            })
+          }
+          continue
+        }
+        if (!value || !['object', 'function'].includes(typeof value) || seen.has(value)) continue
+        seen.add(value)
+        let names = []
+        try { names = Object.getOwnPropertyNames(value).slice(0, 800) } catch (_) {}
+        for (const name of names) {
+          if (/^(window|document|globalThis|parent|top|frames|prototype|__proto__|constructor|ownerDocument|parentNode|children|childNodes)$/.test(name)) continue
+          let child
+          try { child = value[name] } catch (_) { continue }
+          const path = item.path + '.' + name
+          if (['string', 'number'].includes(typeof child)) {
+            if (String(child) === expectedOrderId) matches.push({ path, parentKeys: names.slice(0, 100), parentOrderScalars: orderScalars(value) })
+          } else if (item.depth < 9 && child && ['object', 'function'].includes(typeof child)) {
+            pending.push({ path, value: child, parent: value, depth: item.depth + 1 })
+          }
+        }
+      }
+      return { visited: seen.size, matches }
+    }
+    const frameRuntime = () => {
+      const result = []
+      const count = Math.min(Number(window.frames?.length || 0), 20)
+      for (let index = 0; index < count; index += 1) {
+        try {
+          const frame = window.frames[index]
+          const frameStore = frame.ss?._frontStore || frame.ss?.instance
+          result.push({
+            index,
+            accessible: true,
+            hasStore: Boolean(frameStore),
+            hasMonaEvent: Boolean(frame.__mona_pigeon_event),
+            hasStoreGetters: Boolean(frame.__STORE__GETTERS__),
+            windowKeys: Object.getOwnPropertyNames(frame).filter((key) => /(store|order|trade|query|cache|mona|pigeon)/i.test(key)).slice(0, 80),
+            workstation: frameStore?.uiState?.workstation ? {
+              currentOrder: scalar(frameStore.uiState.workstation.currentOrder),
+              currentOrderMsgId: scalar(frameStore.uiState.workstation.currentOrderMsgId),
+              isLoadOrderInfo: scalar(frameStore.uiState.workstation.isLoadOrderInfo),
+            } : undefined,
+          })
+        } catch (_) {
+          result.push({ index, accessible: false })
+        }
+      }
+      return result
+    }
+    const discoverOrders = () => {
+      const roots = {
+        store,
+        initContextData: window.__mona_pigeon_event?.globalStore?.data?.initContextData,
+        monaEvent: window.__mona_pigeon_event,
+      }
+      const seen = new Set()
+      const pending = Object.entries(roots).map(([path, value]) => ({ path, value, depth: 0 }))
+      const found = []
+      while (pending.length && seen.size < 12000 && found.length < 160) {
+        const item = pending.shift()
+        const value = item.value
+        if (!value || !['object', 'function'].includes(typeof value) || seen.has(value)) continue
+        seen.add(value)
+        let names = []
+        try { names = Object.getOwnPropertyNames(value).slice(0, 800) } catch (_) {}
+        for (const name of names) {
+          let child
+          try { child = value[name] } catch (_) { continue }
+          if (/order/i.test(name)) {
+            found.push({
+              path: item.path + '.' + name,
+              type: Array.isArray(child) ? 'array' : typeof child,
+              ...(typeof child === 'function' ? { arity: child.length, source: String(child).slice(0, 1200) } : {}),
+              ...(child && typeof child === 'object' ? { keys: Object.keys(child).slice(0, 80), length: Array.isArray(child) ? child.length : undefined } : {}),
+            })
+          }
+          if (item.depth < 7 && child && ['object', 'function'].includes(typeof child) && !/^(window|document|globalThis|parent|top|frames|prototype|__proto__|constructor|\$treenode)$/.test(name)) {
+            pending.push({ path: item.path + '.' + name, value: child, depth: item.depth + 1 })
+          }
+        }
+      }
+      return { visited: seen.size, found }
+    }
+    return {
+      buyerId,
+      postAvailable: true,
+      responseMeta: {
+        code: response?.code,
+        total: response?.total,
+        page: response?.page,
+        size: response?.size,
+        messageType: typeof response?.msg,
+      },
+      candidateResults,
+      selectedState: {
+        workstation: {
+          currentOrder: scalar(store?.uiState?.workstation?.currentOrder),
+          currentOrderMsgId: scalar(store?.uiState?.workstation?.currentOrderMsgId),
+          isLoadOrderInfo: scalar(store?.uiState?.workstation?.isLoadOrderInfo),
+          serviceTaskOrderRefreshVersion: scalar(store?.uiState?.workstation?.serviceTaskOrderRefreshVersion),
+        },
+        historyConversation: {
+          orderId: scalar(store?.historyConversationData?.orderId),
+          orderInfo: shape(store?.historyConversationData?.orderInfo),
+          conversationOrderIdList: shape(store?.historyConversationData?.conversationOrderIdList),
+          subHistoryTagInfo: shape(store?.historyConversationData?.subHistoryTagInfo),
+        },
+        storeGetterKeys: Object.keys(window.__STORE__GETTERS__ || {}).filter((key) => /(order|trade|buyer|user|conversation)/i.test(key)).slice(0, 120),
+        windowKeys: Object.getOwnPropertyNames(window).filter((key) => /(store|order|trade|query|cache|mona|pigeon)/i.test(key)).slice(0, 120),
+        frames: frameRuntime(),
+      },
+      expectedOrder: findExpectedOrder(),
+      orderDiscovery: discoverOrders(),
+      identityCandidates: [
+        ...collectIds(conversation?.value, 'conversation.value'),
+        ...collectIds(conversation?.raw, 'conversation.raw'),
+        ...talkers.flatMap((talker, index) => collectIds(talker, 'talker.' + index)),
+        ...messageRows.flatMap((message, index) => collectIds(message, 'message.' + index)),
+      ],
+      response: shape(response),
+    }
+  })()`)
+  const summary = {
+    buyerRef: ref(inspected?.buyerId),
+    postAvailable: inspected?.postAvailable === true,
+    responseMeta: inspected?.responseMeta,
+    candidateResults: (inspected?.candidateResults || []).map((item) => ({
+      idRef: ref(item.id),
+      label: item.label,
+      code: item.code,
+      total: item.total,
+      size: item.size,
+      dataLength: item.dataLength,
+      error: item.error,
+    })),
+    selectedState: inspected?.selectedState,
+    expectedOrder: inspected?.expectedOrder,
+    orderDiscovery: inspected?.orderDiscovery,
+    identityCandidates: (inspected?.identityCandidates || []).slice(0, 160).map((item) => ({ path: item.path, valueRef: ref(item.value) })),
+    response: inspected?.response,
+  }
+  write('order.runtime.evidence', operationContext(state, { conversationRef: ref(conversationId), inspected: summary }))
   return summary
 }
 
@@ -473,6 +883,73 @@ async function handleCommand(line) {
         }))
         return
       }
+      if (request.command === 'orders.prepare' && state) {
+        const conversationTitle = String(request.conversationTitle || '').trim()
+        if (!conversationTitle) throw new Error('orders.prepare requires an exact conversationTitle')
+        const matches = await findConversationsByTitle(state, conversationTitle)
+        if (matches.length !== 1) {
+          throw new Error(`Expected exactly one conversation titled ${JSON.stringify(conversationTitle)} in ${state.slot.id}; found ${matches.length}`)
+        }
+        const conversationId = matches[0].id
+        const snapshot = await invokeLogged(state, 'orders.list', { conversationId }, request.timeoutMs || 20_000)
+        if (!snapshot.ok) throw new Error(`Unable to snapshot orders: ${state.slot.id}`)
+        const listening = await invokeLogged(state, 'orders.listen', { conversationId }, request.timeoutMs || 20_000)
+        if (!listening.ok) throw new Error(`Unable to listen for orders: ${state.slot.id}`)
+        write('command.result', operationContext(state, {
+          id: request.id,
+          operation: 'orders.prepare',
+          ok: true,
+          titleHint: maskName(conversationTitle),
+          conversationRef: ref(conversationId),
+          snapshot: summarizeResult('orders.list', snapshot),
+          listening: summarizeResult('orders.listen', listening),
+        }))
+        return
+      }
+      if (request.command === 'orders.inspect' && state) {
+        const conversationTitle = String(request.conversationTitle || '').trim()
+        if (!conversationTitle) throw new Error('orders.inspect requires an exact conversationTitle')
+        const matches = await findConversationsByTitle(state, conversationTitle)
+        if (matches.length !== 1) {
+          throw new Error(`Expected exactly one conversation titled ${JSON.stringify(conversationTitle)} in ${state.slot.id}; found ${matches.length}`)
+        }
+        const inspected = await inspectOrderRuntime(state, matches[0].id, String(request.expectedOrderId || '').trim())
+        write('command.result', operationContext(state, { id: request.id, operation: 'orders.inspect', ok: true, inspected }))
+        return
+      }
+      if (request.command === 'orders.scan' && state) {
+        const sessions = await state.session.invoke('sessions.list', {}, { timeoutMs: request.timeoutMs || 20_000 })
+        if (!sessions.ok) throw new Error(`Unable to list conversations: ${state.slot.id}`)
+        const rows = []
+        for (const conversation of sessions.data.slice(0, 30)) {
+          const result = await state.session.invoke('orders.list', { conversationId: conversation.id }, { timeoutMs: request.timeoutMs || 20_000 })
+          rows.push({
+            conversationRef: ref(conversation.id),
+            titleHint: maskName(conversation.title),
+            ok: result.ok,
+            count: result.ok ? result.data.length : 0,
+            orders: result.ok ? result.data.map((order) => ({
+              externalRef: ref(order.externalId),
+              status: order.status,
+              itemCount: order.items.length,
+              quantities: order.items.map((item) => item.quantity),
+              total: order.total,
+              buyerRef: ref(order.buyer?.id),
+              conversationRef: ref(order.conversationId),
+            })) : [],
+            error: result.ok ? undefined : result.error,
+          })
+        }
+        write('command.result', operationContext(state, {
+          id: request.id,
+          operation: 'orders.scan',
+          ok: rows.every((row) => row.ok),
+          conversationCount: rows.length,
+          orderCount: rows.reduce((total, row) => total + row.count, 0),
+          rows,
+        }))
+        return
+      }
       if (request.command === 'snapshot') {
         if (state) await runSnapshot(state)
         else await Promise.all([...states.values()].map((item) => runSnapshot(item)))
@@ -506,6 +983,17 @@ async function handleCommand(line) {
       if (request.command === 'handoff.targets' && state) {
         const targets = await handoffTargets(state)
         write('command.result', operationContext(state, { id: request.id, operation: 'handoff.targets', ok: true, result: targets.summary }))
+        return
+      }
+      if (request.command === 'handoff.inspect' && state) {
+        const conversationTitle = String(request.conversationTitle || '').trim()
+        if (!conversationTitle) throw new Error('handoff.inspect requires an exact conversationTitle')
+        const conversations = await findConversationsByTitle(state, conversationTitle)
+        if (conversations.length !== 1) {
+          throw new Error(`Expected exactly one conversation titled ${JSON.stringify(conversationTitle)} in ${state.slot.id}; found ${conversations.length}`)
+        }
+        const inspected = await inspectHandoffRuntime(state, conversations[0].id)
+        write('command.result', operationContext(state, { id: request.id, operation: 'handoff.inspect', ok: true, sources: Object.fromEntries(Object.entries(inspected).map(([key, value]) => [key, value?.length || 0])) }))
         return
       }
       if (request.command === 'handoff.transfer.test' && state) {
@@ -607,7 +1095,22 @@ function summarizeEvent(state, event) {
       contentLength: typeof message.content === 'string' ? message.content.length : undefined,
       manualSendCheck: message.raw?.attributionMetadata?.manualSendCheck,
     } } : {}),
-    ...(order ? { order: { externalRef: ref(order.externalId), status: order.status }, changedFields: event.payload.changedFields } : {}),
+    ...(order ? { order: {
+      externalRef: ref(order.externalId),
+      status: order.status,
+      itemCount: order.items?.length,
+      quantity: order.items?.reduce((total, item) => total + (Number(item.quantity) || 0), 0),
+      total: order.total,
+      buyerRef: ref(order.buyer?.id),
+      conversationRef: ref(order.conversationId),
+      platformStatus: order.raw?.platformStatus,
+    }, previous: event.payload.previous ? {
+      status: event.payload.previous.status,
+      itemCount: event.payload.previous.items?.length,
+      quantity: event.payload.previous.items?.reduce((total, item) => total + (Number(item.quantity) || 0), 0),
+      total: event.payload.previous.total,
+      platformStatus: event.payload.previous.raw?.platformStatus,
+    } : undefined, changedFields: event.payload.changedFields } : {}),
     ...(event.type === 'runtime.error' ? { errorMessage: event.payload?.message } : {}),
   })
 }
@@ -664,7 +1167,16 @@ function summarizeResult(operation, result) {
     if (operation === 'orders.list') return {
       ok: true,
       count: result.data.length,
-      items: result.data.slice(0, 10).map((item) => ({ externalRef: ref(item.externalId), status: item.status, itemCount: item.items?.length })),
+      items: result.data.slice(0, 10).map((item) => ({
+        externalRef: ref(item.externalId),
+        status: item.status,
+        itemCount: item.items?.length,
+        quantity: item.items?.reduce((total, line) => total + (Number(line.quantity) || 0), 0),
+        total: item.total,
+        buyerRef: ref(item.buyer?.id),
+        conversationRef: ref(item.conversationId),
+        platformStatus: item.raw?.platformStatus,
+      })),
     }
     return { ok: true, count: result.data.length }
   }

@@ -33,7 +33,7 @@ WeWork
 Qianniu
 ```
 
-这类平台优先复用现有 `aichatclient` 中已经成熟的 Hook、Bridge、MessageServer 和 Aliwork 实现，通过 Adapter / Transport 对上层提供统一 Contract。
+这类平台优先复用现有 `aichat-vue` / Legacy `aichatclient` 中已经成熟的 Hook、Bridge、MessageServer 和 Aliwork 实现，通过 Adapter / Transport 对上层提供统一 Contract。
 
 不得为了统一形式强制把 Legacy / Native / Service 平台改造成 `PageHookRuntime`。
 
@@ -542,7 +542,7 @@ interface PageHookRuntime {
     input: unknown
   ): Promise<HookResult<unknown>>
 
-  drainEvents(): HookEvent[]
+  drainEvents(): Promise<HookEvent[]>
 
   dispose(): Promise<void>
 }

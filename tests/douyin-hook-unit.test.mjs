@@ -91,7 +91,7 @@ test('Douyin products normalize price, inventory, images and SKUs', () => {
 
 test('Douyin orders normalize statuses and meaningful changes', () => {
   const mappings = new Map([
-    ['待付款', 'created'], ['已付款', 'paid'], ['待发货', 'processing'], ['已发货', 'shipped'],
+    ['待付款', 'created'], ['待支付', 'created'], ['已付款', 'paid'], ['待发货', 'processing'], ['已发货', 'shipped'],
     ['交易成功', 'completed'], ['已取消', 'cancelled'], ['退款处理中', 'refunding'], ['退款成功', 'refunded'],
   ])
   for (const [raw, expected] of mappings) assert.equal(normalizeDouyinOrderStatus(raw), expected)

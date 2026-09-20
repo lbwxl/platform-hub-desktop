@@ -202,7 +202,7 @@ export function normalizeDouyinOrderStatus(value: unknown): HookOrderStatus {
   if (/已发货|运输中|物流|shipped|shipping/.test(status)) return 'shipped'
   if (/待发货|备货|处理中|processing/.test(status)) return 'processing'
   if (/已付款|已支付|支付成功|paid/.test(status)) return 'paid'
-  if (/待付款|未付款|新订单|created|pending.?pay/.test(status)) return 'created'
+  if (/待付款|待支付|未付款|新订单|created|pending.?pay/.test(status)) return 'created'
   return 'unknown'
 }
 

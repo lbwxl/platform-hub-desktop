@@ -31,7 +31,13 @@ export const douyinHookRuntimeScript = String.raw`(() => {
   const ORDER_POLL_BATCH_SIZE = 1
 
   const store = () => window.ss?._frontStore || window.ss?.instance || null
-  const im = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData?.im || null
+  const pageContext = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData || null
+  const im = () => pageContext()?.im || null
+  const pagePost = () => pageContext()?.post
+  const pcUIState = () => {
+    const context = pageContext()
+    try { return context?.zContainer?.get?.(context?.PCUIModelSymbol)?.getData?.() || null } catch (_) { return null }
+  }
   const values = (value) => {
     if (!value) return []
     if (Array.isArray(value)) return [...value]
@@ -175,10 +181,31 @@ export const douyinHookRuntimeScript = String.raw`(() => {
       ...(text(person.avatar || person.avatarUrl) ? { avatarUrl: text(person.avatar || person.avatarUrl) } : {}),
     }
   }).filter((item) => item.id)
+  const conversationFor = (conversationId) => conversations().find(({ value }) => text(value.id) === text(conversationId))
   const buyerFor = (conversationId) => {
-    const conversation = conversations().find(({ value }) => text(value.id) === text(conversationId))
+    const conversation = conversationFor(conversationId)
     const person = conversation ? talker(conversation.raw) : {}
     return text(conversation?.value?.buyerId || conversation?.value?.currentTalkId || conversation?.value?.userId || person.id || person.userId)
+  }
+  const transferViaOfficialApi = async (conversationId, targetId) => {
+    const current = store()
+    const shopId = identifier(current?.shopInfo?.id)
+    const buyerId = identifier(buyerFor(conversationId) || text(conversationId).split(':')[0])
+    if (!shopId || !buyerId) return error('RUNTIME_NOT_READY', '抖店转接缺少真实店铺或买家身份', true)
+    const post = pagePost()
+    if (typeof post !== 'function') return runtimeError()
+    const response = await post('https://pigeon.jinritemai.com/chat/api/backstage/conversation/transfer_conversation?PIGEON_BIZ_TYPE=2', {
+      securityBizConversationId: buyerId + ':' + shopId + '::2:1:pigeon',
+      toCid: targetId,
+      extParams: '{}',
+    })
+    const payload = response?.data && typeof response.data === 'object' ? response.data : response || {}
+    const code = payload?.code ?? payload?.status_code ?? payload?.statusCode
+    const failedCode = code !== undefined && ![0, '0', 200, '200'].includes(code)
+    if (response?.success === false || payload?.success === false || failedCode) {
+      return error('PLATFORM_ERROR', text(payload?.message || payload?.msg || response?.message || '转人工失败'), false)
+    }
+    return { ok: true }
   }
   const product = (raw) => {
     const item = raw && typeof raw === 'object' ? raw : {}
@@ -323,8 +350,10 @@ export const douyinHookRuntimeScript = String.raw`(() => {
     const amount = number(item.totalAmount ?? item.total_amount ?? item.orderAmount ?? item.order_amount_yuan ?? item.price)
     const cents = number(item.pay_amount ?? item.order_amount ?? item.total_fee)
     const total = amount !== undefined ? amount : cents !== undefined ? cents / 100 : undefined
-    const status = text(item.status || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc).toLowerCase()
-    const normalizedStatus = /退款成功|退款完成|已退款|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
+    const platformStatus = text(item.platformStatus || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc || item.status)
+    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc)
+    const status = (platformAftersaleStatus || platformStatus).toLowerCase()
+    const normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
     return {
       id: 'douyin:' + (shopId || 'unknown') + ':' + externalId, externalId,
       ...(shopId ? { shopId } : {}),
@@ -335,7 +364,7 @@ export const douyinHookRuntimeScript = String.raw`(() => {
       ...((text(item.receiverName || item.receiver_name) || text(item.receiverAddress || item.receiver_address) || text(item.phoneMasked || item.receiver_phone_mask)) ? { receiver: { ...(text(item.receiverName || item.receiver_name) ? { name: text(item.receiverName || item.receiver_name) } : {}), ...(text(item.phoneMasked || item.receiver_phone_mask) ? { phoneMasked: text(item.phoneMasked || item.receiver_phone_mask) } : {}), ...(text(item.receiverAddress || item.receiver_address) ? { address: text(item.receiverAddress || item.receiver_address) } : {}) } } : {}),
       ...(time(item.createdAt || item.create_time || item.order_create_time) ? { createdAt: time(item.createdAt || item.create_time || item.order_create_time) } : {}),
       ...(time(item.updatedAt || item.update_time || item.timestamp) ? { updatedAt: time(item.updatedAt || item.update_time || item.timestamp) } : {}),
-      raw: { platformStatus: item.status || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc },
+      raw: { platformStatus, ...(platformAftersaleStatus ? { platformAftersaleStatus } : {}) },
     }
   }
   const orderMessages = (conversationId) => messages(conversationId).map((item) => item.type === 'order' ? orderFromMessage(item, conversationId) : undefined).filter(Boolean)
@@ -343,6 +372,102 @@ export const douyinHookRuntimeScript = String.raw`(() => {
     const raw = item.raw || {}
     const id = text(raw.orderId || raw.shopOrderId)
     return id ? order({ ...raw, orderId: id }, { conversationId }) : undefined
+  }
+  const officialOrders = (response, conversationId, buyerId) => {
+    const direct = array(response)
+    const rows = direct.length ? direct : array(response?.data)
+    return rows.map((raw) => {
+      const item = raw && typeof raw === 'object' ? raw : {}
+      const skuRows = array(item.sku_order_list || item.skuOrders || item.items)
+      const items = skuRows.map((rawSku) => {
+        const sku = rawSku && typeof rawSku === 'object' ? rawSku : {}
+        const specs = array(sku.sku_specs).map((spec) => text(spec?.value || spec?.name)).filter(Boolean)
+        const cents = number(sku.actual_pay_amount ?? sku.pay_amount ?? sku.price)
+        return {
+          productId: text(sku.product_id || sku.goods_id) || undefined,
+          skuId: text(sku.sku_id) || undefined,
+          skuName: text(sku.sku_name || sku.spec_desc || sku.goods_spec_desc) || specs.join(', ') || undefined,
+          title: text(sku.product_name || sku.goods_name) || '未知商品',
+          quantity: number(sku.quantity ?? sku.count ?? sku.item_num ?? sku.combo_num ?? sku.buy_num) || 1,
+          ...(cents !== undefined ? { price: cents / 100 } : {}),
+        }
+      })
+      const directCents = number(item.actual_pay_amount ?? item.total_pay_amount ?? item.pay_amount ?? item.order_amount ?? item.total_fee)
+      const itemCents = skuRows.reduce((total, rawSku) => total + (number(rawSku?.actual_pay_amount ?? rawSku?.total_pay_amount ?? rawSku?.pay_amount ?? rawSku?.price) || 0), 0)
+      const totalAmount = directCents !== undefined ? directCents / 100 : itemCents ? itemCents / 100 : undefined
+      const aftersaleRows = skuRows.flatMap((rawSku) => array(rawSku?.after_sale_orders || rawSku?.afterSaleOrders))
+      const platformAftersaleStatus = [
+        item.aftersale_sum_status_desc,
+        ...aftersaleRows.flatMap((afterSale) => [afterSale?.after_sale_status_desc, afterSale?.title, afterSale?.sub_title?.text]),
+      ].map(text).filter(Boolean).join(' ')
+      const address = item.post_address && typeof item.post_address === 'object'
+        ? [item.post_address.province?.name, item.post_address.city?.name, item.post_address.town?.name, item.post_address.street?.name, item.post_address.detail].map(text).filter(Boolean).join('')
+        : text(item.receiver_address)
+      return order({
+        ...item,
+        orderId: item.order_id || item.shop_order_id || item.orderId,
+        platformStatus: item.order_status_desc || item.status_desc || item.order_status || item.status,
+        platformAftersaleStatus,
+        ...(items.length ? { items } : {}),
+        ...(totalAmount !== undefined ? { totalAmount } : {}),
+        buyerId: item.security_user_id || item.user_id || item.buyer_id || buyerId,
+        buyerName: item.user_nick_name || item.buyer_name,
+        receiverName: item.post_receiver || item.receiver_name,
+        receiverAddress: address,
+        phoneMasked: item.mobile || item.receiver_phone_mask,
+        createdAt: item.order_time_sec || item.create_time_sec || item.create_time || item.order_create_time,
+        updatedAt: item.update_time_sec || item.update_time || item.pay_time_sec,
+      }, { conversationId, buyerId })
+    }).filter(Boolean)
+  }
+  const orderIdsFor = (conversationId, explicitOrderId, messageOrders) => {
+    const ids = new Set()
+    const add = (value) => { const id = identifier(value); if (id) ids.add(id) }
+    add(explicitOrderId)
+    for (const item of messageOrders) add(item.externalId)
+    const conversation = conversationFor(conversationId)
+    for (const source of [conversation?.value, conversation?.value?.rawExt, conversation?.raw]) {
+      add(source?.orderId || source?.order_id || source?.shopOrderId || source?.shop_order_id)
+    }
+    const currentConversationId = text(snapshot(store()?.conversationsInfo?.currentConversation)?.id)
+    if (!conversationId || !currentConversationId || currentConversationId === conversationId) {
+      const workstation = store()?.uiState?.workstation
+      const ui = pcUIState()
+      add(workstation?.currentOrder)
+      add(ui?.rightTabOrder?.locationOrderId || ui?.rightTabOrder?.orderId || ui?.rightTabOrder?.order_id)
+      for (const value of values(store()?.historyConversationData?.conversationOrderIdList)) add(value)
+    }
+    return [...ids].slice(0, 20)
+  }
+  const requestOfficialOrders = async (conversationId, orderId) => {
+    const post = pagePost()
+    const conversation = conversationFor(conversationId)
+    const buyerId = identifier(buyerFor(conversationId))
+    if (!buyerId || typeof post !== 'function') return []
+    const current = store()
+    const encrypted = current?.useEncryptUid
+    const identityKeys = encrypted === false ? ['user_id'] : encrypted === true ? ['security_user_id'] : ['security_user_id', 'user_id']
+    const common = {
+      page_no: 0,
+      page_size: 5,
+      is_init_tab: 1,
+      tab_type: orderId ? 0 : 1,
+      biz_type: 2,
+      search_words: orderId || '',
+      workstation_opt_version: current?.uiState?.workstation?.isUIVersionV3 ? 'v2' : 'v1',
+      service_entity_id: identifier(conversation?.value?.serviceEntityId || conversation?.value?.rawExt?.service_entity_id || current?.shopInfo?.id) || undefined,
+      from_conversation_short_id: identifier(conversation?.value?.shortId) || undefined,
+      version: '1.0',
+      workstation_opt_gray: true,
+    }
+    for (const identityKey of identityKeys) {
+      try {
+        const response = await post('/backstage/cmpoent/order/query', { ...common, [identityKey]: buyerId })
+        const rows = officialOrders(response, conversationId, buyerId)
+        if (rows.length) return rows
+      } catch (_) {}
+    }
+    return []
   }
   const mergeOrders = (rows) => {
     const result = new Map()
@@ -373,19 +498,28 @@ export const douyinHookRuntimeScript = String.raw`(() => {
     }
     return [...result.values()]
   }
-  const orders = async (conversationId) => {
+  const orders = async (conversationId, explicitOrderId) => {
     const current = store()
     const service = current?.orderInvitation || current?.orderInfo
+    const collected = []
     for (const name of ['getOrders', 'fetchOrders', 'fetchOrderList', 'queryOrders']) {
       try {
         if (typeof service?.[name] === 'function') {
           const value = await service[name](buyerFor(conversationId))
           const rows = array(value).map((item) => order(item, { conversationId })).filter(Boolean)
-          if (rows.length) return mergeOrders(rows)
+          collected.push(...rows)
         }
       } catch (_) {}
     }
-    return mergeOrders(orderMessages(conversationId))
+    const messageOrders = orderMessages(conversationId)
+    const orderIds = orderIdsFor(conversationId, explicitOrderId, messageOrders)
+    if (orderIds.length) {
+      for (const orderId of orderIds) collected.push(...await requestOfficialOrders(conversationId, orderId))
+    } else {
+      collected.push(...await requestOfficialOrders(conversationId, ''))
+    }
+    collected.push(...messageOrders)
+    return mergeOrders(collected)
   }
   const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver])
   const pruneOrderWatches = (now = Date.now()) => {
@@ -413,7 +547,7 @@ export const douyinHookRuntimeScript = String.raw`(() => {
     try {
       for (const [conversationId, watch] of due) {
         const previous = orderSnapshots.get(conversationId) || new Map()
-        const current = await orders(conversationId === '*' ? '' : conversationId)
+        const current = await orders(conversationId === '*' ? '' : conversationId, watch.orderId)
         const next = new Map(current.map((item) => [item.externalId, item]))
         const now = Date.now()
         watch.nextPollAt = now + (now - watch.lastActiveAt <= ORDER_ACTIVE_WINDOW_MS ? ORDER_ACTIVE_INTERVAL_MS : ORDER_IDLE_INTERVAL_MS)
@@ -539,8 +673,8 @@ export const douyinHookRuntimeScript = String.raw`(() => {
         }
         case 'products.list': return { ok: true, data: await waitForProducts() }
         case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
-        case 'orders.list': { const result = await orders(text(input.conversationId)); return { ok: true, data: result } }
-        case 'orders.listen': { const conversationId = text(input.conversationId); const key = conversationId || '*'; const current = await orders(conversationId); const now = Date.now(); orderSnapshots.set(key, new Map(current.map((item) => [item.externalId, item]))); orderWatches.set(key, { lastActiveAt: now, nextPollAt: now }); pruneOrderWatches(now); if (!orderTimer) orderTimer = setInterval(() => { void watchOrders() }, 1000); return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } } }
+        case 'orders.list': { const result = await orders(text(input.conversationId), text(input.orderId || input.externalId)); return { ok: true, data: result } }
+        case 'orders.listen': { const conversationId = text(input.conversationId); const orderId = text(input.orderId || input.externalId); const key = conversationId || '*'; const current = await orders(conversationId, orderId); const now = Date.now(); orderSnapshots.set(key, new Map(current.map((item) => [item.externalId, item]))); orderWatches.set(key, { lastActiveAt: now, nextPollAt: now, orderId }); pruneOrderWatches(now); if (!orderTimer) orderTimer = setInterval(() => { void watchOrders() }, 1000); return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } } }
         case 'handoff.targets.list': {
           const available = await handoffTargets()
           return available ? { ok: true, data: available.targets } : runtimeError()
@@ -560,7 +694,9 @@ export const douyinHookRuntimeScript = String.raw`(() => {
             if (value?.success === false || value?.ok === false) return error('PLATFORM_ERROR', text(value?.error || value?.message || '转人工失败'), true)
             return { ok: true, data: { transferred: true, target: { id: targetId, name: selected.name } } }
           }
-          return runtimeError()
+          const official = await transferViaOfficialApi(conversationId, targetId)
+          if (!official.ok) return official
+          return { ok: true, data: { transferred: true, target: { id: targetId, name: selected.name } } }
         }
       }
       return error('NOT_SUPPORTED', '当前 Runtime 不支持该 Operation')
