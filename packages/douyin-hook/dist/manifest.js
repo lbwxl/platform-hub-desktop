@@ -10,6 +10,7 @@ export const DOUYIN_PRIMARY_OPERATIONS = [
     'messages.send.file',
     'orders.list',
     'orders.listen',
+    'handoff.targets.list',
     'handoff.transfer',
 ];
 export const DOUYIN_PRODUCTS_OPERATIONS = [
@@ -44,6 +45,7 @@ export const douyinHookManifest = {
         'products.detail': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.detail' },
         'orders.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.list' },
         'orders.listen': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.listen' },
+        'handoff.targets.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'handoff.targets.list' },
         'handoff.transfer': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'handoff.transfer' },
     },
 };

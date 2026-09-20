@@ -19,7 +19,7 @@ test('Douyin manifest routes only supported operations and passes protocol valid
   assert.equal(douyinHookManifest.operations['orders.list'].page, 'primary')
   assert.equal(douyinHookManifest.operations['orders.listen'].page, 'primary')
   assert.equal(douyinHookManifest.operations['products.list'].page, 'products')
-  assert.equal(douyinHookManifest.capabilities.includes('handoff.targets.list'), false)
+  assert.equal(douyinHookManifest.operations['handoff.targets.list'].page, 'primary')
 })
 
 test('Douyin package is independent from Legacy and uses no DOM or network interception', async () => {
@@ -102,7 +102,13 @@ test('Douyin page runtime handshake, normalized operations, events, handoff and 
         },
         talkerMap: { getTalkerInfo: () => ({ id: 'buyer-1', name: '测试买家' }) },
         orderInvitation: { async getOrders() { return platformOrders } },
-        uiState: { chatRooms: { transferConv: { async transferSession(...args) { transferArgs = args } } } },
+        uiState: { chatRooms: { transferConv: {
+          canTransferServiceList: [
+            { id: 'staff-1', name: '客服一' },
+            { staffId: 'staff-2', staffName: '客服二' },
+          ],
+          async transferSession(...args) { transferArgs = args },
+        } } },
       } },
       __mona_pigeon_event: { globalStore: { data: { initContextData: { im: {
         _message$: stream,
@@ -167,9 +173,18 @@ test('Douyin page runtime handshake, normalized operations, events, handoff and 
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal((await runtime.drainEvents()).length, 0)
 
-  const transfer = await runtime.invoke('handoff.transfer', { conversationId: 'conversation-1', targetId: 'staff-1', targetName: '客服' })
+  const targets = await runtime.invoke('handoff.targets.list', {})
+  assert.equal(targets.ok, true)
+  assert.deepEqual(Array.from(targets.data, (target) => ({ ...target })), [
+    { id: 'staff-1', name: '客服一' },
+    { id: 'staff-2', name: '客服二' },
+  ])
+  const transfer = await runtime.invoke('handoff.transfer', { conversationId: 'conversation-1', targetId: 'staff-1' })
   assert.equal(transfer.data.transferred, true)
   assert.deepEqual(Array.from(transferArgs), ['conversation-1', 'staff-1', undefined])
+  const unknownTarget = await runtime.invoke('handoff.transfer', { conversationId: 'conversation-1', targetId: 'other-shop' })
+  assert.equal(unknownTarget.ok, false)
+  assert.equal(unknownTarget.error.code, 'INVALID_INPUT')
 
   const firstRuntime = runtime
   await runtime.dispose()

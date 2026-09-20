@@ -53,7 +53,7 @@ test('正式 Douyin Hook 只使用 window runtime 且不依赖 Legacy', () => {
   assert.match(douyinRuntime, /conversationsInfo/)
   assert.match(douyinRuntime, /_message\$/)
   assert.match(douyinRuntime, /customRequestUpload/)
-  assert.doesNotMatch(douyinManifest, /handoff\.targets\.list/)
+  assert.match(douyinManifest, /handoff\.targets\.list/)
 })
 
 test('快手 hook 仅使用 CDP window runtime，不操作 DOM 或拦截网络', () => {

@@ -21,7 +21,8 @@
     "test:unit": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-sdk.test.mjs tests/douyin-hook-unit.test.mjs",
     "test:contract": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-phase0.test.mjs tests/douyin-hook-contract.test.mjs",
     "test:architecture": "node --test tests/architecture.test.mjs",
-    "verify:douyin": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && electron scripts/verify-douyin.mjs"
+    "verify:douyin": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && electron scripts/verify-douyin.mjs",
+    "verify:douyin:multi": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && electron scripts/verify-douyin-multi.mjs"
   },
   "dependencies": {
     "@platform-hub/doudian-hook": "workspace:*",

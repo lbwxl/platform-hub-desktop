@@ -125,6 +125,24 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const result = await auth()
     return result.ok && result.data.authenticated ? null : result
   }
+  const handoffTargets = async () => {
+    const transfer = store()?.uiState?.chatRooms?.transferConv
+    if (!transfer) return null
+    if (!values(transfer.canTransferServiceList).length && typeof transfer.fetchTransferServiceList === 'function') await transfer.fetchTransferServiceList()
+    if (!values(transfer.canTransferGroupList).length && typeof transfer.fetchTransferGroupList === 'function') await transfer.fetchTransferGroupList()
+    const targets = []
+    const seen = new Set()
+    for (const item of [...values(transfer.canTransferServiceList), ...values(transfer.canTransferGroupList)]) {
+      const id = identifier(item?.id || item?.staffId || item?.userId)
+      const name = text(item?.name || item?.title || item?.staffName).trim()
+      if (!id && !name) continue
+      const key = id + ':' + name
+      if (seen.has(key)) continue
+      seen.add(key)
+      targets.push({ ...(id ? { id } : {}), name: name || id })
+    }
+    return { transfer, targets }
+  }
   const conversations = () => {
     const info = store()?.conversationsInfo
     if (!info) return []
@@ -522,22 +540,24 @@ export const douyinHookRuntimeScript = String.raw `(() => {
         case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
         case 'orders.list': { const result = await orders(text(input.conversationId)); return { ok: true, data: result } }
         case 'orders.listen': { const conversationId = text(input.conversationId); const key = conversationId || '*'; const current = await orders(conversationId); const now = Date.now(); orderSnapshots.set(key, new Map(current.map((item) => [item.externalId, item]))); orderWatches.set(key, { lastActiveAt: now, nextPollAt: now }); pruneOrderWatches(now); if (!orderTimer) orderTimer = setInterval(() => { void watchOrders() }, 1000); return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } } }
+        case 'handoff.targets.list': {
+          const available = await handoffTargets()
+          return available ? { ok: true, data: available.targets } : runtimeError()
+        }
         case 'handoff.transfer': {
           const conversationId = text(input.conversationId), target = text(input.targetId || input.targetName)
           if (!conversationId) return error('INVALID_INPUT', 'conversationId 必填')
           if (!target) return error('INVALID_INPUT', '抖店转人工需要 targetId 或 targetName')
-          const transfer = store()?.uiState?.chatRooms?.transferConv
-          if (!transfer) return runtimeError()
-          if (!transfer.canTransferServiceList?.length && typeof transfer.fetchTransferServiceList === 'function') await transfer.fetchTransferServiceList()
-          if (!transfer.canTransferGroupList?.length && typeof transfer.fetchTransferGroupList === 'function') await transfer.fetchTransferGroupList()
-          const people = [...(transfer.canTransferServiceList || []), ...(transfer.canTransferGroupList || [])]
-          const selected = people.find((item) => text(item?.id || item?.staffId || item?.userId || item?.name || item?.title) === target) || people.find((item) => text(item?.name || item?.title || item?.staffName).includes(target))
-          if (people.length && !selected) return error('INVALID_INPUT', '未找到目标客服或客服组')
-          const targetId = text(selected?.id || selected?.staffId || selected?.userId || input.targetId || target)
+          const available = await handoffTargets()
+          if (!available) return runtimeError()
+          const selected = available.targets.find((item) => item.id === target || item.name === target) || available.targets.find((item) => item.name.includes(target))
+          if (!selected) return error('INVALID_INPUT', '未在官方可转列表中找到目标客服或客服组')
+          const transfer = available.transfer
+          const targetId = text(selected.id || target)
           for (const name of ['transferConversation', 'transferSession', 'assignConversation', 'transfer']) if (typeof transfer[name] === 'function') {
             const value = await transfer[name](conversationId, targetId, input.remark)
             if (value?.success === false || value?.ok === false) return error('PLATFORM_ERROR', text(value?.error || value?.message || '转人工失败'), true)
-            return { ok: true, data: { transferred: true, target: { id: targetId, name: text(selected?.name || selected?.title || selected?.staffName || input.targetName || target) } } }
+            return { ok: true, data: { transferred: true, target: { id: targetId, name: selected.name } } }
           }
           return runtimeError()
         }
