@@ -2,40 +2,54 @@
 
 ## 1. Project Goal
 
-本项目正在重构为统一的 Platform Hook 系统。
+本项目正在重构为统一的 Platform Runtime 系统，最终承载两类平台能力。
 
-目标平台：
-
-* 抖店
-* 快手小店
-* 拼多多
-* 闲鱼
-
-开发顺序：
+## Page / CDP 平台
 
 ```text
-抖店
-↓
-快手
-↓
-拼多多
-↓
-闲鱼
+Douyin
+Kuaishou
+Pinduoduo
+Goofish
 ```
 
-一次只实现一个平台。
+执行模型：
 
-当前重构的核心目标不是“尽快支持所有平台”，而是：
+```text
+Page Hook
+↓
+HookSession
+↓
+HookHost
+↓
+BrowserWindow / WebContents / CDP
+```
 
-> 建立统一、稳定、可扩展的 Hook Protocol，使不同平台只存在实现差异，不存在架构差异。
+## Legacy / Native / Service 平台
+
+```text
+WeChat
+WeWork
+Qianniu
+```
+
+这类平台优先复用现有 `aichatclient` 中已经成熟的 Hook、Bridge、MessageServer 和 Aliwork 实现，通过 Adapter / Transport 对上层提供统一 Contract。
+
+不得为了统一形式强制把 Legacy / Native / Service 平台改造成 `PageHookRuntime`。
+
+一次只推进当前开发顺序中的一个阶段。
+
+当前重构的核心目标是：
+
+> 建立统一、稳定、可扩展的 Platform / Hook Transport Contract；允许不同平台采用符合其真实运行环境的执行模型，并把差异限制在具体 Transport / Adapter 内。
 
 ---
 
 # 2. Hook Responsibilities
 
-Hook 只负责“平台事实”。
+Hook / Transport 只负责“平台事实”。
 
-核心能力：
+可声明的能力如下；每个平台只实现真实支持的子集：
 
 ## Messaging
 
@@ -84,31 +98,90 @@ Hook 不负责：
 * 业务后端
 * Aichat Core 业务决策
 
-Hook 只负责平台能力。
+Hook / Transport 只负责平台能力。
 
 ---
 
 # 4. Architecture
 
-目标架构：
+最终总体架构：
 
 ```text
 Aichat Core
     ↓
 Aichat Platform SDK
     ↓
+PlatformRuntime
+    ↓
 Platform Adapter
     ↓
-HookSession
-    ↓
-Hook SDK
-    ↓
-Specific Platform Hook
-    ↓
-Official Platform Runtime
+HookTransport
+    │
+    ├─ PageHookTransport
+    │      ↓
+    │   HookSession
+    │      ↓
+    │   HookHost
+    │      ↓
+    │   BrowserWindow / WebContents / CDP
+    │      ↓
+    │   Douyin / Kuaishou / Pinduoduo / Goofish
+    │
+    └─ Legacy / Native Transport
+           ↓
+        Legacy Adapter
+           ↓
+        existing implementation
+           ├─ WeChat DLL / Python / TCP / MessageServer
+           ├─ WeWork DLL / Python / TCP / MessageServer
+           └─ Qianniu / Aliwork existing implementation
 ```
 
-Electron 提供：
+`HookTransport` 是执行方式无关的边界，设计方向如下：
+
+```ts
+interface HookTransport {
+  start(): Promise<void>
+
+  invoke<T>(
+    operation: HookOperation | string,
+    input?: unknown,
+    options?: HookInvokeOptions
+  ): Promise<HookResult<T>>
+
+  subscribe(
+    listener: (event: HookEvent) => void
+  ): () => void
+
+  stop(): Promise<void>
+}
+```
+
+网页平台：
+
+```text
+HookTransport
+↓
+PageHookTransport
+↓
+HookSession
+```
+
+微信：
+
+```text
+HookTransport
+↓
+WechatLegacyTransport
+↓
+原 WeChat 实现
+```
+
+企微、千牛使用对应的 Legacy Transport / Adapter。
+
+`HookHost` 只是 Page / CDP 执行模型的宿主，不是所有平台的统一宿主。
+
+Page / CDP 执行模型中的 Electron Host 提供：
 
 ```text
 HookHost
@@ -119,6 +192,8 @@ HookHost
 ├─ Partition
 └─ Runtime lifecycle
 ```
+
+本节中的 `HookTransport` 只定义未来方向。当前 Phase 不实现该抽象。
 
 ---
 
@@ -132,7 +207,7 @@ Hook SDK 不允许依赖：
 * Aichat Core
 * 具体平台 Hook
 
-具体平台 Hook可以依赖：
+Page Hook 平台的具体 Hook 可以依赖：
 
 ```text
 hook-sdk
@@ -155,11 +230,29 @@ kuaishou-hook → pinduoduo-hook
 
 平台之间不能互相依赖。
 
+平台差异必须停留在具体 Transport / Adapter。Core 不得直接调用 WeChat MessageServer、WeWork Bridge 或 Qianniu Aliwork。
+
+禁止伪造执行模型：
+
+```text
+WeChat → fake BrowserWindow
+WeWork → fake PageHookRuntime
+Qianniu → fake HookPageDefinition
+```
+
+禁止在 HookHost 中加入：
+
+```ts
+if (platform === 'wechat') {}
+if (platform === 'wework') {}
+if (platform === 'qianniu') {}
+```
+
 ---
 
 # 6. Packages
 
-目标目录：
+当前 Page Hook Foundation 的目标目录：
 
 ```text
 packages/
@@ -202,24 +295,35 @@ packages/
 
 目录允许根据实际代码微调，但架构边界不能破坏。
 
+未来 `PlatformRuntime`、`HookTransport` 和 Legacy Adapter 的具体包目录在对应 Phase 决定。本阶段只记录边界，不创建目录或实现代码。
+
 ---
 
 # 7. Hook SDK
 
-所有平台必须遵守同一套 Hook SDK。
+所有平台必须对上层提供统一 Platform / Hook Transport Contract，但并非所有平台都必须使用 `PageHookRuntime`、`HookSession` 或 `HookHost`。
 
-必须包含：
+Page Hook 平台继续遵循现有：
 
-* HookManifest
+```text
+HookManifest
+PageHookRuntime
+HookSession
+HookHost
+```
+
+Legacy / Native / Service 平台通过 Adapter / Transport 输出统一能力，不需要伪造 Page、Manifest 路由或 Browser Runtime。
+
+所有执行模型共同使用或映射到统一的上层类型：
+
 * HookCapability
 * HookOperation
-* HookPageDefinition
 * HookResult
 * HookError
 * HookEvent
 * HookMessage
-* HookProduct
-* HookOrder
+* 平台实际支持时的 HookProduct
+* 平台实际支持时的 HookOrder
 
 不得让每个平台自己定义另一套公共协议。
 
@@ -227,7 +331,34 @@ packages/
 
 # 8. Capabilities
 
-首版公共 Capability：
+Capability 是可选集合。平台只声明和实现真实能力，不要求所有平台拥有相同能力。
+
+当前能力矩阵：
+
+```text
+Douyin
+auth       ✅
+messaging  ✅
+products   ✅
+orders     ✅
+handoff    ✅
+
+WeChat
+auth       ✅
+messaging  ✅
+products   ❌
+orders     ❌
+handoff    按实际能力
+
+WeWork
+auth       ✅
+messaging  ✅
+products   ❌
+orders     ❌
+handoff    按实际能力
+```
+
+Page Hook 首版公共 Capability 包括：
 
 ```text
 auth.state
@@ -244,7 +375,12 @@ products.detail
 
 orders.list
 orders.listen
+
+handoff.targets.list
+handoff.transfer
 ```
+
+禁止为不具备商品或订单能力的平台创建假的 Product / Order Capability、空实现或伪造 DTO。
 
 不要提前加入大量平台特例。
 
@@ -260,7 +396,7 @@ orders.listen
 
 # 9. Manifest Driven
 
-每个平台必须通过 HookManifest 声明：
+每个 Page Hook 平台必须通过 HookManifest 声明：
 
 * 平台
 * 版本
@@ -286,7 +422,7 @@ operations: {
 }
 ```
 
-HookHost 根据 Manifest 决定在哪个页面运行 Operation。
+HookHost 根据 Page Hook Manifest 决定在哪个页面运行 Operation。
 
 禁止 HookHost 出现：
 
@@ -303,6 +439,8 @@ switch (platform) {}
 ---
 
 # 10. Multi Page Runtime
+
+本节只适用于 Page / CDP 平台。
 
 一个店铺 HookSession 可以拥有：
 
@@ -333,6 +471,8 @@ Shop Session
 
 # 11. Worker Page Rules
 
+本节只适用于 Page / CDP 平台。
+
 Worker Page 必须：
 
 * 按需创建
@@ -352,7 +492,7 @@ Worker Page 必须：
 
 # 12. Worker Scheduler
 
-HookHost 内必须存在统一 WorkerScheduler。
+本节只适用于 Page / CDP 平台。HookHost 内必须存在统一 WorkerScheduler。
 
 负责：
 
@@ -380,6 +520,8 @@ HookHost 内必须存在统一 WorkerScheduler。
 ---
 
 # 13. Page Runtime Protocol
+
+本节只适用于 Page / CDP 平台。
 
 页面内统一只暴露：
 
@@ -419,6 +561,8 @@ getOrders()
 ---
 
 # 14. Method-level RPC
+
+本节描述 Page / CDP 平台的内部 RPC。其他执行模型仍通过 `HookTransport.invoke()` 向上提供相同 Operation 语义。
 
 旧架构中的：
 
@@ -511,6 +655,8 @@ TIMEOUT
 
 # 17. Challenge / Slider Verification
 
+本节只适用于需要页面官方验证的 Page / CDP 平台。
+
 不得尝试绕过平台官方验证码或滑块。
 
 商品采集等操作遇到验证时：
@@ -539,7 +685,35 @@ Challenge 是可恢复状态，不是普通采集失败。
 
 所有平台最终必须输出统一 HookMessage。
 
-平台内部字段必须在 Platform Hook 内进行 Normalize。
+平台内部字段必须在具体 Platform Hook 或 Legacy Adapter 内完成 Normalize。
+
+所有执行模型最终必须把消息来源统一为：
+
+```text
+customer
+human
+automation
+system
+unknown
+```
+
+Page Hook 平台根据官方 Runtime 信号和 `OutboundCorrelation` 判断。
+
+WeChat / WeWork 优先复用 Legacy 已有的真实信号，例如：
+
+```text
+isHumanOutgoingMessage
+consumeAutomatedOutbound
+autoGenerated
+```
+
+证据不足时必须输出：
+
+```text
+unknown
+```
+
+不得猜测为 `human`。
 
 原始数据可以放：
 
@@ -553,7 +727,7 @@ raw
 
 # 19. Product Contract
 
-所有平台最终必须输出统一 HookProduct。
+只有声明 Product Capability 的平台才输出统一 HookProduct。
 
 `products.list` 默认语义：
 
@@ -567,7 +741,7 @@ raw
 
 # 20. Order Contract
 
-所有平台最终必须输出统一 HookOrder。
+只有声明 Order Capability 的平台才输出统一 HookOrder。
 
 统一状态：
 
@@ -589,7 +763,7 @@ unknown
 
 # 21. Order State Awareness
 
-订单是核心能力。
+本节只适用于声明 Order Capability 的平台。对于这些平台，订单是核心能力。
 
 必须保证：
 
@@ -632,13 +806,13 @@ auth.changed
 runtime.error
 ```
 
-上层统一通过：
+上层最终统一通过：
 
 ```ts
-session.subscribe(listener)
+transport.subscribe(listener)
 ```
 
-监听。
+监听。Page Hook Transport 在内部映射 `HookSession.subscribe(listener)`；Legacy / Native Transport 映射现有事件源。
 
 ---
 
@@ -650,7 +824,7 @@ session.subscribe(listener)
 setInterval(...)
 ```
 
-统一由 Host 层负责事件调度。
+事件调度由对应执行模型的 Transport / Host 负责。Page Hook 使用 HookHost / Runtime；Legacy / Native Transport 复用并约束现有事件源的生命周期。
 
 优先使用：
 
@@ -668,6 +842,8 @@ Polling 必须：
 ---
 
 # 24. Product Performance
+
+本节只适用于声明 Product Capability 的 Page / CDP 平台。
 
 商品 Worker：
 
@@ -692,7 +868,7 @@ Polling 必须：
 
 # 25. FakeHook First
 
-在正式实现抖店之前，必须完成：
+Page Hook Foundation 的 FakeHook 已经完成，并用于验证 Page Hook Protocol：
 
 ```text
 FakeHook
@@ -713,13 +889,15 @@ FakeHook 至少模拟：
 
 FakeHook 必须运行真实 Hook Protocol。
 
+未来实现 `HookTransport` 后，必须先增加 Fake Native / Legacy Transport，再迁移 WeChat Legacy Adapter。当前 Phase 不提前实现。
+
 ---
 
 # 26. Contract Tests
 
-所有正式平台必须通过相同 Contract Test。
+所有正式平台必须通过与其声明 Capability 和执行模型匹配的统一 Contract Test。不得要求 Legacy / Native Transport 通过 Page、Manifest 路由、Worker 或 CDP 生命周期测试。
 
-至少测试：
+Page Hook 平台至少测试：
 
 * Manifest
 * Capability
@@ -739,6 +917,18 @@ FakeHook 必须运行真实 Hook Protocol。
 * Challenge Recovery
 * Runtime Failure Isolation
 
+Legacy / Native Transport 至少测试：
+
+* start / stop
+* 重复 stop
+* invoke Result / Error mapping
+* Message DTO normalize
+* Event normalize 与取消订阅
+* origin 映射
+* Capability 映射
+* Lifecycle mapping
+* 实例隔离与失败隔离
+
 ---
 
 # 27. Platform Development Order
@@ -746,22 +936,32 @@ FakeHook 必须运行真实 Hook Protocol。
 严格：
 
 ```text
-基础架构
+Hook Foundation
 ↓
-FakeHook
+Douyin
 ↓
-抖店
+Douyin 多账号 / 订单 / Handoff 真实验收
 ↓
-快手
+HookTransport 抽象
 ↓
-拼多多
+Fake Native / Legacy Transport
 ↓
-闲鱼
+WeChat Legacy Adapter 验证
+↓
+Aichat React PlatformRuntime 对接
+↓
+其他 Page Hook 平台
+↓
+WeWork / Qianniu Legacy Adapter
 ```
 
-抖店没有完全验收：
+当前仍处于：
 
-禁止开始快手。
+```text
+Douyin 最终真实验收
+```
+
+Douyin 没有完成最终真实验收前，禁止提前实现 `HookTransport`、迁移 WeChat / WeWork / Qianniu、开始 React 对接或推进其他 Page Hook 平台。
 
 ---
 
@@ -769,14 +969,45 @@ FakeHook
 
 旧 Hook 代码必须先通过 Branch 或 Git Tag 保存。
 
-Legacy Hook 只作为：
+WeChat、WeWork、Qianniu 迁移遵循：
+
+```text
+Legacy source
+尽量保持不变
+↓
+Adapter / Transport
+↓
+统一 Contract
+```
+
+Adapter / Transport 负责：
+
+* 参数转换
+* Message DTO normalize
+* Event normalize
+* Error mapping
+* Lifecycle mapping
+* origin 映射
+* Capability 映射
+
+不要为了适配统一协议大量修改成熟 Legacy 源代码。
+
+如果 Legacy 代码强依赖旧 Vue 项目环境，优先使用：
+
+```text
+shim / adapter
+```
+
+不要把旧业务层一起搬进来。
+
+Page Hook 平台可以把旧 Hook 作为：
 
 * Runtime 探索参考
 * 已验证调用方式参考
 * 字段参考
 * 测试参考
 
-不要复制旧架构。
+Page Hook 不复制旧架构；Legacy / Native / Service 平台则优先复用已经成熟且符合实际运行环境的底层实现。
 
 ---
 
@@ -788,13 +1019,19 @@ Legacy Hook 只作为：
 2. 阅读当前 Phase
 3. 阅读已有代码
 4. 阅读 Legacy Hook 对应能力
-5. 判断属于 SDK / Host / Platform Hook 哪一层
+5. 判断属于 PlatformRuntime、Transport、Adapter、Page Hook SDK / Host 或具体平台哪一层
 6. 明确修改哪些文件
 7. 再编码
 
 ---
 
 # 30. Current Phase Rule
+
+当前 Phase 是：
+
+```text
+Douyin 最终真实验收
+```
 
 除非用户明确要求：
 
@@ -853,11 +1090,44 @@ Legacy Hook 只作为：
 和：
 
 ```text
-保持统一 Hook 抽象
+保持统一 Platform / Hook Transport Contract 与真实执行模型边界
 ```
 
 发生冲突：
 
-优先保持统一 Hook 抽象。
+优先保持统一上层 Contract 与正确的执行模型边界。
 
 不要为了快速支持抖店而在 HookHost / hook-sdk 中加入抖店特例。
+
+---
+
+# 34. Page Hook Foundation Freeze
+
+当前已经完成的：
+
+```text
+Hook SDK
+HookHost
+HookSession
+WorkerScheduler
+PageHookRuntime
+Douyin Hook
+```
+
+继续视为 Page Hook Foundation。
+
+未来增加 `HookTransport` 时，应当在 Page Hook Foundation 之上向上抽象：
+
+```text
+PlatformRuntime
+↓
+Platform Adapter
+↓
+HookTransport
+↓
+PageHookTransport
+↓
+现有 HookSession / HookHost
+```
+
+不得为了容纳 Legacy / Native / Service 平台推翻现有 HookHost，也不得把 HookHost 扩展成所有平台的统一宿主。
