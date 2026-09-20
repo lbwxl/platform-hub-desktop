@@ -49,6 +49,19 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/douyin-hook:
+    dependencies:
+      '@platform-hub/hook-host':
+        specifier: workspace:*
+        version: link:../hook-host
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   packages/fake-hook:
     dependencies:
       '@platform-hub/hook-host':

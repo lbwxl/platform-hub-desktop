@@ -6,6 +6,9 @@ const hook = await readFile(new URL('../packages/doudian-hook/src/hook.ts', impo
 const client = await readFile(new URL('../packages/doudian-hook/src/client.ts', import.meta.url), 'utf8')
 const apiDoc = await readFile(new URL('../packages/doudian-hook/API.md', import.meta.url), 'utf8')
 const kuaishouHook = await readFile(new URL('../packages/kuaishou-hook/src/hook.ts', import.meta.url), 'utf8')
+const douyinRuntime = await readFile(new URL('../packages/douyin-hook/src/runtime-source.ts', import.meta.url), 'utf8')
+const douyinManifest = await readFile(new URL('../packages/douyin-hook/src/manifest.ts', import.meta.url), 'utf8')
+const douyinPackage = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
 const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', import.meta.url), 'utf8')
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
@@ -39,6 +42,18 @@ test('Hook foundation contains no platform branches or direct console logging', 
 
 test('抖店 hook 不访问或操作 DOM', () => {
   assert.doesNotMatch(hook, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent/)
+})
+
+test('正式 Douyin Hook 只使用 window runtime 且不依赖 Legacy', () => {
+  assert.doesNotMatch(douyinRuntime, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+  assert.equal(douyinPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
+  assert.equal(douyinPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
+  assert.equal(douyinPackage.dependencies['@platform-hub/doudian-hook'], undefined)
+  assert.match(douyinRuntime, /__PLATFORM_HOOK__/)
+  assert.match(douyinRuntime, /conversationsInfo/)
+  assert.match(douyinRuntime, /_message\$/)
+  assert.match(douyinRuntime, /customRequestUpload/)
+  assert.doesNotMatch(douyinManifest, /handoff\.targets\.list/)
 })
 
 test('快手 hook 仅使用 CDP window runtime，不操作 DOM 或拦截网络', () => {

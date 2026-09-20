@@ -1,0 +1,50 @@
+export const DOUYIN_PLATFORM_ID = 'douyin';
+export const DOUYIN_PRIMARY_PAGE_ID = 'primary';
+export const DOUYIN_PRODUCTS_PAGE_ID = 'products';
+export const DOUYIN_PRIMARY_OPERATIONS = [
+    'auth.state',
+    'sessions.list',
+    'messages.listen',
+    'messages.history',
+    'messages.send.text',
+    'messages.send.file',
+    'orders.list',
+    'orders.listen',
+    'handoff.transfer',
+];
+export const DOUYIN_PRODUCTS_OPERATIONS = [
+    'products.list',
+    'products.detail',
+];
+export const douyinHookManifest = {
+    platform: DOUYIN_PLATFORM_ID,
+    version: '1.0.0',
+    capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS],
+    pages: [
+        {
+            id: DOUYIN_PRIMARY_PAGE_ID,
+            kind: 'primary',
+            url: 'https://im.jinritemai.com/pc_seller_v2/main/workspace',
+        },
+        {
+            id: DOUYIN_PRODUCTS_PAGE_ID,
+            kind: 'worker',
+            url: 'https://fxg.jinritemai.com/ffa/g/list?tab=all',
+            idleTtlMs: 30_000,
+        },
+    ],
+    operations: {
+        'auth.state': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'auth.state' },
+        'sessions.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'sessions.list' },
+        'messages.listen': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.listen' },
+        'messages.history': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.history' },
+        'messages.send.text': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.send.text' },
+        'messages.send.file': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.send.file' },
+        'products.list': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.list' },
+        'products.detail': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.detail' },
+        'orders.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.list' },
+        'orders.listen': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.listen' },
+        'handoff.transfer': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'handoff.transfer' },
+    },
+};
+//# sourceMappingURL=manifest.js.map

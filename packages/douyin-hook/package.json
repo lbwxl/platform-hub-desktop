@@ -1,0 +1,27 @@
+{
+  "name": "@platform-hub/douyin-hook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Douyin shop implementation for the unified Platform Hook protocol",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@platform-hub/hook-host": "workspace:*",
+    "@platform-hub/hook-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
