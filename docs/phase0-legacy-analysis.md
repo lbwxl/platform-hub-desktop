@@ -4,7 +4,7 @@
 
 ## 平台能力
 
-- `packages/doudian-hook`、`packages/kuaishou-hook` 中的 window runtime 探测、平台方法适配、字段解析和 DTO normalize。
+- Legacy Reference（历史上的旧抖店包）与 `packages/kuaishou-hook` 中的 window runtime 探测、平台方法适配、字段解析和 DTO normalize。
 - 平台登录状态、会话与历史消息读取、消息发送、商品和订单 API 调用。
 - 平台原始状态到商品/订单/消息公共语义的映射。
 - 平台官方事件或平台 SDK 事件的订阅方式。

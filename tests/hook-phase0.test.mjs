@@ -374,7 +374,7 @@ test('HookHost foundation contains no platform-specific branch', async () => {
     '../packages/hook-host/src/pages/worker-page-manager.ts',
     '../packages/hook-host/src/scheduler/worker-scheduler.ts',
   ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
-  assert.doesNotMatch(sources.join('\n'), /platform\s*===|switch\s*\(\s*platform|douyin|doudian|kuaishou|pinduoduo|goofish/)
+  assert.doesNotMatch(sources.join('\n'), /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
 })
 
 function pageContext() {

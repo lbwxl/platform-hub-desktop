@@ -223,7 +223,7 @@ Electron
 禁止：
 
 ```text
-doudian-hook → kuaishou-hook
+platform-hook-a → platform-hook-b
 
 kuaishou-hook → pinduoduo-hook
 ```
@@ -567,7 +567,7 @@ getOrders()
 旧架构中的：
 
 ```ts
-createDoudianClient(evaluate)
+createLegacyClient(evaluate)
 ```
 
 不得作为新版核心协议。
@@ -1131,3 +1131,17 @@ PageHookTransport
 ```
 
 不得为了容纳 Legacy / Native / Service 平台推翻现有 HookHost，也不得把 HookHost 扩展成所有平台的统一宿主。
+
+---
+
+## 35. Douyin / Doudian Naming Rule
+
+Douyin 正式实现目录：
+
+```text
+packages/douyin-hook
+```
+
+Doudian 属于 Legacy 名称，不得作为新实现目标。
+
+除历史文档说明外，新代码、新测试、新脚本禁止新增 `doudian` 命名。

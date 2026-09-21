@@ -2,9 +2,6 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const hook = await readFile(new URL('../packages/doudian-hook/src/hook.ts', import.meta.url), 'utf8')
-const client = await readFile(new URL('../packages/doudian-hook/src/client.ts', import.meta.url), 'utf8')
-const apiDoc = await readFile(new URL('../packages/doudian-hook/API.md', import.meta.url), 'utf8')
 const kuaishouHook = await readFile(new URL('../packages/kuaishou-hook/src/hook.ts', import.meta.url), 'utf8')
 const douyinRuntime = await readFile(new URL('../packages/douyin-hook/src/runtime-source.ts', import.meta.url), 'utf8')
 const douyinManifest = await readFile(new URL('../packages/douyin-hook/src/manifest.ts', import.meta.url), 'utf8')
@@ -27,7 +24,7 @@ const foundationSources = await Promise.all([
 
 test('Hook SDK stays platform and framework independent', () => {
   const dependencies = { ...hookSdkPackage.dependencies, ...hookSdkPackage.devDependencies }
-  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/doudian-hook', '@platform-hub/kuaishou-hook']) {
+  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/kuaishou-hook']) {
     assert.equal(dependencies[forbidden], undefined)
   }
   assert.doesNotMatch(foundationSources.slice(0, 3).join('\n'), /from ['"](?:electron|react|vue)/)
@@ -35,20 +32,15 @@ test('Hook SDK stays platform and framework independent', () => {
 
 test('Hook foundation contains no platform branches or direct console logging', () => {
   const source = foundationSources.join('\n')
-  assert.doesNotMatch(source, /platform\s*===|switch\s*\(\s*platform|douyin|doudian|kuaishou|pinduoduo|goofish/)
+  assert.doesNotMatch(source, /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
   assert.doesNotMatch(source, /console\.(?:log|info|warn|error|debug)/)
   assert.equal(hookHostPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
-})
-
-test('抖店 hook 不访问或操作 DOM', () => {
-  assert.doesNotMatch(hook, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent/)
 })
 
 test('正式 Douyin Hook 只使用 window runtime 且不依赖 Legacy', () => {
   assert.doesNotMatch(douyinRuntime, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
-  assert.equal(douyinPackage.dependencies['@platform-hub/doudian-hook'], undefined)
   assert.match(douyinRuntime, /__PLATFORM_HOOK__/)
   assert.match(douyinRuntime, /conversationsInfo/)
   assert.match(douyinRuntime, /_message\$/)
@@ -110,58 +102,6 @@ test('快手自发文本使用有界缓存回填发送瞬间的空正文事件',
   assert.match(kuaishouHook, /pendingTextForMessage/)
   assert.match(kuaishouHook, /pendingSentTexts\.clear\(\)/)
   assert.match(renderer, /upsertPlatformMessage\(messages\.value, message\)/)
-})
-
-test('抖店 hook 只从 window runtime 解析平台能力', () => {
-  assert.match(hook, /Object\.getOwnPropertyNames\(window\)/)
-  assert.match(hook, /collectProducts/)
-  assert.match(hook, /subscribeMessages/)
-  assert.match(hook, /sendMessage/)
-  assert.match(hook, /listMessages/)
-  assert.match(hook, /customRequestUpload/)
-  assert.match(hook, /productFromMessage/)
-  assert.match(hook, /orderFromMessage/)
-  assert.match(hook, /jsonIntegerString/)
-  assert.match(hook, /cardSourceScene/)
-  assert.match(hook, /static_data/)
-})
-
-test('抖店 hook 升级时释放旧监听器', () => {
-  assert.match(hook, /existing\?\.dispose\?\.\(\)/)
-  assert.match(hook, /HOOK_VERSION/)
-})
-
-test('抖店商品列表等待官方缓存并兼容商品与货品列表键', () => {
-  assert.match(hook, /isProductList/)
-  assert.match(hook, /product\|goods/)
-  assert.match(hook, /waitForCachedProductRows/)
-  assert.match(hook, /isProductRuntimePage/)
-})
-
-test('抖店消息轮询只在官方订阅流不可用时回退', () => {
-  assert.match(hook, /subscriptions\.length \? null : setInterval/)
-})
-
-test('抖店订单事件有历史水位线、状态去重和显式同步结果', () => {
-  assert.match(hook, /seenOrderKeys/)
-  assert.match(hook, /function orderStateKey\(order\)/)
-  assert.match(hook, /ORDER_ACTIVE_INTERVAL_MS = 5 \* 1000/)
-  assert.match(hook, /async function pollOrderChanges\(\)/)
-  assert.match(hook, /source: 'platform-runtime'/)
-  assert.match(hook, /const emittedOrderKeys = new Set\(\)/)
-  assert.match(hook, /emitOrderState/)
-  assert.match(hook, /push\('order'/)
-  assert.match(hook, /async function syncOrders/)
-  assert.match(hook, /authoritative:/)
-  assert.match(session, /item\.type === 'order' \? 'order'/)
-})
-
-test('抖店包只暴露订单事件，由宿主决定是否入库', () => {
-  assert.match(client, /subscribeOrders\(/)
-  assert.match(client, /event\.type === 'order'/)
-  assert.match(apiDoc, /不保存订单/)
-  assert.match(apiDoc, /orderRepository\.upsert/)
-  assert.match(apiDoc, /subscribeOrders\(listener/)
 })
 
 test('平台操作遇到登录状态时会等待并重试', () => {

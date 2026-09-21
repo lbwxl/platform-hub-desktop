@@ -1,15 +1,15 @@
 import type { HookPackageManifest, PlatformDefinition } from '../../shared/platform'
-import { doudianHook } from './doudian'
+import { douyinHook } from './douyin'
 import { goofishHook } from './goofish'
 import { kuaishouHook } from './kuaishou'
 
 export const builtinHooks: Record<string, HookPackageManifest> = {
-  [doudianHook.id]: doudianHook,
+  [douyinHook.id]: douyinHook,
   [kuaishouHook.id]: kuaishouHook,
   [goofishHook.id]: goofishHook,
 }
 
-export const builtinPlatforms: PlatformDefinition[] = [doudianHook, kuaishouHook, goofishHook].map((hook) => ({
+export const builtinPlatforms: PlatformDefinition[] = [douyinHook, kuaishouHook, goofishHook].map((hook) => ({
   id: hook.id,
   label: hook.label,
   url: hook.url,

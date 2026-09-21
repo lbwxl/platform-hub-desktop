@@ -3,6 +3,7 @@ import { join, dirname, resolve, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { EventEmitter } from "node:events";
+import "node:module";
 import { kuaishouHook } from "@platform-hub/kuaishou-hook";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
@@ -401,7 +402,762 @@ class CdpSession extends EventEmitter {
 function partitionFor(platform, accountId) {
   return `persist:platform-hub-${platform}-${accountId.replace(/[^a-z0-9_-]/gi, "_")}`;
 }
-const doudianCapabilities = [
+const DOUYIN_PLATFORM_ID = "douyin";
+const DOUYIN_PRIMARY_PAGE_ID = "primary";
+const DOUYIN_PRODUCTS_PAGE_ID = "products";
+const DOUYIN_PRIMARY_OPERATIONS = [
+  "auth.state",
+  "sessions.list",
+  "messages.listen",
+  "messages.history",
+  "messages.send.text",
+  "messages.send.file",
+  "orders.list",
+  "orders.listen",
+  "handoff.targets.list",
+  "handoff.transfer"
+];
+const DOUYIN_PRODUCTS_OPERATIONS = [
+  "products.list",
+  "products.detail"
+];
+const douyinHookManifest = {
+  version: "1.0.0",
+  capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS],
+  pages: [
+    {
+      id: DOUYIN_PRIMARY_PAGE_ID,
+      kind: "primary",
+      url: "https://im.jinritemai.com/pc_seller_v2/main/workspace"
+    },
+    {
+      id: DOUYIN_PRODUCTS_PAGE_ID,
+      kind: "worker",
+      url: "https://fxg.jinritemai.com/ffa/g/list?tab=all",
+      idleTtlMs: 3e4
+    }
+  ]
+};
+const HOOK_PROTOCOL_VERSION = 1;
+const douyinHookRuntimeScript = String.raw`(() => {
+  const KEY = '__PLATFORM_HOOK__'
+  const VERSION = ${HOOK_PROTOCOL_VERSION}
+  const PLATFORM = ${JSON.stringify(DOUYIN_PLATFORM_ID)}
+  const PAGE = window.__PLATFORM_HOOK_PAGE_ID__ || (/fxg\.jinritemai\.com/i.test(String(location?.hostname || '')) ? 'products' : 'primary')
+  const primaryOperations = ${JSON.stringify(DOUYIN_PRIMARY_OPERATIONS)}
+  const productOperations = ${JSON.stringify(DOUYIN_PRODUCTS_OPERATIONS)}
+  const operations = PAGE === 'products' ? productOperations : primaryOperations
+  const existing = window[KEY]
+  if (existing && !existing.__disposed && existing.protocolVersion === VERSION && existing.describe?.().pageId === PAGE) return
+  try { existing?.dispose?.() } catch (_) {}
+
+  const queue = []
+  const seenMessages = new Set()
+  const seenFingerprints = new Set()
+  const orderSnapshots = new Map()
+  const orderWatches = new Map()
+  const messageOrderSnapshots = new Map()
+  let disposed = false
+  let messageCleanup = null
+  let orderTimer = null
+  let orderPollBusy = false
+  const ORDER_WATCH_MAX = 50
+  const ORDER_WATCH_TTL_MS = 30 * 60 * 1000
+  const ORDER_ACTIVE_WINDOW_MS = 2 * 60 * 1000
+  const ORDER_ACTIVE_INTERVAL_MS = 5 * 1000
+  const ORDER_IDLE_INTERVAL_MS = 30 * 1000
+  const ORDER_POLL_BATCH_SIZE = 1
+
+  const store = () => window.ss?._frontStore || window.ss?.instance || null
+  const pageContext = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData || null
+  const im = () => pageContext()?.im || null
+  const pagePost = () => pageContext()?.post
+  const pcUIState = () => {
+    const context = pageContext()
+    try { return context?.zContainer?.get?.(context?.PCUIModelSymbol)?.getData?.() || null } catch (_) { return null }
+  }
+  const values = (value) => {
+    if (!value) return []
+    if (Array.isArray(value)) return [...value]
+    try { if (typeof value.values === 'function') return [...value.values()] } catch (_) {}
+    try { return Object.values(value) } catch (_) { return [] }
+  }
+  const json = (value) => {
+    if (value && typeof value === 'object') return value
+    if (typeof value !== 'string') return {}
+    try { return JSON.parse(value) || {} } catch (_) { return {} }
+  }
+  const text = (value) => value == null ? '' : String(value)
+  const identifier = (value) => {
+    const result = text(value).trim()
+    return result && !['-1', '0', 'null', 'undefined'].includes(result.toLowerCase()) ? result : ''
+  }
+  const number = (value) => {
+    const result = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, ''))
+    return Number.isFinite(result) ? result : undefined
+  }
+  const time = (value) => {
+    const result = number(value)
+    if (result !== undefined) return result > 0 && result < 100000000000 ? result * 1000 : result
+    const parsed = typeof value === 'string' ? Date.parse(value) : NaN
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const snapshot = (value) => {
+    if (!value) return value
+    try { return typeof value.toJSON === 'function' ? value.toJSON() : JSON.parse(JSON.stringify(value)) } catch (_) { return value }
+  }
+  const array = (value) => {
+    if (Array.isArray(value)) return value
+    const item = value && typeof value === 'object' ? value : {}
+    for (const candidate of [item.data, item.list, item.items, item.records, item.data?.list, item.data?.items, item.data?.records]) if (Array.isArray(candidate)) return candidate
+    return []
+  }
+  const attributionMetadata = (item, ext) => {
+    const safe = {}
+    for (const [prefix, source] of [['item', item], ['ext', ext]]) {
+      for (const [key, value] of Object.entries(source || {})) {
+        if (!/(source|sender|role|staff|agent|operator|manual|client|device|from|mine|creator)/i.test(key)) continue
+        if (value == null || ['string', 'number', 'boolean'].includes(typeof value)) safe[prefix + '.' + key] = value
+      }
+    }
+    safe.manualSendCheck = Boolean(text(ext?.['p:check_Send'] || ext?.['p:check_send'] || ext?.p_check_send))
+    return safe
+  }
+  const emit = (event) => {
+    if (disposed) return
+    queue.push({ ...event, timestamp: event.timestamp || Date.now() })
+    if (queue.length > 500) queue.splice(0, queue.length - 500)
+  }
+  const error = (code, message, retryable = false) => ({ ok: false, error: { code, message, retryable } })
+  const loginError = () => error('LOGIN_REQUIRED', '请在抖店官方页面完成登录后继续')
+  const runtimeError = () => error('RUNTIME_NOT_READY', '抖店页面尚未暴露所需运行时能力', true)
+  const auth = async () => {
+    if (/captcha|verify|challenge|risk/i.test(String(location?.pathname || '') + String(location?.search || ''))) {
+      return error('CHALLENGE_REQUIRED', '抖店要求完成官方安全验证', true)
+    }
+    const current = store()
+    const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId)
+    const userId = identifier(current?.selfInfo?.id)
+    if (shopId || userId) return {
+      ok: true,
+      data: {
+        authenticated: true,
+        ...(shopId ? { shopId } : {}),
+        ...(userId ? { userId } : {}),
+        checkedAt: Date.now(),
+      },
+    }
+    const getters = window.__STORE__GETTERS__
+    try {
+      const loggedIn = typeof getters?.isLogin === 'function' ? getters.isLogin() : getters?.isLogin
+      const user = typeof getters?.user === 'function' ? getters.user() : getters?.user
+      const getterShopId = identifier(user?.shop_id || user?.shopId)
+      const getterUserId = identifier(user?.id || user?.user_id)
+      if (loggedIn === true || getterShopId || getterUserId) return {
+        ok: true,
+        data: { authenticated: true, shopId: getterShopId || undefined, userId: getterUserId || undefined, checkedAt: Date.now() },
+      }
+    } catch (_) {}
+    if (PAGE === 'products') {
+      try {
+        if (window.localStorage?.getItem('GOODS_SWR_CACHE_V1') != null) return { ok: true, data: { authenticated: true, checkedAt: Date.now() } }
+      } catch (_) {}
+    }
+    if (/^\/login(?:\/|$)/i.test(String(location?.pathname || ''))) return { ok: true, data: { authenticated: false, checkedAt: Date.now() } }
+    return error('RUNTIME_NOT_READY', '抖店账号状态 Runtime 尚未准备好', true)
+  }
+  const requireAuth = async () => {
+    const result = await auth()
+    return result.ok && result.data.authenticated ? null : result
+  }
+  const handoffTargets = async () => {
+    const transfer = store()?.uiState?.chatRooms?.transferConv
+    if (!transfer) return null
+    if (!values(transfer.canTransferServiceList).length && typeof transfer.fetchTransferServiceList === 'function') await transfer.fetchTransferServiceList()
+    if (!values(transfer.canTransferGroupList).length && typeof transfer.fetchTransferGroupList === 'function') await transfer.fetchTransferGroupList()
+    const targets = []
+    const seen = new Set()
+    for (const item of [...values(transfer.canTransferServiceList), ...values(transfer.canTransferGroupList)]) {
+      const id = identifier(item?.id || item?.staffId || item?.userId)
+      const name = text(item?.name || item?.title || item?.staffName).trim()
+      if (!id && !name) continue
+      const key = id + ':' + name
+      if (seen.has(key)) continue
+      seen.add(key)
+      targets.push({ ...(id ? { id } : {}), name: name || id })
+    }
+    return { transfer, targets }
+  }
+  const conversations = () => {
+    const info = store()?.conversationsInfo
+    if (!info) return []
+    const result = []
+    const seen = new Set()
+    for (const source of [info.unClosedConversations, info.closedConversations, info.normalCurrentConversations, info.platformMessageConversations]) {
+      for (const raw of values(source)) {
+        const value = snapshot(raw) || {}
+        const id = text(value.id || value.conversationId)
+        if (!id || seen.has(id)) continue
+        seen.add(id); result.push({ raw, value })
+      }
+    }
+    return result
+  }
+  const talker = (conversation) => {
+    const buyerId = text(conversation?.buyerId || conversation?.currentTalkId)
+    try { return snapshot(store()?.talkerMap?.getTalkerInfo?.(buyerId)) || {} } catch (_) { return {} }
+  }
+  const sessionRows = () => conversations().map(({ raw, value }) => {
+    const person = talker(raw)
+    const last = snapshot(raw?.lastMessage || raw?.lastAnyMessage || value.lastMessage || value.lastAnyMessage) || {}
+    return {
+      id: text(value.id),
+      title: text(person.name || person.screenName || person.nickName || person.nickname || value.rawExt?.fusion_uname || value.buyerName) || '用户',
+      unreadCount: number(value.unreadCount || value.unread) || 0,
+      ...(text(last.content || last.text || last.message) ? { lastMessage: text(last.content || last.text || last.message) } : {}),
+      ...(time(last.createTime || last.timestamp || value.versionTime) ? { updatedAt: time(last.createTime || last.timestamp || value.versionTime) } : {}),
+      ...(text(person.avatar || person.avatarUrl) ? { avatarUrl: text(person.avatar || person.avatarUrl) } : {}),
+    }
+  }).filter((item) => item.id)
+  const conversationFor = (conversationId) => conversations().find(({ value }) => text(value.id) === text(conversationId))
+  const buyerFor = (conversationId) => {
+    const conversation = conversationFor(conversationId)
+    const person = conversation ? talker(conversation.raw) : {}
+    return text(conversation?.value?.buyerId || conversation?.value?.currentTalkId || conversation?.value?.userId || person.id || person.userId)
+  }
+  const transferViaOfficialApi = async (conversationId, targetId) => {
+    const current = store()
+    const shopId = identifier(current?.shopInfo?.id)
+    const buyerId = identifier(buyerFor(conversationId) || text(conversationId).split(':')[0])
+    if (!shopId || !buyerId) return error('RUNTIME_NOT_READY', '抖店转接缺少真实店铺或买家身份', true)
+    const post = pagePost()
+    if (typeof post !== 'function') return runtimeError()
+    const response = await post('https://pigeon.jinritemai.com/chat/api/backstage/conversation/transfer_conversation?PIGEON_BIZ_TYPE=2', {
+      securityBizConversationId: buyerId + ':' + shopId + '::2:1:pigeon',
+      toCid: targetId,
+      extParams: '{}',
+    })
+    const payload = response?.data && typeof response.data === 'object' ? response.data : response || {}
+    const code = payload?.code ?? payload?.status_code ?? payload?.statusCode
+    const failedCode = code !== undefined && ![0, '0', 200, '200'].includes(code)
+    if (response?.success === false || payload?.success === false || failedCode) {
+      return error('PLATFORM_ERROR', text(payload?.message || payload?.msg || response?.message || '转人工失败'), false)
+    }
+    return { ok: true }
+  }
+  const product = (raw) => {
+    const item = raw && typeof raw === 'object' ? raw : {}
+    const externalId = text(item.goodsId || item.goods_id || item.productId || item.product_id || item.id)
+    if (!externalId) return undefined
+    const shopId = text(item.shopId || item.shop_id || item.sellerId || store()?.shopInfo?.id)
+    const cents = item.discount_price !== undefined ? item.discount_price : item.discountPrice
+    const rawPrice = cents !== undefined ? number(cents) / 100 : number(item.price)
+    const imageValues = Array.isArray(item.images || item.pics || item.image_list) ? (item.images || item.pics || item.image_list) : (item.img ? [item.img] : [])
+    const skus = array(item.skus || item.skuList).map((sku) => {
+      const skuAmount = number(sku.skuPrice ?? sku.price)
+      return {
+        id: text(sku.skuId || sku.sku_id || sku.id) || externalId + ':default',
+        externalId: text(sku.skuId || sku.sku_id || sku.id) || undefined,
+        name: text(sku.skuName || sku.spec_desc || sku.name) || '默认',
+        ...(skuAmount !== undefined ? { price: { amount: sku.skuPrice === undefined && sku.price !== undefined ? skuAmount / 100 : skuAmount, currency: 'CNY' } } : {}),
+        ...(number(sku.stockQuantity ?? sku.stock_num ?? sku.stock) !== undefined ? { stockQuantity: number(sku.stockQuantity ?? sku.stock_num ?? sku.stock) } : {}),
+      }
+    })
+    const status = text(item.status || item.product_status).toLowerCase()
+    return {
+      id: 'douyin:' + (shopId || 'unknown') + ':' + externalId,
+      externalId,
+      title: text(item.name || item.title || item.product_name) || '未命名商品',
+      ...(text(item.description || item.desc) ? { description: text(item.description || item.desc) } : {}),
+      status: /on[_ -]?sale|selling|在售|上架/.test(status) || ['1', '2'].includes(status) ? 'on_sale' : /off[_ -]?sale|下架|停售/.test(status) || ['3', '4'].includes(status) ? 'off_sale' : /draft|草稿/.test(status) ? 'draft' : 'unknown',
+      ...(rawPrice !== undefined ? { price: { amount: rawPrice, currency: 'CNY' } } : {}),
+      ...(number(item.stockQuantity ?? item.stock_num ?? item.stock) !== undefined ? { stockQuantity: number(item.stockQuantity ?? item.stock_num ?? item.stock) } : {}),
+      images: imageValues.map((image) => typeof image === 'string' ? image : text(image?.url)).filter(Boolean),
+      skus,
+      ...(text(item.goodsUrl || item.product_url || item.detail_url) ? { url: text(item.goodsUrl || item.product_url || item.detail_url) } : {}),
+      ...(time(item.updatedAt || item.update_time || item.modify_time) ? { updatedAt: time(item.updatedAt || item.update_time || item.modify_time) } : {}),
+      raw: { platformStatus: item.status || item.product_status },
+    }
+  }
+  const cachedProducts = () => {
+    let cache
+    try { cache = JSON.parse(window.localStorage?.getItem('GOODS_SWR_CACHE_V1') || '{}') } catch (_) { return [] }
+    const result = []
+    const seen = new Set()
+    for (const [key, entry] of Object.entries(cache || {})) {
+      if (!/(?:product|goods).*?(?:list|search)|(?:list|search).*?(?:product|goods)/i.test(String(key))) continue
+      for (const raw of array(entry?.__value__?.data || entry?.value?.data || entry?.data)) {
+        const item = product(raw)
+        if (!item || seen.has(item.externalId)) continue
+        seen.add(item.externalId); result.push(item)
+      }
+    }
+    return result
+  }
+  const waitForProducts = async (timeoutMs = 10000) => {
+    const deadline = Date.now() + timeoutMs
+    let result = cachedProducts()
+    while (!result.length && PAGE === 'products' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      result = cachedProducts()
+    }
+    return result
+  }
+  const message = (raw, context = {}) => {
+    const item = raw?.message || raw?.data || raw?.payload || raw
+    if (!item || typeof item !== 'object') return undefined
+    const ext = item.ext && typeof item.ext === 'object' ? item.ext : json(item.ext)
+    const conversationId = text(item.conversationId || item.originConversationId || item.securityConversationId || item.sessionId || context.conversationId)
+    const id = text(item.serverId || item.messageId || item.clientId || item.id)
+    if (!conversationId || !id) return undefined
+    const senderId = text(item.sender || item.senderId || item.originSender || item.securitySender || item.from)
+    const senderRole = text(ext.sender_role || ext['s:sender_biz_role'] || item.senderRole)
+    const system = senderRole === '3' || senderRole === '4' || /system|notice|notification|系统|通知/i.test([item.messageType, item.type, ext.type].map(text).join(' '))
+    const direction = !system && (item.isMine === true || senderId === context.selfId || senderRole === '2') ? 'outbound' : 'inbound'
+    const platformType = text(ext.type || item.messageType || item.type).toLowerCase()
+    const cardScene = text(json(ext.card_header).cardSourceScene)
+    const type = /order|订单/i.test(platformType + cardScene) ? 'order' : system ? 'system' : /image|图片/.test(platformType) ? 'image' : /file|文件/.test(platformType) ? 'file' : /goods|product|商品/i.test(platformType + cardScene) ? 'product' : !platformType || /text|文字/.test(platformType) ? 'text' : 'unknown'
+    const source = [ext.send_source, ext.sender_source, ext.operation_source, ext.source, item.sendSource, item.senderSource, item.operationSource, item.source].map(text).filter(Boolean).join(' ')
+    const manualSendCheck = Boolean(text(ext['p:check_Send'] || ext['p:check_send'] || ext.p_check_send))
+    const origin = system ? 'system' : direction === 'inbound' ? 'customer' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
+    const status = text(item.deliveryStatus || item.sendStatus || item.status).toLowerCase()
+    const attachmentUrl = text(item.url || item.uri || item.imageUrl || item.fileUrl || ext.url || ext.image_url || ext.file_url)
+    const attachmentName = text(item.fileName || item.name || ext.file_name)
+    const attachmentMime = text(item.mimeType || item.mime || ext.mime_type)
+    return {
+      id, conversationId,
+      ...(senderId ? { senderId } : {}),
+      ...(text(ext.uname || item.senderName || context.conversationTitle) ? { senderName: system ? '系统' : text(ext.uname || item.senderName || context.conversationTitle) } : {}),
+      content: text(item.content || item.text || item.message), type, direction, origin,
+      deliveryStatus: /fail|error|失败/.test(status) ? 'failed' : /pending|sending|发送中/.test(status) ? 'pending' : 'sent',
+      timestamp: time(item.createTime || item.createdAt || item.timestamp || item.timestampMs) || Date.now(),
+      ...(attachmentUrl || attachmentName || attachmentMime ? { attachments: [{ ...(attachmentUrl ? { url: attachmentUrl } : {}), ...(attachmentName ? { name: attachmentName } : {}), ...(attachmentMime ? { mimeType: attachmentMime } : {}) }] } : {}),
+      raw: {
+        senderRole,
+        source: source || undefined,
+        platformType: platformType || undefined,
+        provisional: !item.serverId && !item.messageId && Boolean(item.clientId),
+        attributionMetadata: attributionMetadata(item, ext),
+        ...(type === 'order' ? {
+          orderId: text(ext.order_id || ext.shop_order_id || json(ext.point_info).shop_order_id || item.orderId),
+          productId: text(ext.goods_id || json(ext.point_info).product_id),
+          productName: text(json(ext.static_data).product_name || json(ext.static_data).b_good?.product_name),
+          status: text(json(ext.static_data).order_status || json(ext.static_data).tag_content),
+          totalAmount: (() => { const match = text(json(ext.static_data).sell_num_desc).match(/[¥￥]\s*([\d,.]+)/); return match ? Number(match[1].replace(/,/g, '')) : undefined })(),
+          quantity: (() => { const match = text(json(ext.static_data).sell_num_desc).match(/共\s*(\d+)\s*件/); return match ? Number(match[1]) : undefined })(),
+        } : {}),
+      },
+    }
+  }
+  const messages = (conversationId) => {
+    const info = store()?.conversationsInfo
+    if (!info) return []
+    const result = []
+    const sessions = sessionRows().filter((item) => !conversationId || item.id === text(conversationId))
+    for (const session of sessions) {
+      let source
+      try { source = typeof info.messagesByConversationId?.get === 'function' ? info.messagesByConversationId.get(session.id) : info.messagesByConversationId?.[session.id] } catch (_) {}
+      const rows = source?.sortedMessages || source?.visibleMessages || source?.value || source
+      for (const raw of values(rows)) {
+        const normalized = message(raw, { conversationId: session.id, selfId: text(store()?.selfInfo?.id), conversationTitle: session.title })
+        if (normalized && !result.some((item) => item.id === normalized.id)) result.push(normalized)
+      }
+    }
+    return result.sort((a, b) => a.timestamp - b.timestamp)
+  }
+  const order = (raw, context = {}) => {
+    const item = raw && typeof raw === 'object' ? raw : {}
+    const externalId = text(item.orderId || item.order_id || item.shopOrderId || item.shop_order_id || item.skuOrderId || item.sku_order_id || item.id)
+    if (!externalId) return undefined
+    const shopId = text(item.shopId || item.shop_id || store()?.shopInfo?.id)
+    const itemRows = array(item.items || item.orderItems || item.skuOrders)
+    const quantity = number(item.quantity ?? item.count ?? item.product_count ?? item.item_num) || 1
+    const fallback = { productId: text(item.productId || item.product_id || item.goodsId || item.goods_id) || undefined, skuId: text(item.skuId || item.sku_id) || undefined, skuName: text(item.skuName || item.sku_name || item.spec_desc || item.goods_spec_desc || item.sku) || undefined, title: text(item.productName || item.product_name || item.goodsName || item.goods_name) || '未知商品', quantity }
+    const items = (itemRows.length ? itemRows : [fallback]).map((rawItem) => {
+      const row = rawItem && typeof rawItem === 'object' ? rawItem : {}
+      const amount = number(row.price ?? row.itemPrice ?? row.pay_amount)
+      return {
+        ...(text(row.productId || row.product_id || row.goodsId || row.goods_id) ? { productId: text(row.productId || row.product_id || row.goodsId || row.goods_id), externalProductId: text(row.productId || row.product_id || row.goodsId || row.goods_id) } : {}),
+        ...(text(row.skuId || row.sku_id) ? { skuId: text(row.skuId || row.sku_id) } : {}),
+        ...(text(row.skuName || row.sku_name || row.spec_desc || row.goods_spec_desc || row.sku) ? { skuName: text(row.skuName || row.sku_name || row.spec_desc || row.goods_spec_desc || row.sku) } : {}),
+        title: text(row.title || row.productName || row.product_name || row.goodsName || row.goods_name) || '未知商品',
+        quantity: number(row.quantity ?? row.count ?? row.item_num) || quantity,
+        ...(amount !== undefined ? { price: { amount, currency: 'CNY' } } : {}),
+      }
+    })
+    const amount = number(item.totalAmount ?? item.total_amount ?? item.orderAmount ?? item.order_amount_yuan ?? item.price)
+    const cents = number(item.pay_amount ?? item.order_amount ?? item.total_fee)
+    const total = amount !== undefined ? amount : cents !== undefined ? cents / 100 : undefined
+    const platformStatus = text(item.platformStatus || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc || item.status)
+    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc)
+    const status = (platformAftersaleStatus || platformStatus).toLowerCase()
+    const normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
+    return {
+      id: 'douyin:' + (shopId || 'unknown') + ':' + externalId, externalId,
+      ...(shopId ? { shopId } : {}),
+      ...(text(item.conversationId || item.sessionId || context.conversationId) ? { conversationId: text(item.conversationId || item.sessionId || context.conversationId) } : {}),
+      ...((text(item.buyerId || item.userId) || text(item.buyerName || item.buyer_name)) ? { buyer: { ...(text(item.buyerId || item.userId) ? { id: text(item.buyerId || item.userId) } : {}), ...(text(item.buyerName || item.buyer_name) ? { name: text(item.buyerName || item.buyer_name) } : {}) } } : {}),
+      status: normalizedStatus, items,
+      ...(total !== undefined ? { total: { amount: total, currency: 'CNY' } } : {}),
+      ...((text(item.receiverName || item.receiver_name) || text(item.receiverAddress || item.receiver_address) || text(item.phoneMasked || item.receiver_phone_mask)) ? { receiver: { ...(text(item.receiverName || item.receiver_name) ? { name: text(item.receiverName || item.receiver_name) } : {}), ...(text(item.phoneMasked || item.receiver_phone_mask) ? { phoneMasked: text(item.phoneMasked || item.receiver_phone_mask) } : {}), ...(text(item.receiverAddress || item.receiver_address) ? { address: text(item.receiverAddress || item.receiver_address) } : {}) } } : {}),
+      ...(time(item.createdAt || item.create_time || item.order_create_time) ? { createdAt: time(item.createdAt || item.create_time || item.order_create_time) } : {}),
+      ...(time(item.updatedAt || item.update_time || item.timestamp) ? { updatedAt: time(item.updatedAt || item.update_time || item.timestamp) } : {}),
+      raw: { platformStatus, ...(platformAftersaleStatus ? { platformAftersaleStatus } : {}) },
+    }
+  }
+  const orderMessages = (conversationId) => messages(conversationId).map((item) => item.type === 'order' ? orderFromMessage(item, conversationId) : undefined).filter(Boolean)
+  const orderFromMessage = (item, conversationId) => {
+    const raw = item.raw || {}
+    const id = text(raw.orderId || raw.shopOrderId)
+    return id ? order({ ...raw, orderId: id }, { conversationId }) : undefined
+  }
+  const officialOrders = (response, conversationId, buyerId) => {
+    const direct = array(response)
+    const rows = direct.length ? direct : array(response?.data)
+    return rows.map((raw) => {
+      const item = raw && typeof raw === 'object' ? raw : {}
+      const skuRows = array(item.sku_order_list || item.skuOrders || item.items)
+      const items = skuRows.map((rawSku) => {
+        const sku = rawSku && typeof rawSku === 'object' ? rawSku : {}
+        const specs = array(sku.sku_specs).map((spec) => text(spec?.value || spec?.name)).filter(Boolean)
+        const cents = number(sku.actual_pay_amount ?? sku.pay_amount ?? sku.price)
+        return {
+          productId: text(sku.product_id || sku.goods_id) || undefined,
+          skuId: text(sku.sku_id) || undefined,
+          skuName: text(sku.sku_name || sku.spec_desc || sku.goods_spec_desc) || specs.join(', ') || undefined,
+          title: text(sku.product_name || sku.goods_name) || '未知商品',
+          quantity: number(sku.quantity ?? sku.count ?? sku.item_num ?? sku.combo_num ?? sku.buy_num) || 1,
+          ...(cents !== undefined ? { price: cents / 100 } : {}),
+        }
+      })
+      const directCents = number(item.actual_pay_amount ?? item.total_pay_amount ?? item.pay_amount ?? item.order_amount ?? item.total_fee)
+      const itemCents = skuRows.reduce((total, rawSku) => total + (number(rawSku?.actual_pay_amount ?? rawSku?.total_pay_amount ?? rawSku?.pay_amount ?? rawSku?.price) || 0), 0)
+      const totalAmount = directCents !== undefined ? directCents / 100 : itemCents ? itemCents / 100 : undefined
+      const aftersaleRows = skuRows.flatMap((rawSku) => array(rawSku?.after_sale_orders || rawSku?.afterSaleOrders))
+      const platformAftersaleStatus = [
+        item.aftersale_sum_status_desc,
+        ...aftersaleRows.flatMap((afterSale) => [afterSale?.after_sale_status_desc, afterSale?.title, afterSale?.sub_title?.text]),
+      ].map(text).filter(Boolean).join(' ')
+      const address = item.post_address && typeof item.post_address === 'object'
+        ? [item.post_address.province?.name, item.post_address.city?.name, item.post_address.town?.name, item.post_address.street?.name, item.post_address.detail].map(text).filter(Boolean).join('')
+        : text(item.receiver_address)
+      return order({
+        ...item,
+        orderId: item.order_id || item.shop_order_id || item.orderId,
+        platformStatus: item.order_status_desc || item.status_desc || item.order_status || item.status,
+        platformAftersaleStatus,
+        ...(items.length ? { items } : {}),
+        ...(totalAmount !== undefined ? { totalAmount } : {}),
+        buyerId: item.security_user_id || item.user_id || item.buyer_id || buyerId,
+        buyerName: item.user_nick_name || item.buyer_name,
+        receiverName: item.post_receiver || item.receiver_name,
+        receiverAddress: address,
+        phoneMasked: item.mobile || item.receiver_phone_mask,
+        createdAt: item.order_time_sec || item.create_time_sec || item.create_time || item.order_create_time,
+        updatedAt: item.update_time_sec || item.update_time || item.pay_time_sec,
+      }, { conversationId, buyerId })
+    }).filter(Boolean)
+  }
+  const orderIdsFor = (conversationId, explicitOrderId, messageOrders) => {
+    const ids = new Set()
+    const add = (value) => { const id = identifier(value); if (id) ids.add(id) }
+    add(explicitOrderId)
+    for (const item of messageOrders) add(item.externalId)
+    const conversation = conversationFor(conversationId)
+    for (const source of [conversation?.value, conversation?.value?.rawExt, conversation?.raw]) {
+      add(source?.orderId || source?.order_id || source?.shopOrderId || source?.shop_order_id)
+    }
+    const currentConversationId = text(snapshot(store()?.conversationsInfo?.currentConversation)?.id)
+    if (!conversationId || !currentConversationId || currentConversationId === conversationId) {
+      const workstation = store()?.uiState?.workstation
+      const ui = pcUIState()
+      add(workstation?.currentOrder)
+      add(ui?.rightTabOrder?.locationOrderId || ui?.rightTabOrder?.orderId || ui?.rightTabOrder?.order_id)
+      for (const value of values(store()?.historyConversationData?.conversationOrderIdList)) add(value)
+    }
+    return [...ids].slice(0, 20)
+  }
+  const requestOfficialOrders = async (conversationId, orderId) => {
+    const post = pagePost()
+    const conversation = conversationFor(conversationId)
+    const buyerId = identifier(buyerFor(conversationId))
+    if (!buyerId || typeof post !== 'function') return []
+    const current = store()
+    const encrypted = current?.useEncryptUid
+    const identityKeys = encrypted === false ? ['user_id'] : encrypted === true ? ['security_user_id'] : ['security_user_id', 'user_id']
+    const common = {
+      page_no: 0,
+      page_size: 5,
+      is_init_tab: 1,
+      tab_type: orderId ? 0 : 1,
+      biz_type: 2,
+      search_words: orderId || '',
+      workstation_opt_version: current?.uiState?.workstation?.isUIVersionV3 ? 'v2' : 'v1',
+      service_entity_id: identifier(conversation?.value?.serviceEntityId || conversation?.value?.rawExt?.service_entity_id || current?.shopInfo?.id) || undefined,
+      from_conversation_short_id: identifier(conversation?.value?.shortId) || undefined,
+      version: '1.0',
+      workstation_opt_gray: true,
+    }
+    for (const identityKey of identityKeys) {
+      try {
+        const response = await post('/backstage/cmpoent/order/query', { ...common, [identityKey]: buyerId })
+        const rows = officialOrders(response, conversationId, buyerId)
+        if (rows.length) return rows
+      } catch (_) {}
+    }
+    return []
+  }
+  const mergeOrders = (rows) => {
+    const result = new Map()
+    for (const item of rows) {
+      const previous = result.get(item.externalId)
+      if (!previous) { result.set(item.externalId, item); continue }
+      const preferred = previous.status === 'unknown' && item.status !== 'unknown' ? item : previous
+      const fallback = preferred === item ? previous : item
+      const items = []
+      const seenItems = new Set()
+      for (const orderItem of [...(preferred.items || []), ...(fallback.items || [])]) {
+        const key = JSON.stringify([orderItem.productId, orderItem.externalProductId, orderItem.skuId, orderItem.skuName, orderItem.title, orderItem.quantity, orderItem.price])
+        if (!seenItems.has(key)) { seenItems.add(key); items.push(orderItem) }
+      }
+      const createdAt = Math.min(...[preferred.createdAt, fallback.createdAt].filter((value) => Number.isFinite(value)))
+      const updatedAt = Math.max(...[preferred.updatedAt, fallback.updatedAt].filter((value) => Number.isFinite(value)))
+      result.set(item.externalId, {
+        ...fallback,
+        ...preferred,
+        items,
+        ...(preferred.conversationId || fallback.conversationId ? { conversationId: preferred.conversationId || fallback.conversationId } : {}),
+        ...(preferred.buyer || fallback.buyer ? { buyer: preferred.buyer || fallback.buyer } : {}),
+        ...(preferred.total || fallback.total ? { total: preferred.total || fallback.total } : {}),
+        ...(preferred.receiver || fallback.receiver ? { receiver: preferred.receiver || fallback.receiver } : {}),
+        ...(Number.isFinite(createdAt) ? { createdAt } : {}),
+        ...(Number.isFinite(updatedAt) ? { updatedAt } : {}),
+      })
+    }
+    return [...result.values()]
+  }
+  const orders = async (conversationId, explicitOrderId) => {
+    const current = store()
+    const service = current?.orderInvitation || current?.orderInfo
+    const collected = []
+    for (const name of ['getOrders', 'fetchOrders', 'fetchOrderList', 'queryOrders']) {
+      try {
+        if (typeof service?.[name] === 'function') {
+          const value = await service[name](buyerFor(conversationId))
+          const rows = array(value).map((item) => order(item, { conversationId })).filter(Boolean)
+          collected.push(...rows)
+        }
+      } catch (_) {}
+    }
+    const messageOrders = orderMessages(conversationId)
+    const orderIds = orderIdsFor(conversationId, explicitOrderId, messageOrders)
+    if (orderIds.length) {
+      for (const orderId of orderIds) collected.push(...await requestOfficialOrders(conversationId, orderId))
+    } else {
+      collected.push(...await requestOfficialOrders(conversationId, ''))
+    }
+    collected.push(...messageOrders)
+    return mergeOrders(collected)
+  }
+  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver])
+  const pruneOrderWatches = (now = Date.now()) => {
+    for (const [key, watch] of orderWatches) if (now - watch.lastActiveAt >= ORDER_WATCH_TTL_MS) { orderWatches.delete(key); orderSnapshots.delete(key) }
+    const overflow = orderWatches.size - ORDER_WATCH_MAX
+    if (overflow > 0) {
+      for (const [key] of [...orderWatches.entries()].sort((left, right) => left[1].lastActiveAt - right[1].lastActiveAt).slice(0, overflow)) { orderWatches.delete(key); orderSnapshots.delete(key) }
+    }
+  }
+  const touchOrderWatch = (conversationId) => {
+    const key = orderWatches.has(conversationId) ? conversationId : orderWatches.has('*') ? '*' : ''
+    if (!key) return
+    const watch = orderWatches.get(key)
+    const now = Date.now()
+    watch.lastActiveAt = now
+    watch.nextPollAt = Math.min(watch.nextPollAt, now)
+  }
+  const watchOrders = async () => {
+    if (disposed || orderPollBusy || !orderWatches.size) return
+    const startedAt = Date.now()
+    pruneOrderWatches(startedAt)
+    const due = [...orderWatches.entries()].filter(([, watch]) => watch.nextPollAt <= startedAt).sort((left, right) => left[1].nextPollAt - right[1].nextPollAt).slice(0, ORDER_POLL_BATCH_SIZE)
+    if (!due.length) return
+    orderPollBusy = true
+    try {
+      for (const [conversationId, watch] of due) {
+        const previous = orderSnapshots.get(conversationId) || new Map()
+        const current = await orders(conversationId === '*' ? '' : conversationId, watch.orderId)
+        const next = new Map(current.map((item) => [item.externalId, item]))
+        const now = Date.now()
+        watch.nextPollAt = now + (now - watch.lastActiveAt <= ORDER_ACTIVE_WINDOW_MS ? ORDER_ACTIVE_INTERVAL_MS : ORDER_IDLE_INTERVAL_MS)
+        if (!next.size && previous.size) continue
+        for (const [id, item] of next) {
+          const old = previous.get(id)
+          if (!old) { emit({ type: 'order.created', payload: { order: item } }); continue }
+          if (orderKey(old) !== orderKey(item)) {
+            const changedFields = ['status', 'items', 'total', 'receiver'].filter((key) => JSON.stringify(old[key]) !== JSON.stringify(item[key]))
+            emit({ type: 'order.updated', payload: { order: item, previous: old, changedFields } })
+          }
+        }
+        orderSnapshots.set(conversationId, next)
+      }
+    } finally { orderPollBusy = false }
+  }
+  const bindMessages = () => {
+    if (messageCleanup || PAGE !== 'primary') return
+    if (!store()?.conversationsInfo) return
+    const initial = messages()
+    const initialWatermark = Math.max(Date.now() - 30_000, ...initial.map((item) => item.timestamp || 0))
+    for (const item of initial) {
+      seenMessages.add(item.id)
+      seenFingerprints.add([item.conversationId, item.senderId, item.content, item.timestamp].join('|'))
+      if (item.type === 'order') {
+        const orderValue = orderFromMessage(item, item.conversationId)
+        if (orderValue) messageOrderSnapshots.set(orderValue.externalId, orderValue)
+      }
+    }
+    const publish = (value) => {
+      const rows = []
+      const pending = [value]
+      const visited = new Set()
+      while (pending.length && visited.size < 200) {
+        const item = pending.shift()
+        if (!item || typeof item !== 'object' || visited.has(item)) continue
+        visited.add(item)
+        const normalized = message(item, { selfId: text(store()?.selfInfo?.id) })
+        if (normalized) rows.push(normalized)
+        for (const key of ['message', 'data', 'payload', 'messages', 'items', 'list']) { const nested = item[key]; if (Array.isArray(nested)) pending.push(...nested); else if (nested && typeof nested === 'object') pending.push(nested) }
+      }
+      for (const item of rows) {
+        if (item.direction === 'outbound' && item.raw?.provisional) continue
+        const fingerprint = [item.conversationId, item.senderId, item.content, item.timestamp].join('|')
+        if (seenMessages.has(item.id) || seenFingerprints.has(fingerprint)) continue
+        seenMessages.add(item.id); seenFingerprints.add(fingerprint)
+        if (item.timestamp <= initialWatermark) {
+          if (item.type === 'order') {
+            const orderValue = orderFromMessage(item, item.conversationId)
+            if (orderValue) messageOrderSnapshots.set(orderValue.externalId, orderValue)
+          }
+          continue
+        }
+        touchOrderWatch(item.conversationId)
+        if (item.type === 'order') {
+          const orderValue = orderFromMessage(item, item.conversationId)
+          if (orderValue) {
+            const previous = messageOrderSnapshots.get(orderValue.externalId)
+            if (!previous) emit({ type: 'order.created', payload: { order: orderValue } })
+            else if (orderKey(previous) !== orderKey(orderValue)) {
+              const changedFields = ['status', 'items', 'total', 'receiver'].filter((key) => JSON.stringify(previous[key]) !== JSON.stringify(orderValue[key]))
+              emit({ type: 'order.updated', payload: { order: orderValue, previous, changedFields } })
+            }
+            messageOrderSnapshots.set(orderValue.externalId, orderValue)
+          }
+        }
+        emit({ type: 'message.created', payload: { message: item } })
+      }
+      if (seenMessages.size > 5000 || seenFingerprints.size > 5000) {
+        seenMessages.clear(); seenFingerprints.clear()
+        for (const current of messages()) { seenMessages.add(current.id); seenFingerprints.add([current.conversationId, current.senderId, current.content, current.timestamp].join('|')) }
+      }
+      if (messageOrderSnapshots.size > 2000) messageOrderSnapshots.clear()
+    }
+    const subscriptions = []
+    for (const stream of [im()?._message$, im()?._messageUpsert$, im()?._batchUpsert$]) {
+      if (typeof stream?.subscribe !== 'function') continue
+      try { const subscription = stream.subscribe(publish); subscriptions.push(subscription) } catch (error) { emit({ type: 'runtime.error', payload: { message: String(error) } }) }
+    }
+    const timer = subscriptions.length ? null : setInterval(() => messages().forEach(publish), 2000)
+    messageCleanup = () => { if (timer) clearInterval(timer); subscriptions.forEach((item) => { try { typeof item === 'function' ? item() : item?.unsubscribe?.() } catch (_) {} }); messageCleanup = null }
+  }
+  const invoke = async (operation, input = {}) => {
+    if (disposed) return error('RUNTIME_NOT_READY', 'Runtime 已销毁', true)
+    if (!operations.includes(operation)) return error('NOT_SUPPORTED', '当前页面未声明该 Operation')
+    if (operation !== 'auth.state') { const authResult = await requireAuth(); if (authResult) return authResult }
+    try {
+      switch (operation) {
+        case 'auth.state': return auth()
+        case 'sessions.list': return { ok: true, data: sessionRows() }
+        case 'messages.listen': bindMessages(); return { ok: true, data: { listening: true, watermark: Math.max(0, ...messages().map((item) => item.timestamp)) } }
+        case 'messages.history': { const id = text(input.conversationId); if (!id) return error('INVALID_INPUT', 'conversationId 必填'); return { ok: true, data: messages(id) } }
+        case 'messages.send.text': {
+          const conversationId = text(input.conversationId), content = text(input.text)
+          if (!conversationId || !content) return error('INVALID_INPUT', 'conversationId 和 text 必填')
+          if (!sessionRows().some((item) => item.id === conversationId)) return error('INVALID_INPUT', '未找到目标会话')
+          const api = im(); if (typeof api?.sendText !== 'function') return runtimeError()
+          const value = await api.sendText(conversationId, content, {})
+          if (value?.success === false) return error('PLATFORM_ERROR', text(value.statusMsg || '发送文本失败'), true)
+          const id = text(value?.serverId || value?.messageId || value?.id)
+          const outgoing = { id: id || 'pending-' + Date.now(), conversationId, senderId: text(store()?.selfInfo?.id) || undefined, content, type: 'text', direction: 'outbound', origin: 'automation', deliveryStatus: id || value?.success === true ? 'sent' : 'pending', timestamp: Date.now() }
+          return { ok: true, data: outgoing }
+        }
+        case 'messages.send.file': {
+          const conversationId = text(input.conversationId), data = text(input.data || input.dataUrl || input.url), name = text(input.name || input.fileName) || 'upload.bin', mimeType = text(input.mimeType || 'application/octet-stream')
+          if (!conversationId || !data) return error('INVALID_INPUT', 'conversationId 和 data 必填')
+          if (!sessionRows().some((item) => item.id === conversationId)) return error('INVALID_INPUT', '未找到目标会话')
+          if (!mimeType.startsWith('image/')) return error('NOT_SUPPORTED', '抖店官方 window runtime 当前只支持图片发送')
+          const context = window.__mona_pigeon_event?.globalStore?.data?.initContextData
+          const api = im(); if (typeof api?.sendImage !== 'function' || typeof context?.customRequestUpload !== 'function') return runtimeError()
+          const match = data.match(/^data:([^;,]+)?;base64,(.*)$/); const binary = atob(match?.[2] || data); const bytes = new Uint8Array(binary.length); for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+          const blob = new Blob([bytes], { type: mimeType })
+          const file = new File([blob], name, { type: mimeType })
+          const bitmap = await createImageBitmap(blob)
+          const uri = URL.createObjectURL(blob)
+          const upload = () => new Promise((resolve, reject) => context.customRequestUpload({ file, onSuccess: (response) => { const url = response?.data?.[0]?.url || response?.url || response?.uri; url ? resolve({ uri: url }) : reject(new Error('上传未返回地址')) }, onError: reject }))
+          try {
+            const value = await api.sendImage(conversationId, { uri, width: bitmap.width, height: bitmap.height, format: mimeType.split('/')[1] || 'png', size: file.size }, upload, {}, () => {})
+            if (!value) return error('PLATFORM_ERROR', '发送图片失败', true)
+            const id = text(value?.serverId || value?.messageId || value?.id)
+            return { ok: true, data: { id: id || 'pending-' + Date.now(), conversationId, content: name, type: 'image', direction: 'outbound', origin: 'automation', deliveryStatus: id || value?.success === true ? 'sent' : 'pending', timestamp: Date.now(), attachments: [{ name, mimeType }] } }
+          } finally { bitmap.close?.(); URL.revokeObjectURL(uri) }
+        }
+        case 'products.list': return { ok: true, data: await waitForProducts() }
+        case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
+        case 'orders.list': { const result = await orders(text(input.conversationId), text(input.orderId || input.externalId)); return { ok: true, data: result } }
+        case 'orders.listen': { const conversationId = text(input.conversationId); const orderId = text(input.orderId || input.externalId); const key = conversationId || '*'; const current = await orders(conversationId, orderId); const now = Date.now(); orderSnapshots.set(key, new Map(current.map((item) => [item.externalId, item]))); orderWatches.set(key, { lastActiveAt: now, nextPollAt: now, orderId }); pruneOrderWatches(now); if (!orderTimer) orderTimer = setInterval(() => { void watchOrders() }, 1000); return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } } }
+        case 'handoff.targets.list': {
+          const available = await handoffTargets()
+          return available ? { ok: true, data: available.targets } : runtimeError()
+        }
+        case 'handoff.transfer': {
+          const conversationId = text(input.conversationId), target = text(input.targetId || input.targetName)
+          if (!conversationId) return error('INVALID_INPUT', 'conversationId 必填')
+          if (!target) return error('INVALID_INPUT', '抖店转人工需要 targetId 或 targetName')
+          const available = await handoffTargets()
+          if (!available) return runtimeError()
+          const selected = available.targets.find((item) => item.id === target || item.name === target) || available.targets.find((item) => item.name.includes(target))
+          if (!selected) return error('INVALID_INPUT', '未在官方可转列表中找到目标客服或客服组')
+          const transfer = available.transfer
+          const targetId = text(selected.id || target)
+          for (const name of ['transferConversation', 'transferSession', 'assignConversation', 'transfer']) if (typeof transfer[name] === 'function') {
+            const value = await transfer[name](conversationId, targetId, input.remark)
+            if (value?.success === false || value?.ok === false) return error('PLATFORM_ERROR', text(value?.error || value?.message || '转人工失败'), true)
+            return { ok: true, data: { transferred: true, target: { id: targetId, name: selected.name } } }
+          }
+          const official = await transferViaOfficialApi(conversationId, targetId)
+          if (!official.ok) return official
+          return { ok: true, data: { transferred: true, target: { id: targetId, name: selected.name } } }
+        }
+      }
+      return error('NOT_SUPPORTED', '当前 Runtime 不支持该 Operation')
+    } catch (caught) {
+      const message = String(caught?.message || caught)
+      if (/challenge|captcha|verify|risk|验证码|滑块|安全验证/i.test(message)) return error('CHALLENGE_REQUIRED', message, true)
+      if (/login|unauth|未登录|请登录/i.test(message)) return loginError()
+      if (/rate|frequency|too many|频繁|限流/i.test(message)) return error('RATE_LIMITED', message, true)
+      return error('PLATFORM_ERROR', message, true)
+    }
+  }
+  window[KEY] = {
+    get __disposed() { return disposed },
+    protocolVersion: VERSION,
+    describe: () => ({ protocolVersion: VERSION, platform: PLATFORM, pageId: PAGE, capabilities: [...operations], operations: [...operations] }),
+    invoke,
+    drainEvents: async () => { bindMessages(); return queue.splice(0, queue.length) },
+    dispose: async () => { if (disposed) return; disposed = true; try { messageCleanup?.() } catch (_) {} if (orderTimer) clearInterval(orderTimer); orderTimer = null; orderPollBusy = false; queue.length = 0; seenMessages.clear(); seenFingerprints.clear(); orderSnapshots.clear(); orderWatches.clear(); messageOrderSnapshots.clear() },
+  }
+})()`;
+const primaryPage = douyinHookManifest.pages.find((page) => page.kind === "primary");
+const productsPage = douyinHookManifest.pages.find((page) => page.id === "products");
+const capabilities$1 = [
   "messages.listen",
   "messages.history",
   "messages.send",
@@ -413,1056 +1169,130 @@ const doudianCapabilities = [
   "orders.listen",
   "session.transfer"
 ];
-const hookVersion = "3.5.0";
-const doudianHookScript = String.raw`(() => {
-  const QUEUE_KEY = '__platformHub'
-  const existing = window[QUEUE_KEY]
-  const HOOK_VERSION = ${JSON.stringify(hookVersion)}
-  if (existing && existing.__version === HOOK_VERSION) return
-  try { existing?.dispose?.() } catch (_) {}
-
-  const queue = []
-  let runtime = null
-  let subscription = null
-  const methodCache = new Map()
-  const watchedOrderUsers = new Map()
-  const orderSnapshots = new Map()
-  let orderPollTimer = null
-  let orderPollBusy = false
-  let disposed = false
-  const emittedOrderKeys = new Set()
-  const ORDER_WATCH_MAX = 50
-  const ORDER_WATCH_TTL_MS = 30 * 60 * 1000
-  const ORDER_ACTIVE_WINDOW_MS = 2 * 60 * 1000
-  const ORDER_ACTIVE_INTERVAL_MS = 5 * 1000
-  const ORDER_IDLE_INTERVAL_MS = 30 * 1000
-  const ORDER_POLL_TICK_MS = 1000
-  const ORDER_POLL_BATCH_SIZE = 1
-  const platformRuntimeOrderEvent = { source: 'platform-runtime' }
-
-  const aliases = {
-    getAuthState: ['getAuthState', 'getLoginState', 'getShopInfo', 'currentUser', 'getCurrentUser'],
-    collectProducts: ['collectProducts', 'listProducts', 'getProducts', 'getProductList', 'listOnSaleProducts'],
-    getProductDetail: ['getProductDetail', 'productDetail', 'getGoodsDetail', 'queryProduct'],
-    listSessions: ['listSessions', 'getSessions', 'getConversationList', 'listConversations'],
-    listMessages: ['listMessages', 'getMessages', 'getMessageList'],
-    sendMessage: ['sendMessage', 'sendText', 'sendTextMessage'],
-    sendFile: ['sendFile', 'sendImage', 'sendMedia'],
-    transferSession: ['transferSession', 'transferConversation', 'assignConversation'],
-    getOrders: ['getOrders', 'queryOrders', 'getOrderList'],
-    subscribeMessages: ['subscribeMessages', 'onMessage', 'subscribeMessage', 'watchMessages'],
-  }
-
-  const candidates = [
-    () => window.__DOUDIAN_SDK__,
-    () => window.__doudian__,
-    () => window.doudianSDK,
-    () => window.doudian,
-    () => window.pigeon,
-  ]
-
-  function getStore() {
-    return window.ss?._frontStore || window.ss?.instance || null
-  }
-
-  function getNativeIm() {
-    return window.__mona_pigeon_event?.globalStore?.data?.initContextData?.im || null
-  }
-
-  function collectionValues(value) {
-    if (!value) return []
-    if (Array.isArray(value)) return [...value]
-    try { if (typeof value.values === 'function') return [...value.values()] } catch (_) {}
-    try { return Object.values(value) } catch (_) { return [] }
-  }
-
-  function snapshot(value) {
-    if (!value) return value
-    try { return typeof value.toJSON === 'function' ? value.toJSON() : JSON.parse(JSON.stringify(value)) } catch (_) { return value }
-  }
-
-  function parseJson(value) {
-    if (!value || typeof value === 'object') return value || null
-    try { return JSON.parse(value) } catch (_) { return null }
-  }
-
-  function jsonIntegerString(value, key) {
-    if (typeof value === 'string') {
-      const match = value.match(new RegExp('"' + key + '"\\s*:\\s*"?([0-9]+)"?'))
-      if (match) return match[1]
-    }
-    const parsed = parseJson(value)
-    return parsed?.[key] == null ? '' : String(parsed[key])
-  }
-
-  function storeConversations() {
-    const info = getStore()?.conversationsInfo
-    if (!info) return []
-    const result = []
-    const seen = new Set()
-    for (const source of [info.unClosedConversations, info.closedConversations, info.normalCurrentConversations, info.platformMessageConversations]) {
-      for (const raw of collectionValues(source)) {
-        const value = snapshot(raw)
-        const id = String(value?.id || value?.conversationId || '')
-        if (!id || seen.has(id)) continue
-        seen.add(id); result.push({ raw, value })
-      }
-    }
-    return result
-  }
-
-  function talkerFor(conversation) {
-    const store = getStore()
-    const buyerId = String(conversation?.buyerId || conversation?.currentTalkId || '')
-    try { return snapshot(store?.talkerMap?.getTalkerInfo?.(buyerId)) || {} } catch (_) { return {} }
-  }
-
-  function nativeSessions() {
-    return storeConversations().map(({ raw, value }) => {
-      const talker = talkerFor(raw)
-      const last = snapshot(raw?.lastMessage || raw?.lastAnyMessage || value?.lastMessage || value?.lastAnyMessage || value?.lastCache) || {}
-      return {
-        id: String(value.id),
-        title: String(talker?.name || talker?.screenName || talker?.nickName || talker?.nickname || value?.rawExt?.fusion_uname || value?.buyerName || value?.buyerId || '未命名会话'),
-        unread: Number(value?.unreadCount || 0),
-        lastMessage: String(last?.content || last?.text || last?.message || ''),
-        avatar: talker?.avatar || talker?.avatarUrl,
-        updatedAt: Number(last?.createTime || last?.timestamp || value?.versionTime || 0) || undefined,
-      }
-    })
-  }
-
-  function nativeMessages(sessionId) {
-    const info = getStore()?.conversationsInfo
-    if (!info) return []
-    const output = []
-    for (const session of nativeSessions()) {
-      if (sessionId && session.id !== String(sessionId)) continue
-      let source
-      try { source = typeof info.messagesByConversationId?.get === 'function' ? info.messagesByConversationId.get(session.id) : info.messagesByConversationId?.[session.id] } catch (_) {}
-      const rows = source?.sortedMessages || source?.visibleMessages || source?.value || source?.map || source
-      const candidates = collectionValues(rows)
-      const conversation = storeConversations().find(({ value }) => String(value.id) === session.id)?.raw
-      if (conversation?.lastMessage) candidates.push(conversation.lastMessage)
-      const rowIds = new Set()
-      for (const raw of candidates) {
-        const value = snapshot(raw) || {}
-        const id = String(value.serverId || value.messageId || value.clientId || value.id || '')
-        if (!id || rowIds.has(id)) continue
-        rowIds.add(id)
-        const ext = snapshot(value.ext) || {}
-        const senderRole = String(ext.sender_role || ext['s:sender_biz_role'] || '')
-        const isSystem = senderRole === '3' || senderRole === '4'
-        const order = orderFromMessage(value, ext)
-        const product = order ? null : productFromMessage(value, ext)
-        output.push({
-          id,
-          sessionId: session.id,
-          senderId: String(value.sender || value.senderId || value.originSender || value.securitySender || value.from || ''),
-          senderName: String(isSystem ? '系统' : ext.uname || value.senderName || session.title),
-          content: String(value.content || value.text || value.message || ''),
-          type: String(order ? 'order' : isSystem ? 'system' : product ? 'product' : ext.type || value.type || 'text'),
-          isMine: !isSystem && Boolean(value.isMine || value.sender === getStore()?.selfInfo?.id || senderRole === '2'),
-          timestamp: Number(value.createTime || value.createdAt || value.timestamp || Date.now()),
-          avatar: ext.avatar_uri || value.avatar,
-          order: order || undefined,
-          product: product || undefined,
-        })
-      }
-    }
-    return output
-  }
-
-  function methodsOf(value) {
-    const names = new Set()
-    let current = value
-    for (let depth = 0; current && depth < 3; depth += 1) {
-      try { Object.getOwnPropertyNames(current).forEach((name) => { if (name !== 'constructor' && typeof value[name] === 'function') names.add(name) }) } catch (_) {}
-      try { current = Object.getPrototypeOf(current) } catch (_) { current = null }
-    }
-    return [...names]
-  }
-
-  function locateRuntime() {
-    const direct = candidates.map((get) => { try { return get() } catch (_) { return null } }).filter(Boolean)
-    const roots = []
-    try {
-      for (const key of Object.getOwnPropertyNames(window)) {
-        if (!/(dou|pigeon|chat|im|shop|goods|product|seller|sdk|store|runtime|app)/i.test(key)) continue
-        try { const value = window[key]; if (value && (typeof value === 'object' || typeof value === 'function')) roots.push({ value, path: 'window.' + key, depth: 0 }) } catch (_) {}
-      }
-    } catch (_) {}
-    const queue = [...direct.map((value) => ({ value, path: 'window.direct', depth: 0 })), ...roots]
-    const seen = new Set()
-    const found = []
-    let visited = 0
-    while (queue.length && visited < 1200) {
-      const item = queue.shift(); const value = item.value
-      if (!value || seen.has(value)) continue
-      seen.add(value); visited += 1
-      const methods = methodsOf(value)
-      const score = Object.values(aliases).flat().filter((name) => methods.includes(name)).length
-      if (score) found.push({ value, path: item.path, methods, score })
-      if (item.depth >= 3) continue
-      let keys = []
-      try { keys = Object.keys(value).slice(0, 160) } catch (_) {}
-      for (const key of keys) {
-        if (!/(api|client|service|manager|sdk|store|chat|message|conversation|goods|product|order|runtime|default)/i.test(key)) continue
-        try {
-          const child = value[key]
-          if (child && (typeof child === 'object' || typeof child === 'function')) queue.push({ value: child, path: item.path + '.' + key, depth: item.depth + 1 })
-        } catch (_) {}
-      }
-    }
-    found.sort((a, b) => b.score - a.score)
-    return found
-  }
-
-  function resolveRuntime() {
-    if (runtime) return runtime
-    runtime = locateRuntime()[0]?.value || null
-    return runtime
-  }
-
-  function findMethod(name) {
-    if (methodCache.has(name)) return methodCache.get(name)
-    const names = aliases[name] || [name]
-    const targets = locateRuntime()
-    for (const target of targets) {
-      for (const alias of names) {
-        try {
-          if (typeof target.value[alias] === 'function') {
-            const method = { fn: target.value[alias], owner: target.value, alias, path: target.path }
-            methodCache.set(name, method)
-            return method
-          }
-        } catch (_) {}
-      }
-    }
-    return null
-  }
-
-  function call(name, ...args) {
-    resolveRuntime()
-    const method = findMethod(name)
-    if (!method) {
-      return Promise.resolve({ ok: false, errorCode: 'RUNTIME_NOT_READY', error: '抖店页面尚未暴露运行时方法' })
-    }
-    try {
-      return Promise.resolve(method.fn.apply(method.owner, args)).then((value) => value)
-    } catch (error) {
-      return Promise.resolve({ ok: false, errorCode: 'RUNTIME_ERROR', error: String(error?.message || error) })
-    }
-  }
-
-  function normalizeAuth(value) {
-    if (!value) return { authenticated: false }
-    if (value.errorCode === 'LOGIN_REQUIRED') return { authenticated: false }
-    const authenticated = value.authenticated === true || value.isLogin === true || value.loggedIn === true || Boolean(value.shopId || value.userId)
-    return { ...value, authenticated }
-  }
-
-  async function auth() {
-    if (/^\/login(?:\/|$)/i.test(String(window.location?.pathname || ''))) {
-      return { authenticated: false, errorCode: 'LOGIN_REQUIRED' }
-    }
-    const store = getStore()
-    if (store?.shopInfo?.id || window.__mona_store__?.shopId) {
-      return { authenticated: true, shopId: String(store?.shopInfo?.id || window.__mona_store__.shopId), userId: String(store?.selfInfo?.id || '') }
-    }
-    try {
-      const getters = window.__STORE__GETTERS__
-      const loggedIn = typeof getters?.isLogin === 'function' ? getters.isLogin() : getters?.isLogin
-      const user = typeof getters?.user === 'function' ? getters.user() : getters?.user
-      if (loggedIn || user?.id || user?.shop_id || user?.shopId) {
-        return { authenticated: true, shopId: String(user?.shop_id || user?.shopId || ''), userId: String(user?.id || user?.user_id || '') }
-      }
-    } catch (_) {}
-    const result = await call('getAuthState')
-    if (result?.errorCode === 'RUNTIME_NOT_READY') return { authenticated: false, errorCode: result.errorCode }
-    return normalizeAuth(result)
-  }
-
-  async function requireLogin(method, ...args) {
-    const state = await auth()
-    if (!state.authenticated) return { ok: false, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续', state }
-    const value = await call(method, ...args)
-    if (value?.errorCode === 'LOGIN_REQUIRED' || value?.code === 'LOGIN_REQUIRED') return { ok: false, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续' }
-    return value
-  }
-
-  function push(type, payload) {
-    queue.push({ type, payload, timestamp: Date.now() })
-    if (queue.length > 200) queue.splice(0, queue.length - 200)
-  }
-
-  function pickArray(value) {
-    if (Array.isArray(value)) return value
-    const options = [value?.data, value?.list, value?.items, value?.records, value?.data?.list, value?.data?.items, value?.data?.records]
-    return options.find(Array.isArray) || []
-  }
-
-  function normalizeProduct(item) {
-    const goodsId = String(item?.goodsId || item?.goods_id || item?.productId || item?.product_id || item?.id || '')
-    const shopId = String(item?.shopId || item?.shop_id || item?.sellerId || '')
-    const rawPrice = item?.discount_price ?? item?.discountPrice ?? item?.price ?? 0
-    const price = item?.discount_price != null ? Number(rawPrice) / 100 : Number(rawPrice)
-    const images = item?.images || item?.pics || item?.image_list || (item?.img ? [item.img] : [])
-    return {
-      id: 'douyin-shop;' + shopId + ';' + goodsId,
-      goodsId,
-      name: String(item?.name || item?.title || item?.product_name || ''),
-      price: Number.isFinite(price) ? price : 0,
-      originalPrice: (item?.original_price != null ? Number(item.original_price) / 100 : Number(item?.originalPrice || 0)) || undefined,
-      stockQuantity: Number(item?.stockQuantity ?? item?.stock_num ?? item?.stock) || undefined,
-      status: String(item?.status ?? item?.product_status ?? ''),
-      images: Array.isArray(images) ? images.map((image) => typeof image === 'string' ? image : image?.url).filter(Boolean) : [],
-      goodsUrl: item?.goodsUrl || item?.product_url,
-      editUrl: item?.editUrl || (goodsId ? 'https://fxg.jinritemai.com/ffa/g/create?product_id=' + goodsId : ''),
-      shopId,
-      platform: 'douyin-shop',
-      createTime: item?.createTime || item?.create_time,
-      description: item?.description || item?.desc,
-      skuList: pickArray(item?.skus || item?.skuList).map((sku) => ({
-        skuId: String(sku?.skuId || sku?.sku_id || sku?.id || ''),
-        skuName: String(sku?.skuName || sku?.spec_desc || sku?.name || ''),
-        skuPrice: Number(sku?.skuPrice ?? sku?.price ?? 0) / (sku?.skuPrice == null && sku?.price != null ? 100 : 1),
-      })),
-      raw: item,
-    }
-  }
-
-  function productFromMessage(value, ext) {
-    const staticData = parseJson(ext?.static_data) || {}
-    const goods = pickArray(staticData?.sale_goods)[0] || staticData
-    const sourceType = String(ext?.type || value?.messageType || '')
-    const cardSource = String(parseJson(ext?.card_header)?.cardSourceScene || '')
-    if (!/(goods|product)/i.test(cardSource) && !/(goods_card|product_card)/i.test(sourceType)) return null
-    const pointInfo = parseJson(ext?.point_info) || {}
-    const search = parseJson(ext?.generic_search_keywords) || {}
-    const goodsId = String(ext?.goods_id || jsonIntegerString(ext?.static_data, 'product_id') || jsonIntegerString(ext?.point_info, 'product_id') || goods?.product_id || pointInfo?.product_id || '')
-    if (!goodsId) return null
-    const shopId = String(ext?.shop_id || goods?.shop_id || getStore()?.shopInfo?.id || '')
-    const rawPrice = goods?.current_price?.price ?? goods?.goods_price ?? goods?.price ?? 0
-    const originalPrice = Number(goods?.origin_price || 0) || undefined
-    const skuId = String(goods?.sku_id || '')
-    const skuName = String(goods?.sku || goods?.goods_spec_desc || '')
-    return {
-      id: 'douyin-shop;' + shopId + ';' + goodsId,
-      goodsId,
-      name: String(goods?.product_name || goods?.product_name_two_lines || goods?.product_name_one_line || goods?.goods_name || search?.content || value?.content || '商品'),
-      price: Number(rawPrice) || 0,
-      originalPrice,
-      status: String(goods?.product_status || goods?.status || ''),
-      images: goods?.img || goods?.goods_img ? [String(goods.img || goods.goods_img)] : [],
-      goodsUrl: goods?.jump_url || goods?.detail_url || goods?.product_detail_url || undefined,
-      shopId,
-      platform: 'douyin-shop',
-      description: goods?.product_desc || undefined,
-      skuList: skuId || skuName ? [{ skuId, skuName, skuPrice: Number(rawPrice) || 0 }] : [],
-      raw: { sourceType, cardSource },
-    }
-  }
-
-  function orderFromMessage(value, ext) {
-    const cardSource = String(parseJson(ext?.card_header)?.cardSourceScene || '')
-    if (!/order/i.test(cardSource)) return null
-    const staticData = parseJson(ext?.static_data) || {}
-    const pointInfo = parseJson(ext?.point_info) || {}
-    const orderId = String(ext?.order_id || ext?.shop_order_id || jsonIntegerString(ext?.point_info, 'shop_order_id') || pointInfo?.shop_order_id || '')
-    if (!orderId) return null
-    const summary = String(staticData?.sell_num_desc || staticData?.b_good?.sell_num_desc || '')
-    const amountMatch = summary.match(/[¥￥]\s*([\d,.]+)/)
-    const quantityMatch = summary.match(/共\s*(\d+)\s*件/)
-    const totalAmount = amountMatch ? Number(amountMatch[1].replace(/,/g, '')) : undefined
-    const productId = String(ext?.goods_id || jsonIntegerString(ext?.point_info, 'product_id') || pointInfo?.product_id || '') || undefined
-    const shopId = String(ext?.shop_id || getStore()?.shopInfo?.id || '')
-    return {
-      id: 'douyin-shop;' + shopId + ';' + orderId,
-      orderId,
-      skuOrderId: String(ext?.sku_order_id || jsonIntegerString(ext?.point_info, 'sku_order_id') || pointInfo?.sku_order_id || '') || undefined,
-      skuId: String(ext?.sku_id || jsonIntegerString(ext?.point_info, 'sku_id') || pointInfo?.sku_id || staticData?.sku_id || '') || undefined,
-      status: String(staticData?.order_status || staticData?.tag_content || ''),
-      totalAmount: Number.isFinite(totalAmount) ? totalAmount : undefined,
-      quantity: quantityMatch ? Number(quantityMatch[1]) : undefined,
-      productId,
-      skuName: String(staticData?.sku_name || staticData?.skuName || staticData?.spec_desc || staticData?.goods_spec_desc || staticData?.sku || '') || undefined,
-      productName: String(staticData?.product_name || staticData?.b_good?.product_name || ''),
-      productImage: staticData?.img || staticData?.b_good?.img || undefined,
-      orderUrl: staticData?.jump_url || undefined,
-      buyerName: String(staticData?.buyer_name || staticData?.buyerName || '') || undefined,
-      receiverName: String(staticData?.receiver_name || staticData?.receiverName || '') || undefined,
-      shippingAddress: String(staticData?.receiver_address || staticData?.receiverAddress || staticData?.shipping_address || '') || undefined,
-      shopId,
-      platform: 'douyin-shop',
-      raw: { sourceType: String(ext?.type || value?.type || 'template_card'), cardSource },
-    }
-  }
-
-  function normalizeOrder(item) {
-    if (!item || typeof item !== 'object') return null
-    const orderId = String(item?.orderId || item?.order_id || item?.shopOrderId || item?.shop_order_id || item?.skuOrderId || item?.sku_order_id || item?.id || '')
-    if (!orderId) return null
-    const shopId = String(item?.shopId || item?.shop_id || getStore()?.shopInfo?.id || '')
-    const amountInYuan = item?.totalAmount ?? item?.total_amount ?? item?.orderAmount ?? item?.order_amount_yuan
-    const amountInCents = item?.pay_amount ?? item?.order_amount ?? item?.total_fee
-    const totalAmount = amountInYuan != null ? Number(amountInYuan) : amountInCents != null ? Number(amountInCents) / 100 : undefined
-    const quantity = Number(item?.quantity ?? item?.count ?? item?.product_count ?? item?.item_num)
-    return {
-      id: 'douyin-shop;' + shopId + ';' + orderId,
-      orderId,
-      skuOrderId: String(item?.skuOrderId || item?.sku_order_id || '') || undefined,
-      skuId: String(item?.skuId || item?.sku_id || '') || undefined,
-      status: String(item?.status || item?.orderStatus || item?.order_status || item?.status_desc || item?.order_status_desc || ''),
-      totalAmount: Number.isFinite(totalAmount) ? totalAmount : undefined,
-      quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : undefined,
-      productId: String(item?.productId || item?.product_id || item?.goodsId || item?.goods_id || '') || undefined,
-      skuName: String(item?.skuName || item?.sku_name || item?.spec_desc || item?.goods_spec_desc || item?.sku || '') || undefined,
-      productName: String(item?.productName || item?.product_name || item?.goodsName || item?.goods_name || ''),
-      productImage: item?.productImage || item?.product_image || item?.goods_image || undefined,
-      orderUrl: item?.orderUrl || item?.order_url || undefined,
-      buyerName: String(item?.buyerName || item?.buyer_name || '') || undefined,
-      receiverName: String(item?.receiverName || item?.receiver_name || '') || undefined,
-      shippingAddress: String(item?.shippingAddress || item?.shipping_address || item?.receiverAddress || item?.receiver_address || '') || undefined,
-      shopId,
-      sessionId: item?.sessionId ? String(item.sessionId) : undefined,
-      userId: item?.userId ? String(item.userId) : undefined,
-      messageId: item?.messageId ? String(item.messageId) : undefined,
-      updatedAt: Number(item?.updatedAt || item?.update_time || item?.timestamp || 0) || undefined,
-      platform: 'douyin-shop',
-      raw: item?.raw && typeof item.raw === 'object'
-        ? { sourceType: item.raw.sourceType, cardSource: item.raw.cardSource }
-        : undefined,
-    }
-  }
-
-  function buyerIdForSession(sessionId) {
-    const conversation = storeConversations().find(({ value }) => String(value.id) === String(sessionId))
-    const value = conversation?.value || {}
-    const talker = conversation ? talkerFor(conversation.raw) : {}
-    return String(value?.buyerId || value?.currentTalkId || value?.userId || talker?.id || talker?.userId || String(sessionId || '').split(':')[0] || '')
-  }
-
-  function workstationOrderContext() {
-    const workstation = getStore()?.uiState?.workstation
-    const current = workstation?.currentOrder
-    const orderId = String(current?.orderId || current?.order_id || current?.shopOrderId || current?.shop_order_id || current || '')
-    return {
-      orderId,
-      messageId: String(workstation?.currentOrderMsgId || workstation?.current_order_msg_id || ''),
-    }
-  }
-
-  function cachedProductRows() {
-    let cache
-    try { cache = JSON.parse(window.localStorage?.getItem('GOODS_SWR_CACHE_V1') || '{}') } catch (_) { return [] }
-    const rows = []
-    const seen = new Set()
-    for (const [key, entry] of Object.entries(cache || {})) {
-      const cacheKey = String(key)
-      const isProductList = /(?:product|goods).*?(?:list|search)|(?:list|search).*?(?:product|goods)/i.test(cacheKey)
-      if (!isProductList) continue
-      const data = entry?.__value__?.data || entry?.value?.data || entry?.data
-      for (const item of pickArray(data)) {
-        const id = String(item?.product_id || item?.productId || item?.goods_id || item?.goodsId || item?.id || '')
-        if (!id || seen.has(id)) continue
-        seen.add(id); rows.push(item)
-      }
-    }
-    return rows
-  }
-
-  function isProductRuntimePage() {
-    const hostname = String(window.location?.hostname || '')
-    const pathname = String(window.location?.pathname || '')
-    return hostname === 'fxg.jinritemai.com' && /\/(?:ffa\/g\/list|product|goods)(?:\/|$)/i.test(pathname)
-  }
-
-  async function waitForCachedProductRows(timeoutMs = 10_000) {
-    const deadline = Date.now() + timeoutMs
-    let rows = cachedProductRows()
-    while (!rows.length && isProductRuntimePage() && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 250))
-      rows = cachedProductRows()
-    }
-    return rows
-  }
-
-  function normalizeSession(item) {
-    return {
-      id: String(item?.sessionId || item?.conversationId || item?.id || item?.userId || item?.uid || ''),
-      title: String(item?.title || item?.userName || item?.username || item?.name || '未命名会话'),
-      unread: Number(item?.unread || item?.unreadCount || item?.unread_count || 0),
-      lastMessage: String(item?.lastMessage?.content || item?.lastMessage || item?.last_message || ''),
-      avatar: item?.avatar || item?.userAvatar,
-      updatedAt: Number(item?.updatedAt || item?.updateTime || item?.timestamp || 0) || undefined,
-    }
-  }
-
-  async function collectProducts() {
-    const cached = await waitForCachedProductRows()
-    if (cached.length) return cached.map(normalizeProduct).filter((item) => item.goodsId)
-    if (isProductRuntimePage()) return []
-    const value = await requireLogin('collectProducts')
-    if (value?.errorCode) return value
-    return pickArray(value).map(normalizeProduct).filter((item) => item.goodsId)
-  }
-
-
-  async function getProductDetail(goodsId) {
-    const cached = (await waitForCachedProductRows()).find((item) => String(item?.product_id || item?.productId || item?.goods_id || item?.goodsId || item?.id || '') === String(goodsId))
-    if (cached) return normalizeProduct(cached)
-    return requireLogin('getProductDetail', goodsId)
-  }
-
-  async function listSessions() {
-    if (getStore()?.conversationsInfo) return nativeSessions()
-    const value = await requireLogin('listSessions')
-    if (value?.errorCode) return value
-    return pickArray(value).map(normalizeSession).filter((item) => item.id)
-  }
-
-  async function listMessages(sessionId) {
-    if (getStore()?.conversationsInfo) return nativeMessages(sessionId).sort((a, b) => a.timestamp - b.timestamp)
-    const value = await requireLogin('listMessages', sessionId)
-    if (value?.errorCode) return value
-    return pickArray(value)
-  }
-
-  async function getOrders(userId) {
-    const state = await auth()
-    if (!state.authenticated) return { ok: false, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续' }
-    const store = getStore()
-    const orderStore = store?.orderInvitation || store?.orderInfo
-    for (const name of ['getOrders', 'fetchOrders', 'fetchOrderList', 'queryOrders']) {
-      try {
-        if (typeof orderStore?.[name] === 'function') {
-          const value = await orderStore[name](userId)
-          return (Array.isArray(value) ? value : pickArray(value)).map(normalizeOrder).filter(Boolean)
-        }
-      } catch (_) {}
-    }
-    const value = await requireLogin('getOrders', userId)
-    return value?.errorCode ? value : (Array.isArray(value) ? value : pickArray(value)).map(normalizeOrder).filter(Boolean)
-  }
-
-  async function syncOrders(sessionId, userId) {
-    const syncedAt = Date.now()
-    const state = await auth()
-    if (!state.authenticated) {
-      return { orders: [], authoritative: false, source: 'none', syncedAt, sessionId, userId, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续' }
-    }
-
-    const sessions = nativeSessions()
-    let requestedSession = String(sessionId || '')
-    let requestedUser = String(userId || '')
-    if (requestedSession && !sessions.some((item) => item.id === requestedSession)) {
-      if (!requestedUser) requestedUser = requestedSession
-      requestedSession = ''
-    }
-    const targetSessionIds = new Set()
-    if (requestedSession) targetSessionIds.add(requestedSession)
-    if (requestedUser) {
-      for (const session of sessions) if (buyerIdForSession(session.id) === requestedUser) targetSessionIds.add(session.id)
-    }
-    const hasFilter = Boolean(requestedSession || requestedUser)
-    const allMessages = nativeMessages()
-    const matchingMessages = allMessages.filter((message) => !hasFilter || targetSessionIds.has(message.sessionId))
-    const ordersById = new Map()
-    const sources = new Set()
-    const addOrder = (value) => {
-      const normalized = normalizeOrder(value)
-      if (!normalized) return
-      const previous = ordersById.get(normalized.orderId) || {}
-      const merged = { ...previous }
-      for (const [key, next] of Object.entries(normalized)) if (next !== undefined && next !== '') merged[key] = next
-      ordersById.set(normalized.orderId, merged)
-    }
-
-    const platformResult = await getOrders(requestedUser || (requestedSession ? buyerIdForSession(requestedSession) : undefined))
-    const platformAvailable = Array.isArray(platformResult)
-    if (platformAvailable) {
-      sources.add('platform-runtime')
-      for (const order of platformResult) addOrder(order)
-    }
-
-    let historyAvailable = false
-    for (const message of matchingMessages) {
-      if (!message.order) continue
-      historyAvailable = true
-      const buyerId = buyerIdForSession(message.sessionId)
-      addOrder({ ...message.order, sessionId: message.sessionId, userId: buyerId || undefined, messageId: message.id, updatedAt: message.timestamp })
-    }
-    if (historyAvailable) sources.add('session-history')
-
-    const workstation = workstationOrderContext()
-    const workstationMessage = allMessages.find((message) => message.id === workstation.messageId || message.order?.orderId === workstation.orderId)
-    if (workstation.orderId && (!hasFilter || (workstationMessage && targetSessionIds.has(workstationMessage.sessionId)))) {
-      sources.add('workstation')
-      if (workstationMessage?.order) {
-        addOrder({
-          ...workstationMessage.order,
-          sessionId: workstationMessage.sessionId,
-          userId: buyerIdForSession(workstationMessage.sessionId) || undefined,
-          messageId: workstationMessage.id,
-          updatedAt: workstationMessage.timestamp,
-        })
-      } else {
-        addOrder({ orderId: workstation.orderId, messageId: workstation.messageId || undefined, platform: 'douyin-shop' })
-      }
-    }
-
-    const source = sources.size > 1 ? 'combined' : sources.values().next().value || 'none'
-    const result = {
-      orders: [...ordersById.values()].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)),
-      authoritative: platformAvailable || historyAvailable,
-      source,
-      syncedAt,
-      sessionId: requestedSession || undefined,
-      userId: requestedUser || undefined,
-    }
-    const targetSession = requestedSession || (matchingMessages[0]?.sessionId || '')
-    const targetUser = requestedUser || (targetSession ? buyerIdForSession(targetSession) : '')
-    if (result.authoritative && targetSession) {
-      for (const order of result.orders) {
-        emitOrderState({ ...order, sessionId: order.sessionId || targetSession, userId: order.userId || targetUser }, targetSession, targetUser, source, order.messageId, order.updatedAt || syncedAt)
-      }
-    }
-    if (targetUser && result.authoritative) watchOrderSnapshot(targetSession || targetUser, targetUser, result.orders)
-    return result
-  }
-
-  function orderStateKey(order) {
-    return [
-      order?.orderId || '', order?.status || '', order?.totalAmount ?? '', order?.quantity ?? '',
-      order?.productId || '', order?.skuId || '', order?.skuName || '', order?.shippingAddress || '',
-    ].join('|')
-  }
-
-  function orderStateMap(orders) {
-    const result = new Map()
-    for (const order of orders || []) if (order?.orderId) result.set(order.orderId, { key: orderStateKey(order), order })
-    return result
-  }
-
-  function emitOrderState(order, sessionId, userId, source, messageId, timestamp) {
-    if (!order?.orderId) return false
-    const key = [String(userId || sessionId || ''), orderStateKey(order)].join('|')
-    if (emittedOrderKeys.has(key)) return false
-    emittedOrderKeys.add(key)
-    if (emittedOrderKeys.size > 5000) emittedOrderKeys.clear()
-    const updatedAt = Number(order.updatedAt || timestamp || Date.now()) || Date.now()
-    push('order', {
-      order: { ...order, sessionId: order.sessionId || sessionId, userId: order.userId || userId || undefined, messageId: order.messageId || messageId || undefined, updatedAt },
-      sessionId: String(sessionId || order.sessionId || ''),
-      userId: String(userId || order.userId || '') || undefined,
-      messageId: String(messageId || order.messageId || '') || undefined,
-      source,
-      timestamp: updatedAt,
-    })
-    return true
-  }
-
-  function watchOrderSnapshot(sessionId, userId, orders) {
-    const targetUser = String(userId || sessionId || '')
-    if (!targetUser) return
-    const now = Date.now()
-    watchedOrderUsers.set(targetUser, {
-      sessionId: String(sessionId || targetUser),
-      lastActiveAt: now,
-      nextPollAt: now + ORDER_ACTIVE_INTERVAL_MS,
-    })
-    if (!orderSnapshots.has(targetUser)) orderSnapshots.set(targetUser, orderStateMap(orders))
-    pruneOrderWatches(now)
-    bindOrderPolling()
-  }
-
-  function removeOrderWatch(userId) {
-    watchedOrderUsers.delete(userId)
-    orderSnapshots.delete(userId)
-  }
-
-  function pruneOrderWatches(now = Date.now()) {
-    for (const [userId, watch] of watchedOrderUsers) {
-      if (now - Number(watch.lastActiveAt || 0) >= ORDER_WATCH_TTL_MS) removeOrderWatch(userId)
-    }
-    const overflow = watchedOrderUsers.size - ORDER_WATCH_MAX
-    if (overflow > 0) {
-      const oldest = [...watchedOrderUsers.entries()]
-        .sort((left, right) => Number(left[1].lastActiveAt || 0) - Number(right[1].lastActiveAt || 0))
-        .slice(0, overflow)
-      for (const [userId] of oldest) removeOrderWatch(userId)
-    }
-    if (!watchedOrderUsers.size && orderPollTimer) {
-      clearInterval(orderPollTimer)
-      orderPollTimer = null
-    }
-  }
-
-  function touchOrderWatch(sessionId, userId) {
-    const targetUser = String(userId || sessionId || '')
-    const watch = watchedOrderUsers.get(targetUser)
-    if (!watch) return false
-    const now = Date.now()
-    watch.sessionId = String(sessionId || watch.sessionId || targetUser)
-    watch.lastActiveAt = now
-    watch.nextPollAt = Math.min(Number(watch.nextPollAt || now), now)
-    return true
-  }
-
-  function nextOrderPollDelay(watch, now) {
-    return now - Number(watch.lastActiveAt || 0) <= ORDER_ACTIVE_WINDOW_MS
-      ? ORDER_ACTIVE_INTERVAL_MS
-      : ORDER_IDLE_INTERVAL_MS
-  }
-
-  async function pollOrderChanges() {
-    if (disposed || orderPollBusy || !watchedOrderUsers.size) return
-    const startedAt = Date.now()
-    pruneOrderWatches(startedAt)
-    const due = [...watchedOrderUsers.entries()]
-      .filter(([, watch]) => Number(watch.nextPollAt || 0) <= startedAt)
-      .sort((left, right) => Number(left[1].nextPollAt || 0) - Number(right[1].nextPollAt || 0))
-      .slice(0, ORDER_POLL_BATCH_SIZE)
-    if (!due.length) return
-    orderPollBusy = true
-    try {
-      for (const [userId, watch] of due) {
-        try {
-          const value = await getOrders(userId)
-          const now = Date.now()
-          watch.nextPollAt = now + nextOrderPollDelay(watch, now)
-          if (!Array.isArray(value)) continue
-          const previous = orderSnapshots.get(userId)
-          const next = orderStateMap(value)
-          if (!next.size && previous?.size) continue
-          if (previous) {
-            for (const [orderId, current] of next) {
-              if (previous.get(orderId)?.key === current.key) continue
-              emitOrderState({ ...current.order, sessionId: watch.sessionId, userId, updatedAt: current.order.updatedAt || Date.now() }, watch.sessionId, userId, platformRuntimeOrderEvent.source, current.order.messageId, current.order.updatedAt)
-            }
-          }
-          orderSnapshots.set(userId, next)
-        } catch (error) {
-          watch.nextPollAt = Date.now() + ORDER_IDLE_INTERVAL_MS
-          push('error', { error: String(error?.message || error), source: 'orders.listen' })
-        }
-      }
-    } finally {
-      orderPollBusy = false
-    }
-  }
-
-  function bindOrderPolling() {
-    if (disposed || orderPollTimer) return
-    orderPollTimer = setInterval(() => { void pollOrderChanges() }, ORDER_POLL_TICK_MS)
-  }
-
-  async function transferSession(sessionId, target) {
-    const store = getStore()
-    const transfer = store?.uiState?.chatRooms?.transferConv
-    if (!transfer) return requireLogin('transferSession', sessionId, target)
-    try {
-      if (!transfer.canTransferServiceList?.length && typeof transfer.fetchTransferServiceList === 'function') await transfer.fetchTransferServiceList()
-      if (!transfer.canTransferGroupList?.length && typeof transfer.fetchTransferGroupList === 'function') await transfer.fetchTransferGroupList()
-      const people = [...(transfer.canTransferServiceList || []), ...(transfer.canTransferGroupList || [])]
-      const selected = people.find((item) => String(item?.id || item?.staffId || item?.userId || item?.name || item?.title || '') === String(target))
-        || people.find((item) => String(item?.name || item?.title || item?.staffName || '').includes(String(target)))
-      if (!selected) return { success: false, errorCode: 'TARGET_NOT_FOUND', error: '未找到目标客服或客服组', available: people.map((item) => ({ id: item?.id || item?.staffId || item?.userId, name: item?.name || item?.title || item?.staffName })) }
-      for (const name of ['transferConversation', 'transferSession', 'assignConversation', 'transfer']) {
-        if (typeof transfer[name] === 'function') return { success: true, value: await transfer[name](sessionId, selected.id || selected.staffId || selected.userId) }
-      }
-    } catch (error) {
-      return { success: false, errorCode: 'TRANSFER_FAILED', error: String(error?.message || error) }
-    }
-    return requireLogin('transferSession', sessionId, target)
-  }
-
-  async function sendFile(sessionId, dataUrl, fileName) {
-    const state = await auth()
-    if (!state.authenticated) return { success: false, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续' }
-    const im = getNativeIm()
-    const ctx = window.__mona_pigeon_event?.globalStore?.data?.initContextData
-    if (!im || typeof im.sendImage !== 'function' || typeof ctx?.customRequestUpload !== 'function') return send('sendFile', sessionId, dataUrl, fileName)
-    try {
-      const match = String(dataUrl || '').match(/^data:([^;,]+)?;base64,(.*)$/)
-      const mime = match?.[1] || 'application/octet-stream'
-      const base64 = match?.[2] || String(dataUrl || '')
-      const binary = atob(base64)
-      const bytes = new Uint8Array(binary.length)
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
-      const blob = new Blob([bytes], { type: mime })
-      const file = new File([blob], fileName || 'upload.bin', { type: mime })
-      if (!mime.startsWith('image/')) return { success: false, errorCode: 'UNSUPPORTED_FILE_TYPE', error: '抖店当前 window runtime 仅支持直接发送图片' }
-      const bitmap = await createImageBitmap(blob)
-      const image = {
-        uri: URL.createObjectURL(blob),
-        width: bitmap.width,
-        height: bitmap.height,
-        format: mime.split('/')[1] || 'png',
-        size: file.size,
-      }
-      bitmap.close?.()
-      const upload = () => new Promise((resolve, reject) => {
-        ctx.customRequestUpload({
-          file,
-          onSuccess: (response) => {
-            const uri = response?.data?.[0]?.url || response?.url || response?.uri
-            if (uri) resolve({ uri })
-            else reject(new Error('图片上传未返回地址'))
-          },
-          onError: reject,
-        })
-      })
-      let sendError = null
-      try {
-        const value = await im.sendImage(sessionId, image, upload, {}, (error) => { sendError = error })
-        if (!value) return { success: false, errorCode: 'FILE_SEND_FAILED', error: String(sendError?.message || sendError || '抖店图片发送失败') }
-        return { success: true, value: snapshot(value) }
-      } finally {
-        URL.revokeObjectURL(image.uri)
-      }
-    } catch (error) {
-      return { success: false, errorCode: 'FILE_UPLOAD_FAILED', error: String(error?.message || error) }
-    }
-  }
-
-  async function send(method, ...args) {
-    const value = await requireLogin(method, ...args)
-    if (value?.errorCode || value?.success === false || value?.ok === false) return value
-    return { success: true, value }
-  }
-
-  async function sendText(sessionId, content) {
-    const state = await auth()
-    if (!state.authenticated) return { success: false, errorCode: 'LOGIN_REQUIRED', error: '请在抖店页面完成登录后继续' }
-    const im = getNativeIm()
-    if (!im || typeof im.sendText !== 'function') return send('sendMessage', sessionId, content)
-    try {
-      if (typeof im.checkCanSendMessage === 'function' && !im.checkCanSendMessage(sessionId)) {
-        return { success: false, errorCode: 'SESSION_NOT_SENDABLE', error: '当前会话不可发送消息' }
-      }
-      const value = await im.sendText(sessionId, content, {})
-      if (value?.success === false) return { success: false, errorCode: String(value?.statusCode || 'SEND_FAILED'), error: value?.statusMsg || '抖店发送消息失败' }
-      return { success: true, value: snapshot(value) }
-    } catch (error) {
-      return { success: false, errorCode: 'SEND_FAILED', error: String(error?.message || error) }
-    }
-  }
-
-  function normalizeNativeMessage(raw) {
-    const value = raw?.message || raw?.data || raw?.payload || raw
-    if (!value || typeof value !== 'object') return null
-    const sessionId = String(value.conversationId || value.originConversationId || value.securityConversationId || '')
-    const id = String(value.serverId || value.messageId || value.clientId || value.id || '')
-    if (!sessionId || !id) return null
-    const ext = snapshot(value.ext) || {}
-    const session = nativeSessions().find((item) => item.id === sessionId)
-    const senderId = String(value.sender || value.senderId || value.originSender || value.securitySender || value.from || '')
-    const senderRole = String(ext.sender_role || ext['s:sender_biz_role'] || '')
-    const isSystem = senderRole === '3' || senderRole === '4'
-    const order = orderFromMessage(value, ext)
-    const product = order ? null : productFromMessage(value, ext)
-    return {
-      id,
-      sessionId,
-      senderId,
-      senderName: String(isSystem ? '系统' : ext.uname || value.senderName || session?.title || ''),
-      content: String(value.content || value.text || value.message || ''),
-      type: String(order ? 'order' : isSystem ? 'system' : product ? 'product' : ext.type || value.type || 'text'),
-      isMine: !isSystem && Boolean(value.isMine || senderId === String(getStore()?.selfInfo?.id || '') || senderRole === '2'),
-      timestamp: Number(value.createTime || value.createdAt || value.timestamp || Date.now()),
-      avatar: ext.avatar_uri || value.avatar,
-      order: order || undefined,
-      product: product || undefined,
-    }
-  }
-
-  function eventMessages(value) {
-    const messages = []
-    const seen = new Set()
-    const pending = [value]
-    while (pending.length && seen.size < 200) {
-      const item = pending.shift()
-      if (!item || (typeof item !== 'object' && typeof item !== 'function') || seen.has(item)) continue
-      seen.add(item)
-      const normalized = normalizeNativeMessage(item)
-      if (normalized) messages.push(normalized)
-      if (Array.isArray(item)) pending.push(...item)
-      for (const key of ['message', 'data', 'payload', 'messages', 'items', 'list']) {
-        try {
-          const nested = item[key]
-          if (Array.isArray(nested)) pending.push(...nested)
-          else if (nested && typeof nested === 'object') pending.push(nested)
-        } catch (_) {}
-      }
-    }
-    return messages
-  }
-
-  function bindMessages() {
-    if (subscription) return
-    if (getStore()?.conversationsInfo) {
-      const seenIds = new Set()
-      const seenFingerprints = new Set()
-      const seenOrderKeys = new Set()
-      const latestBySession = new Map()
-      // The platform replays already loaded history when a stream is subscribed.
-      // Establish a per-conversation waterline before subscribing so only newer
-      // messages reach the host event bus.
-      const initialMessages = nativeMessages()
-      for (const message of initialMessages) {
-        const timestamp = Number(message.timestamp || 0)
-        if (timestamp > Number(latestBySession.get(message.sessionId) || 0)) latestBySession.set(message.sessionId, timestamp)
-      }
-      const remember = (message) => {
-        const fingerprint = [message.sessionId, message.senderId, message.content, message.timestamp].join('|')
-        if (seenIds.has(message.id) || seenFingerprints.has(fingerprint)) return false
-        seenIds.add(message.id); seenFingerprints.add(fingerprint)
-        return true
-      }
-      const orderKey = (message) => message.order ? orderStateKey(message.order) : ''
-      const seedOrder = (message) => {
-        const key = orderKey(message)
-        if (key) seenOrderKeys.add(key)
-      }
-      const publishOrder = (message) => {
-        const key = orderKey(message)
-        if (!key || seenOrderKeys.has(key)) return false
-        seenOrderKeys.add(key)
-        const userId = buyerIdForSession(message.sessionId)
-        const watched = orderSnapshots.get(userId)
-        if (watched) watched.set(message.order.orderId, { key: orderStateKey(message.order), order: message.order })
-        return emitOrderState({
-          ...message.order,
-          sessionId: message.sessionId,
-          userId: userId || undefined,
-          messageId: message.id,
-          updatedAt: message.timestamp,
-        }, message.sessionId, userId, 'message', message.id, message.timestamp)
-      }
-      const publishMessage = (message) => {
-        const timestamp = Number(message.timestamp || 0)
-        const latest = Number(latestBySession.get(message.sessionId) || 0)
-        const knownMessage = seenIds.has(message.id)
-        if (timestamp && latest && timestamp <= latest && !knownMessage) return
-        publishOrder(message)
-        const userId = buyerIdForSession(message.sessionId)
-        if (!touchOrderWatch(message.sessionId, userId)) {
-          void syncOrders(message.sessionId, userId).catch((error) => push('error', { error: String(error?.message || error), source: 'orders.listen' }))
-        }
-        if (!remember(message)) return
-        if (timestamp > latest) latestBySession.set(message.sessionId, timestamp)
-        push('message', message)
-      }
-      const reseed = () => {
-        seenIds.clear(); seenFingerprints.clear(); seenOrderKeys.clear()
-        for (const message of nativeMessages()) { remember(message); seedOrder(message) }
-      }
-      initialMessages.forEach((message) => { remember(message); seedOrder(message) })
-      const subscriptions = []
-      const im = getNativeIm()
-      for (const stream of [im?._message$, im?._messageUpsert$, im?._batchUpsert$]) {
-        if (typeof stream?.subscribe !== 'function') continue
-        try {
-          subscriptions.push(stream.subscribe((value) => {
-            for (const message of eventMessages(value)) publishMessage(message)
-            if (seenIds.size > 5000 || seenOrderKeys.size > 5000) reseed()
-          }))
-        } catch (error) {
-          push('error', { error: String(error?.message || error) })
-        }
-      }
-      const timer = subscriptions.length ? null : setInterval(() => {
-        for (const message of nativeMessages()) publishMessage(message)
-        if (seenIds.size > 5000 || seenOrderKeys.size > 5000) reseed()
-      }, 500)
-      subscription = () => {
-        if (timer) clearInterval(timer)
-        for (const item of subscriptions) {
-          try { if (typeof item === 'function') item(); else item?.unsubscribe?.() } catch (_) {}
-        }
-      }
-      return
-    }
-    const method = findMethod('subscribeMessages')
-    if (!method) return
-    try {
-      const seenOrderKeys = new Set()
-      subscription = method.fn.call(method.owner, (value) => {
-        for (const message of eventMessages(value)) {
-          push('message', message)
-          if (!message.order) continue
-          const key = orderStateKey(message.order)
-          if (seenOrderKeys.has(key)) continue
-          seenOrderKeys.add(key)
-          const userId = buyerIdForSession(message.sessionId)
-          const watched = orderSnapshots.get(userId)
-          if (watched) watched.set(message.order.orderId, { key, order: message.order })
-          push('order', {
-            order: { ...message.order, sessionId: message.sessionId, userId: userId || undefined, messageId: message.id, updatedAt: message.timestamp },
-            sessionId: message.sessionId,
-            userId: userId || undefined,
-            messageId: message.id,
-            source: 'message',
-            timestamp: message.timestamp,
-          })
-        }
-      })
-    } catch (error) {
-      push('error', { error: String(error?.message || error) })
-    }
-  }
-
-  window[QUEUE_KEY] = {
-    __version: HOOK_VERSION,
-    capabilities: ${JSON.stringify(doudianCapabilities)},
-    getAuthState: auth,
-    collectProducts,
-    getProductDetail,
-    listSessions,
-    listMessages,
-    sendMessage: sendText,
-    sendFile,
-    transferSession,
-    getOrders,
-    syncOrders,
-    diagnose: () => locateRuntime().slice(0, 30).map((item) => ({ path: item.path, methods: item.methods, score: item.score })),
-    drainEvents: () => { bindMessages(); return queue.splice(0, queue.length) },
-    dispose: () => {
-      disposed = true
-      try { if (typeof subscription === 'function') subscription(); else subscription?.unsubscribe?.() } catch (_) {}
-      subscription = null
-      if (orderPollTimer) clearInterval(orderPollTimer)
-      orderPollTimer = null
-      orderPollBusy = false
-      watchedOrderUsers.clear()
-      orderSnapshots.clear()
-      emittedOrderKeys.clear()
-      queue.length = 0
-    },
-  }
-  bindMessages()
-  push('ready', { capabilities: window[QUEUE_KEY].capabilities })
-})()`;
-const doudianHook = {
+const douyinHook = {
   id: "douyin-shop",
   label: "抖店",
-  version: hookVersion,
-  url: "https://im.jinritemai.com/pc_seller_v2/main/workspace",
-  match: ["*.jinritemai.com/*"],
-  capabilities: doudianCapabilities,
-  script: doudianHookScript,
-  runtimePages: [
-    {
-      id: "products",
-      url: "https://fxg.jinritemai.com/ffa/g/list?tab=all",
-      methods: ["collectProducts", "getProductDetail"],
-      refreshBeforeInvoke: true
-    }
-  ],
+  version: douyinHookManifest.version,
+  url: primaryPage?.url || "https://im.jinritemai.com/pc_seller_v2/main/workspace",
+  loginUrl: "https://fxg.jinritemai.com/login/common",
+  loginMatch: ["https://im.jinritemai.com/login*"],
+  capabilities: capabilities$1,
+  runtimePages: productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ["collectProducts", "getProductDetail"] }] : void 0,
+  script: createShellRuntimeScript(),
   source: "builtin"
 };
+douyinHook.script || "";
+function createShellRuntimeScript() {
+  return `(() => {
+${douyinHookRuntimeScript}
+  const runtime = window.__PLATFORM_HOOK__
+  if (!runtime) return
+  const unwrap = async (operation, input = {}) => {
+    const result = await runtime.invoke(operation, input)
+    if (result?.ok) return result.data
+    return { errorCode: result?.error?.code || 'PLATFORM_ERROR', error: result?.error?.message || 'Douyin operation failed' }
+  }
+  const message = (value) => {
+    const item = value && typeof value === 'object' ? value : {}
+    return {
+      id: item.id,
+      sessionId: item.conversationId,
+      senderId: item.senderId || '',
+      senderName: item.senderName || '',
+      content: item.content || '',
+      type: item.type || 'unknown',
+      isMine: item.direction === 'outbound',
+      timestamp: item.timestamp || Date.now(),
+      ...(item.attachments?.[0]?.url ? { avatar: item.attachments[0].url } : {}),
+      raw: item.raw,
+    }
+  }
+  const product = (value) => {
+    const item = value && typeof value === 'object' ? value : {}
+    return {
+      id: item.id,
+      goodsId: item.externalId,
+      name: item.title || '未命名商品',
+      price: item.price?.amount || 0,
+      stockQuantity: item.stockQuantity,
+      status: item.status,
+      images: item.images || [],
+      goodsUrl: item.url,
+      platform: 'douyin-shop',
+      raw: item.raw,
+    }
+  }
+  const order = (value, sessionId) => {
+    const item = value && typeof value === 'object' ? value : {}
+    const first = item.items?.[0] || {}
+    return {
+      id: item.id,
+      orderId: item.externalId,
+      status: item.status,
+      totalAmount: item.total?.amount,
+      quantity: first.quantity,
+      productId: first.productId || first.externalProductId,
+      productName: first.title,
+      shopId: item.shopId,
+      sessionId: item.conversationId || sessionId,
+      userId: item.buyer?.id,
+      buyerName: item.buyer?.name,
+      receiverName: item.receiver?.name,
+      shippingAddress: item.receiver?.address,
+      updatedAt: item.updatedAt || item.createdAt,
+      platform: 'douyin-shop',
+      raw: item.raw,
+    }
+  }
+  const event = (value) => {
+    const item = value && typeof value === 'object' ? value : {}
+    if (item.type === 'message.created') return { ...item, type: 'message', payload: { message: message(item.payload?.message) } }
+    if (item.type === 'order.created' || item.type === 'order.updated') {
+      return { ...item, type: 'order', payload: { ...item.payload, order: order(item.payload?.order, item.payload?.order?.conversationId || '') } }
+    }
+    if (item.type === 'runtime.error') return { ...item, type: 'error' }
+    return item
+  }
+  window.__platformHub = {
+    getAuthState: () => unwrap('auth.state'),
+    listSessions: async () => {
+      const rows = await unwrap('sessions.list')
+      return Array.isArray(rows) ? rows.map((item) => ({ ...item, unread: item.unreadCount || 0, avatar: item.avatarUrl })) : rows
+    },
+    listMessages: async (conversationId) => {
+      const rows = await unwrap('messages.history', { conversationId })
+      return Array.isArray(rows) ? rows.map(message) : rows
+    },
+    sendMessage: async (conversationId, text) => {
+      const result = await unwrap('messages.send.text', { conversationId, text })
+      return result?.errorCode ? { success: false, error: result.error, errorCode: result.errorCode } : { success: true, message: message(result) }
+    },
+    sendFile: async (conversationId, data, name, mimeType = 'image/png') => {
+      const result = await unwrap('messages.send.file', { conversationId, data, name, mimeType })
+      return result?.errorCode ? { success: false, error: result.error, errorCode: result.errorCode } : { success: true, message: message(result) }
+    },
+    collectProducts: async () => {
+      const rows = await unwrap('products.list')
+      return Array.isArray(rows) ? rows.map(product) : rows
+    },
+    getProductDetail: async (id) => {
+      const result = await unwrap('products.detail', { id })
+      return result?.errorCode ? result : product(result)
+    },
+    getOrders: async (conversationId, orderId) => {
+      const rows = await unwrap('orders.list', { conversationId, orderId })
+      return Array.isArray(rows) ? rows.map((item) => order(item, conversationId)) : rows
+    },
+    syncOrders: async (conversationId, orderId) => {
+      const rows = await unwrap('orders.list', { conversationId, orderId })
+      return rows?.errorCode ? rows : { orders: Array.isArray(rows) ? rows.map((item) => order(item, conversationId)) : [], authoritative: true, source: 'platform-runtime', syncedAt: Date.now() }
+    },
+    transferSession: (conversationId, target) => unwrap('handoff.transfer', { conversationId, targetId: target }),
+    drainEvents: async () => (await runtime.drainEvents()).map(event),
+    dispose: () => runtime.dispose(),
+  }
+})()`;
+}
 const capabilities = ["messages.listen", "messages.history", "messages.send", "messages.file", "sessions.list", "products.collect", "products.detail"];
 const goofishHook = {
   id: "goofish",
@@ -1487,11 +1317,11 @@ const goofishHook = {
   })()`
 };
 const builtinHooks = {
-  [doudianHook.id]: doudianHook,
+  [douyinHook.id]: douyinHook,
   [kuaishouHook.id]: kuaishouHook,
   [goofishHook.id]: goofishHook
 };
-const builtinPlatforms = [doudianHook, kuaishouHook, goofishHook].map((hook) => ({
+const builtinPlatforms = [douyinHook, kuaishouHook, goofishHook].map((hook) => ({
   id: hook.id,
   label: hook.label,
   url: hook.url,
@@ -1854,8 +1684,8 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("platform:event", event);
   });
   createWindow();
-  const doudian = manager.listAccounts().find((account) => account.platform === "douyin-shop");
-  if (doudian) void manager.open(doudian.id).catch((error) => console.error("[platform-hub] 打开抖店页面失败", error));
+  const douyin = manager.listAccounts().find((account) => account.platform === "douyin-shop");
+  if (douyin) void manager.open(douyin.id).catch((error) => console.error("[platform-hub] 打开抖店页面失败", error));
   app.on("activate", () => {
     if (!mainWindow) createWindow();
   });

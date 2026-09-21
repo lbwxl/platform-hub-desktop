@@ -71,8 +71,8 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('platform:event', event)
   })
   createWindow()
-  const doudian = manager.listAccounts().find((account) => account.platform === 'douyin-shop')
-  if (doudian) void manager.open(doudian.id).catch((error) => console.error('[platform-hub] 打开抖店页面失败', error))
+  const douyin = manager.listAccounts().find((account) => account.platform === 'douyin-shop')
+  if (douyin) void manager.open(douyin.id).catch((error) => console.error('[platform-hub] 打开抖店页面失败', error))
   app.on('activate', () => { if (!mainWindow) createWindow() })
 })
 

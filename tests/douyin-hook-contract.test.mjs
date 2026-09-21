@@ -26,7 +26,6 @@ test('Douyin package is independent from Legacy and uses no DOM or network inter
   const packageJson = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
   assert.equal(packageJson.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(packageJson.dependencies['@platform-hub/hook-host'], 'workspace:*')
-  assert.equal(packageJson.dependencies['@platform-hub/doudian-hook'], undefined)
   assert.doesNotMatch(douyinHookRuntimeScript, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
   assert.match(douyinHookRuntimeScript, /pigeon\.jinritemai\.com\/chat\/api\/backstage\/conversation\/transfer_conversation/)
 })

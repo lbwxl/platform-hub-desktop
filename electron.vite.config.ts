@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['@platform-hub/doudian-hook'] })],
+    plugins: [externalizeDepsPlugin({ exclude: ['@platform-hub/douyin-hook'] })],
     build: { rollupOptions: { input: resolve('src/main/index.ts') } }
   },
   preload: {
