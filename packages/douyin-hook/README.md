@@ -6,8 +6,9 @@ Unified Hook Protocol implementation for the Douyin merchant workbench.
 
 - `primary`: `https://im.jinritemai.com/pc_seller_v2/main/workspace`
 - `products`: `https://fxg.jinritemai.com/ffa/g/list?tab=all`
+- `orders`: `https://fxg.jinritemai.com/ffa/g/list?tab=all`
 
-The primary page owns authentication, sessions, messages, orders, and handoff. The products page is an on-demand worker. `handoff.targets.list` exposes the official targets currently available to the logged-in customer-service account; the application selects a target and calls `handoff.transfer` when its business flow requires handoff.
+The primary page owns authentication, sessions, messages, and handoff. The products page is an on-demand worker. The orders page is a persistent commerce worker for the full-shop order snapshot and order change listener. `handoff.targets.list` exposes the official targets currently available to the logged-in customer-service account; the application selects a target and calls `handoff.transfer` when its business flow requires handoff.
 
 ## Runtime sources
 
@@ -15,10 +16,12 @@ The primary page owns authentication, sessions, messages, orders, and handoff. T
 - Realtime messages: official `_message$`, `_messageUpsert$`, and `_batchUpsert$` streams, with a bounded history polling fallback only when those streams are unavailable
 - Text and image sending: native IM `sendText` / `sendImage` plus `customRequestUpload`
 - Products: the official product page's loaded `GOODS_SWR_CACHE_V1` state
-- Orders: official order store methods when present, combined with normalized order cards from session history
+- Orders: the persistent commerce page polls the same-origin official `/api/order/searchlist` endpoint; the primary page only resolves conversation-scoped order context when needed
 - Handoff targets and transfer: `uiState.chatRooms.transferConv`
 
 The implementation does not read or operate DOM elements. Challenge handling returns `CHALLENGE_REQUIRED` to `HookSession`, which shows the official page and performs the Foundation recovery flow.
+
+For the normalized DTOs, result envelope, event payloads, and Electron shell compatibility mapping, see [Douyin Hook 数据契约](../../docs/douyin-hook-data-contract.md).
 
 ## Real account verification
 

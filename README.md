@@ -4,6 +4,8 @@
 
 正式抖店实现位于 `packages/douyin-hook`（包名 `@platform-hub/douyin-hook`），通过 `window.__PLATFORM_HOOK__` 提供统一 Page Hook Protocol。旧 Legacy 包不再作为新代码、测试或脚本的目标。
 
+抖店各项能力的 DTO、事件、错误和 Electron 壳层兼容格式见：[Douyin Hook 数据契约](docs/douyin-hook-data-contract.md)。
+
 快手小店能力位于 `packages/kuaishou-hook`（包名 `@platform-hub/kuaishou-hook`），使用相同的 typed client、订单同步和订单事件协议，默认消息页为 `https://im.kwaixiaodian.com/workbench`。
 
 ## 当前能力
