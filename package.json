@@ -16,7 +16,7 @@
     "preview": "electron-vite preview",
     "build:foundation": "pnpm --dir packages/hook-sdk build && pnpm --dir packages/hook-host build && pnpm --dir packages/fake-hook build",
     "build:packages": "pnpm build:foundation && pnpm build:hooks",
-    "typecheck": "pnpm --dir packages/hook-sdk typecheck && pnpm --dir packages/hook-host typecheck && pnpm --dir packages/fake-hook typecheck && pnpm --dir packages/kuaishou-hook typecheck && pnpm --dir packages/douyin-hook typecheck && vue-tsc --noEmit -p tsconfig.node.json && vue-tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "pnpm --dir packages/hook-sdk typecheck && pnpm --dir packages/hook-host typecheck && pnpm --dir packages/fake-hook typecheck && pnpm --dir packages/kuaishou-hook typecheck && pnpm --dir packages/douyin-hook typecheck && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node --test tests/*.test.mjs",
     "test:unit": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-sdk.test.mjs tests/douyin-hook-unit.test.mjs",
     "test:contract": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-phase0.test.mjs tests/douyin-hook-contract.test.mjs",
@@ -28,16 +28,18 @@
   "dependencies": {
     "@platform-hub/douyin-hook": "workspace:*",
     "@platform-hub/kuaishou-hook": "workspace:*",
-    "lucide-vue-next": "^0.541.0",
-    "vue": "^3.5.20"
+    "lucide-react": "^1.47.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.3",
-    "@vitejs/plugin-vue": "^6.0.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "electron": "37.3.1",
     "electron-vite": "^4.0.1",
     "typescript": "^5.9.2",
-    "vite": "^7.1.3",
-    "vue-tsc": "^3.0.6"
+    "vite": "^7.1.3"
   }
 }

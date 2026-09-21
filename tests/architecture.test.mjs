@@ -9,7 +9,7 @@ const douyinPackage = JSON.parse(await readFile(new URL('../packages/douyin-hook
 const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', import.meta.url), 'utf8')
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
-const renderer = await readFile(new URL('../src/renderer/src/App.vue', import.meta.url), 'utf8')
+const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
 const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/hook-sdk/package.json', import.meta.url), 'utf8'))
 const hookHostPackage = JSON.parse(await readFile(new URL('../packages/hook-host/package.json', import.meta.url), 'utf8'))
 const foundationSources = await Promise.all([
@@ -101,7 +101,7 @@ test('快手自发文本使用有界缓存回填发送瞬间的空正文事件',
   assert.match(kuaishouHook, /SENT_TEXT_MAX = 100/)
   assert.match(kuaishouHook, /pendingTextForMessage/)
   assert.match(kuaishouHook, /pendingSentTexts\.clear\(\)/)
-  assert.match(renderer, /upsertPlatformMessage\(messages\.value, message\)/)
+  assert.match(renderer, /upsertPlatformMessage\(current, message\)/)
 })
 
 test('平台操作遇到登录状态时会等待并重试', () => {
@@ -149,8 +149,8 @@ test('多账号 CDP 心跳合并调用、阻止重叠并回收伴随页', () => 
 })
 
 test('工作台认证完成后自动加载会话并接收未知会话消息', () => {
-  assert.match(renderer, /if \(!wasAuthenticated && status\.value\.authenticated\) void refreshSessions\(false\)/)
-  assert.match(renderer, /sessions\.value = \[session, \.\.\.sessions\.value\]/)
+  assert.match(renderer, /if \(event\.type === 'message'\)/)
+  assert.match(renderer, /setSessions\(\(current\) => current\.some\(\(item\) => item\.id === message\.sessionId\)/)
 })
 
 test('账号状态串行原子保存并可从有效备份恢复', () => {
