@@ -44,12 +44,11 @@ export const douyinHookManifest: HookManifest = {
     },
     {
       id: DOUYIN_ORDERS_PAGE_ID,
-      kind: 'worker',
+      kind: 'persistent',
       // This is the confirmed commerce page target. The order API is
-      // available in this same authenticated fxg partition even when the
-      // page is not navigated to the order-management sub-route.
+      // available in this same authenticated fxg partition. The page stays
+      // resident so the official notification runtime can wake order refreshes.
       url: 'https://fxg.jinritemai.com/ffa/g/list?tab=all',
-      idleTtlMs: 30_000,
     },
   ],
   operations: {

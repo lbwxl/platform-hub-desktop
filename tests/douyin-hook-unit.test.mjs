@@ -114,6 +114,10 @@ test('Douyin orders normalize statuses and meaningful changes', () => {
   assert.equal(first.externalId, 'order-1')
   assert.deepEqual(first.total, { amount: 19.9, currency: 'CNY' })
   assert.deepEqual(douyinOrderChangedFields(first, next), ['status', 'items'])
+  assert.equal(normalizeDouyinOrder({ shop_order_id: 'order-processing', order_status: 2, pay_time: 1_700_000_001 }).status, 'processing')
+  assert.equal(normalizeDouyinOrder({ shop_order_id: 'order-shipped', order_status: 3, pay_time: 1_700_000_001 }).status, 'shipped')
+  assert.equal(normalizeDouyinOrder({ shop_order_id: 'order-completed', order_status: 5, order_status_desc: '已完成', pay_time: 1_700_000_001 }).status, 'completed')
+  assert.equal(normalizeDouyinOrder({ shop_order_id: 'order-refunded', order_status: 4, order_status_desc: '已关闭', aftersale_sum_status_desc: '退款成功' }).status, 'refunded')
 })
 
 test('Douyin platform failures map to Hook error protocol', () => {

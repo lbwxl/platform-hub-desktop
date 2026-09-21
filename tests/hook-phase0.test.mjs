@@ -377,6 +377,51 @@ test('HookHost foundation contains no platform-specific branch', async () => {
   assert.doesNotMatch(sources.join('\n'), /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
 })
 
+test('persistent auxiliary pages stay resident, drain events, recover challenges, and isolate partitions', async () => {
+  const manifest = {
+    ...fakeHookManifest,
+    pages: fakeHookManifest.pages.map((page) => page.id === 'orders' ? { ...page, kind: 'persistent' } : page),
+  }
+  const factory = new FakeHookPageFactory({ pushEvents: false })
+  const host = new HookHost({ pageFactory: factory })
+  const a = host.createSession(manifest, { sessionId: 'persistent-a', shopId: 'persistent-shop-a', eventPolling: false, workerIdleTtlMs: 20 })
+  const b = host.createSession(manifest, { sessionId: 'persistent-b', shopId: 'persistent-shop-b', eventPolling: false, workerIdleTtlMs: 20 })
+  const aEvents = []
+  const bEvents = []
+  a.subscribe((event) => aEvents.push(event))
+  b.subscribe((event) => bEvents.push(event))
+  await Promise.all([a.start(), b.start()])
+  assert.equal(a.persistentPages.ids.includes('orders'), true)
+  assert.equal(b.persistentPages.ids.includes('orders'), true)
+  assert.notEqual(factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a'))?.partition, factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-b'))?.partition)
+
+  await a.invoke('orders.listen')
+  const created = {
+    id: 'persistent-order', externalId: 'external-persistent-order', shopId: 'persistent-shop-a',
+    conversationId: 'conversation-1', buyer: { id: 'buyer-1', name: 'Fake 买家' }, status: 'created',
+    items: [{ productId: 'product-1', externalProductId: 'external-product-1', title: 'Fake 商品', quantity: 1 }],
+    createdAt: Date.now(), updatedAt: Date.now(),
+  }
+  assert.equal(factory.emitOrder('persistent-shop-a', created), true)
+  assert.equal(await a.pollEvents(), 1)
+  assert.equal(aEvents.some((event) => event.type === 'order.created'), true)
+  await new Promise((resolve) => setTimeout(resolve, 35))
+  assert.equal(a.persistentPages.ids.includes('orders'), true)
+
+  factory.requireChallenge('persistent-shop-a', 'orders', 'orders.list')
+  const pending = a.invoke('orders.list')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a'))?.visible, true)
+  factory.solveChallenge('persistent-shop-a', 'orders', 'orders.list')
+  assert.equal((await pending).ok, true)
+  assert.ok(factory.runtimeRecords.filter((runtime) => runtime.pageId === 'orders').length >= 3)
+  assert.equal(bEvents.length, 0)
+  await host.disposeSession(a.sessionId)
+  assert.equal(b.isStarted, true)
+  assert.equal(b.persistentPages.ids.includes('orders'), true)
+  await host.dispose()
+})
+
 function pageContext() {
   return {
     sessionId: 'electron-session',

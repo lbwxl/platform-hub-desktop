@@ -171,6 +171,15 @@ export function normalizeDouyinOrder(value: unknown, context: { shopId?: string;
   const receiverName = text(item.receiverName ?? item.receiver_name)
   const phoneMasked = text(item.phoneMasked ?? item.receiver_phone_mask ?? item.mobile_mask)
   const address = text(item.shippingAddress ?? item.shipping_address ?? item.receiverAddress ?? item.receiver_address)
+  const rawStatus = item.status_desc ?? item.order_status_desc ?? item.status ?? item.orderStatus ?? item.order_status
+  const afterSaleStatus = item.platformAftersaleStatus ?? item.aftersaleStatus ?? item.aftersale_sum_status_desc ?? item.after_sale_status
+  const afterSaleNormalized = normalizeDouyinOrderStatus(afterSaleStatus)
+  let normalizedStatus = afterSaleNormalized !== 'unknown' ? afterSaleNormalized : normalizeDouyinOrderStatus(rawStatus)
+  if (normalizedStatus === 'unknown') {
+    const code = text(item.order_status ?? item.orderStatus ?? item.status)
+    normalizedStatus = ({ '1': 'created', '2': 'processing', '3': 'shipped', '4': 'cancelled' } as Record<string, HookOrderStatus>)[code] || normalizedStatus
+  }
+  const status = normalizedStatus === 'unknown' && finiteNumber(item.pay_time) ? 'paid' : normalizedStatus
   return {
     id: `douyin:${shopId || 'unknown'}:${externalId}`,
     externalId,
@@ -182,7 +191,7 @@ export function normalizeDouyinOrder(value: unknown, context: { shopId?: string;
         ...(text(item.buyerName ?? item.buyer_name) ? { name: text(item.buyerName ?? item.buyer_name) } : {}),
       },
     } : {}),
-    status: normalizeDouyinOrderStatus(item.status ?? item.orderStatus ?? item.order_status ?? item.status_desc ?? item.order_status_desc),
+    status,
     items,
     ...(total !== undefined ? { total: { amount: total, currency: 'CNY' } } : {}),
     ...((receiverName || phoneMasked || address) ? { receiver: { ...(receiverName ? { name: receiverName } : {}), ...(phoneMasked ? { phoneMasked } : {}), ...(address ? { address } : {}) } } : {}),

@@ -21,9 +21,9 @@ HookResult<T>
 | --- | --- | --- |
 | `primary` | `https://im.jinritemai.com/pc_seller_v2/main/workspace` | 登录、会话、消息、转人工 |
 | `products` | `https://fxg.jinritemai.com/ffa/g/list?tab=all` | 商品列表和详情，按需创建 |
-| `orders` | `https://fxg.jinritemai.com/ffa/g/list?tab=all` | 全店订单列表和订单变化监听，持久运行 |
+| `orders` | `https://fxg.jinritemai.com/ffa/g/list?tab=all` | 全店订单列表和订单变化监听，持久辅助页 |
 
-订单页必须使用持久 worker。客服工作台只提供会话相关订单上下文，不能作为全店订单水位来源。
+订单页必须使用 Foundation 的 persistent auxiliary page。客服工作台只提供会话相关订单上下文，不能作为全店订单水位来源。
 
 ## 2. 统一 Result 协议
 
@@ -330,7 +330,7 @@ interface HookOrder {
 
 ### 8.2 订单列表
 
-Operation：`orders.list`（只在 `orders` worker page 执行）
+Operation：`orders.list`（只在 `orders` persistent auxiliary page 执行）
 
 ```ts
 const result = await runtime.invoke('orders.list', {})
@@ -357,10 +357,11 @@ const result = await runtime.invoke('orders.listen', {})
 监听流程：
 
 1. 首次读取全店订单快照并建立 watermark。
-2. 快照中的历史订单不会冒充 `order.created`。
-3. 订单实际新增时发布 `order.created`。
-4. 状态、商品、金额、收件人等有意义字段变化时发布 `order.updated`。
-5. 没有实际变化不会重复发布事件。
+2. 订阅抖店页面已经建立的官方通知 runtime；通知对象中的 `msgItem.ext_info` 只作为订单变化唤醒信号。
+3. 从通知提取 `orderId` 后，直接请求 `/api/order/searchlist?...&search_words=<orderId>` 获取权威订单快照。
+4. 快照中的历史订单不会冒充 `order.created`；历史订单收到退款等更新通知时发布 `order.updated`。
+5. 订单实际新增时发布 `order.created`，状态、商品、金额、收件人等有意义字段变化时发布 `order.updated`。
+6. 没有实际变化不会重复发布事件；通知重复也不会重复发布事件。
 
 ### 8.4 订单事件
 
@@ -383,7 +384,7 @@ for (const event of await runtime.drainEvents()) {
 }
 ```
 
-`created`、`refunding` 等是平台实际观察到的状态，不是每笔订单必经的生命周期。抖店有时会从“已付款”直接返回“退款成功”，此时不会伪造 `refunding`；如果用户下单后立即完成支付，首个被轮询到的快照也可能已经是 `paid`。
+`created`、`refunding` 等是平台实际观察到的状态，不是每笔订单必经的生命周期。抖店有时会从“已付款”直接返回“退款成功”，此时不会伪造 `refunding`；`pay_time` 只在平台没有可识别状态时作为 `paid` 兜底，不能覆盖“待发货”等权威状态。
 
 ## 9. 转人工
 

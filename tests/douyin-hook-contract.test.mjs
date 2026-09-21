@@ -18,6 +18,7 @@ test('Douyin manifest routes only supported operations and passes protocol valid
   assert.equal(douyinHookManifest.platform, 'douyin')
   assert.equal(douyinHookManifest.operations['orders.list'].page, 'orders')
   assert.equal(douyinHookManifest.operations['orders.listen'].page, 'orders')
+  assert.equal(douyinHookManifest.pages.find((page) => page.id === 'orders').kind, 'persistent')
   assert.equal(douyinHookManifest.operations['products.list'].page, 'products')
   assert.equal(douyinHookManifest.operations['handoff.targets.list'].page, 'primary')
 })
@@ -179,6 +180,7 @@ test('Douyin page runtime handshake, normalized operations, events, handoff and 
 test('Douyin commerce page polls the official shop order API and emits lifecycle changes', async () => {
   const requests = []
   const timers = []
+  let notificationListener
   let clock = Date.now()
   let row = {
     shop_order_id: 'shop-order-1',
@@ -196,6 +198,7 @@ test('Douyin commerce page polls the official shop order API and emits lifecycle
     window: {
       __PLATFORM_HOOK_PAGE_ID__: 'orders',
       __shop_id: 'shop-1',
+      __DOUYIN_NOTIFICATION_RUNTIME__: { subscribe(callback) { notificationListener = callback; return { unsubscribe() { notificationListener = undefined } } } },
       location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
       async fetch(url) {
         requests.push(String(url))
@@ -224,19 +227,27 @@ test('Douyin commerce page polls the official shop order API and emits lifecycle
   assert.equal(listening.data.listening, true)
   assert.equal((await runtime.drainEvents()).length, 0)
 
-  const poll = timers.find((timer) => timer.interval === 1000)
-  assert.ok(poll)
-  const advance = async (next) => { row = { ...row, ...next }; clock += 6_000; await poll.callback(); await new Promise((resolve) => setImmediate(resolve)) }
+  assert.equal(typeof notificationListener, 'function')
+  const advance = async (next, type = '6001') => { row = { ...row, ...next }; clock += 6_000; notificationListener({ type, msgItem: { ext_info: JSON.stringify({ order_id: 'shop-order-1' }) } }); await new Promise((resolve) => setImmediate(resolve)); await new Promise((resolve) => setImmediate(resolve)) }
   await advance({ order_status: 2, order_status_info: { order_status_text: '待发货' }, pay_time: 1_700_000_001 })
-  await advance({ product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款中' } }] })
-  await advance({ product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款成功' } }] })
+  await advance({ product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款中' } }] }, 'refund')
+  await advance({ product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款成功' } }] }, 'refund')
   const events = await runtime.drainEvents()
   assert.deepEqual(
     Array.from(events.filter((event) => event.type === 'order.updated'), (event) => event.payload.order.status),
-    ['paid', 'refunding', 'refunded'],
+    ['processing', 'refunding', 'refunded'],
   )
-  assert.ok(requests.every((url) => url.includes('/api/order/searchlist?')))
+  assert.ok(requests.some((url) => url.includes('/api/order/searchlist?') && url.includes('search_words=shop-order-1')))
   await runtime.dispose()
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const recoveredRuntime = context.window.__PLATFORM_HOOK__
+  await recoveredRuntime.drainEvents()
+  assert.equal(typeof notificationListener, 'function')
+  row = { ...row, order_status: 4, order_status_info: { order_status_text: '已关闭' }, product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款成功' } }] }
+  notificationListener({ msgItem: { ext_info: JSON.stringify({ order_id: 'shop-order-1' }) }, event_id: 'after-reload' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.ok((await recoveredRuntime.drainEvents()).some((event) => event.type === 'order.updated' && event.payload.order.status === 'refunded'))
+  await recoveredRuntime.dispose()
 })
 
 test('Douyin handoff falls back once to the official page request service when the page store has no transfer action', async () => {

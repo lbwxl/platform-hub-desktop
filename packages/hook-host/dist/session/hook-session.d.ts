@@ -1,5 +1,6 @@
 import { type HookEvent, type HookLogger, type HookManifest, type HookOperation, type HookResult } from '@platform-hub/hook-sdk';
 import type { HookPageFactory } from '../pages/types.js';
+import { PersistentPageManager } from '../pages/persistent-page-manager.js';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
 import { WorkerScheduler } from '../scheduler/worker-scheduler.js';
 export interface HookEventPollingOptions {
@@ -26,9 +27,11 @@ export declare class HookSession {
     private readonly options;
     readonly partition: string;
     readonly workerPages: WorkerPageManager;
+    readonly persistentPages: PersistentPageManager;
     private primaryPage?;
     private primaryRuntime?;
     private primaryRuntimeUncertain;
+    private readonly persistentRuntimeUncertain;
     private primaryPushUnsubscribe?;
     private readonly listeners;
     private readonly lifecycleController;
@@ -55,6 +58,7 @@ export declare class HookSession {
     pollEvents(): Promise<number>;
     dispose(): Promise<void>;
     private invokePrimary;
+    private invokePersistent;
     private refreshPrimaryRuntime;
     private invokeWithRecovery;
     private emit;

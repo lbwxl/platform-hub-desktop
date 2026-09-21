@@ -63,6 +63,7 @@ export class HookHost {
     }
 }
 export * from './pages/types.js';
+export * from './pages/persistent-page-manager.js';
 export * from './pages/worker-page-manager.js';
 export * from './scheduler/worker-scheduler.js';
 export * from './session/hook-session.js';

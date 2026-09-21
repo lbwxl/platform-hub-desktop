@@ -30,7 +30,11 @@ export interface PageHookRuntime {
 
 export interface HookPageDefinition {
   id: string
-  kind: 'primary' | 'worker'
+  /**
+   * primary is the session's main page, persistent is a long-lived auxiliary
+   * page, and worker is an ephemeral operation page.
+   */
+  kind: 'primary' | 'persistent' | 'worker'
   url?: string
   idleTtlMs?: number
 }

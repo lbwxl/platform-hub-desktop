@@ -17,21 +17,32 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   const seenMessages = new Set()
   const seenFingerprints = new Set()
   const orderSnapshots = new Map()
-  const orderWatches = new Map()
   const messageOrderSnapshots = new Map()
   let disposed = false
   let messageCleanup = null
-  let orderTimer = null
-  let orderPollBusy = false
-  const ORDER_WATCH_MAX = 50
-  const ORDER_WATCH_TTL_MS = 30 * 60 * 1000
-  const ORDER_ACTIVE_WINDOW_MS = 2 * 60 * 1000
-  // The commerce API is a snapshot endpoint. Keep the active window at the
-  // same cadence as the host drain loop so short-lived created/refunding
-  // states are not skipped when a human completes the next transition.
-  const ORDER_ACTIVE_INTERVAL_MS = 1 * 1000
-  const ORDER_IDLE_INTERVAL_MS = 30 * 1000
-  const ORDER_POLL_BATCH_SIZE = 1
+  let orderReconciliationTimer = null
+  let orderReconciliationBusy = false
+  let orderNotificationCleanup = null
+  let orderNotificationSources = []
+  const listenerState = () => {
+    try { return window.sessionStorage?.getItem('__PLATFORM_HOOK_ORDER_LISTENING__') === '1' || window.__PLATFORM_HOOK_ORDER_LISTENING__ === true } catch (_) { return window.__PLATFORM_HOOK_ORDER_LISTENING__ === true }
+  }
+  const listenerStartedAt = () => {
+    try { return Number(window.sessionStorage?.getItem('__PLATFORM_HOOK_ORDER_LISTENER_STARTED_AT__')) || Number(window.__PLATFORM_HOOK_ORDER_LISTENER_STARTED_AT__) || 0 } catch (_) { return Number(window.__PLATFORM_HOOK_ORDER_LISTENER_STARTED_AT__) || 0 }
+  }
+  const setListenerState = (startedAt) => {
+    window.__PLATFORM_HOOK_ORDER_LISTENING__ = true
+    window.__PLATFORM_HOOK_ORDER_LISTENER_STARTED_AT__ = startedAt
+    try {
+      window.sessionStorage?.setItem('__PLATFORM_HOOK_ORDER_LISTENING__', '1')
+      window.sessionStorage?.setItem('__PLATFORM_HOOK_ORDER_LISTENER_STARTED_AT__', String(startedAt))
+    } catch (_) {}
+  }
+  let orderListening = listenerState()
+  let orderListenerStartedAt = listenerStartedAt()
+  const notificationFingerprints = new Set()
+  const ORDER_RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000
+  const ORDER_RECONCILIATION_LIMIT = 20
 
   const store = () => window.ss?._frontStore || window.ss?.instance || null
   const pageContext = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData || null
@@ -353,17 +364,19 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const amount = number(item.totalAmount ?? item.total_amount ?? item.orderAmount ?? item.order_amount_yuan ?? item.price)
     const cents = number(item.pay_amount ?? item.order_amount ?? item.total_fee)
     const total = amount !== undefined ? amount : cents !== undefined ? cents / 100 : undefined
-    const platformStatus = text(item.platformStatus || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc || item.status)
+    const platformStatus = text(item.platformStatus || item.status_desc || item.order_status_desc || item.status || item.orderStatus || item.order_status)
     const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc).trim()
     const effectiveAftersaleStatus = /^[-—]?$/.test(platformAftersaleStatus) ? '' : platformAftersaleStatus
     const status = (effectiveAftersaleStatus || platformStatus).toLowerCase()
-    const normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
+    let normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
+    if (normalizedStatus === 'unknown') normalizedStatus = ({ '1': 'created', '2': 'processing', '3': 'shipped', '4': 'cancelled' })[text(item.order_status || item.orderStatus || item.status)] || normalizedStatus
+    const fallbackStatus = normalizedStatus === 'unknown' && number(item.pay_time) ? 'paid' : normalizedStatus
     return {
       id: 'douyin:' + (shopId || 'unknown') + ':' + externalId, externalId,
       ...(shopId ? { shopId } : {}),
       ...(text(item.conversationId || item.sessionId || context.conversationId) ? { conversationId: text(item.conversationId || item.sessionId || context.conversationId) } : {}),
       ...((text(item.buyerId || item.userId) || text(item.buyerName || item.buyer_name)) ? { buyer: { ...(text(item.buyerId || item.userId) ? { id: text(item.buyerId || item.userId) } : {}), ...(text(item.buyerName || item.buyer_name) ? { name: text(item.buyerName || item.buyer_name) } : {}) } } : {}),
-      status: normalizedStatus, items,
+      status: fallbackStatus, items,
       ...(total !== undefined ? { total: { amount: total, currency: 'CNY' } } : {}),
       ...((text(item.receiverName || item.receiver_name) || text(item.receiverAddress || item.receiver_address) || text(item.phoneMasked || item.receiver_phone_mask)) ? { receiver: { ...(text(item.receiverName || item.receiver_name) ? { name: text(item.receiverName || item.receiver_name) } : {}), ...(text(item.phoneMasked || item.receiver_phone_mask) ? { phoneMasked: text(item.phoneMasked || item.receiver_phone_mask) } : {}), ...(text(item.receiverAddress || item.receiver_address) ? { address: text(item.receiverAddress || item.receiver_address) } : {}) } } : {}),
       ...(time(item.createdAt || item.create_time || item.order_create_time) ? { createdAt: time(item.createdAt || item.create_time || item.order_create_time) } : {}),
@@ -477,9 +490,16 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     if (PAGE !== 'orders') return []
     const request = window['fetch']
     if (typeof request !== 'function') return []
-    const query = 'page=0&pageSize=100&order_by=create_time&order=desc&tab=all'
+    const query = [
+      ['page', '0'],
+      ['pageSize', explicitOrderId ? '20' : '100'],
+      ['order_by', 'create_time'],
+      ['order', 'desc'],
+      ['tab', 'all'],
+      ...(explicitOrderId ? [['search_words', explicitOrderId]] : []),
+    ].map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(value)).join('&')
     try {
-      const response = await request.call(window, '/api/order/searchlist?' + query.toString(), { credentials: 'include' })
+      const response = await request.call(window, '/api/order/searchlist?' + query, { credentials: 'include' })
       if (!response?.ok) return []
       const payload = await response.json()
       const rows = array(payload?.data)
@@ -502,19 +522,20 @@ export const douyinHookRuntimeScript = String.raw `(() => {
         const receiver = value.receiver_info && typeof value.receiver_info === 'object' ? value.receiver_info : {}
         const aftersale = productRows.flatMap((row) => array(row.after_sale_orders)).map((row) => text(row?.after_sale_text || row?.aftersale_status_class_string || row?.after_sale_status_remark)).filter(Boolean).join(' ')
         const statusText = text(value.order_status_info?.order_status_text || value.status_desc || value.order_status_desc || value.order_status)
-        const paidStatus = value.pay_time ? '已付款' : statusText
         return {
           ...value,
           order_id: value.shop_order_id || value.order_id,
           sku_order_list: productRows,
-          order_status_desc: paidStatus,
+          // Keep the platform's status text authoritative. pay_time is only a
+          // fallback when the platform omits a usable status.
+          order_status_desc: statusText,
           aftersale_sum_status_desc: aftersale,
           user_id: value.user_id,
           post_receiver: receiver.post_receiver,
           mobile: receiver.post_tel || receiver.post_tel_mask,
           post_address: receiver.post_addr,
           createdAt: value.create_time,
-          update_time: value.pay_time || value.update_time || value.create_time,
+          update_time: value.update_time || value.pay_time || value.create_time,
           ...(firstProduct.product_id ? { product_id: firstProduct.product_id } : {}),
         }
       })
@@ -577,48 +598,200 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     collected.push(...messageOrders)
     return mergeOrders(collected)
   }
-  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver])
-  const pruneOrderWatches = (now = Date.now()) => {
-    for (const [key, watch] of orderWatches) if (now - watch.lastActiveAt >= ORDER_WATCH_TTL_MS) { orderWatches.delete(key); orderSnapshots.delete(key) }
-    const overflow = orderWatches.size - ORDER_WATCH_MAX
-    if (overflow > 0) {
-      for (const [key] of [...orderWatches.entries()].sort((left, right) => left[1].lastActiveAt - right[1].lastActiveAt).slice(0, overflow)) { orderWatches.delete(key); orderSnapshots.delete(key) }
-    }
+  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver, item.buyer])
+  const changedOrderFields = (previous, next) => ['status', 'items', 'total', 'receiver', 'buyer', 'conversationId'].filter((key) => JSON.stringify(previous?.[key]) !== JSON.stringify(next?.[key]))
+  const orderSnapshot = (orderId) => {
+    const current = orderSnapshots.get('*') || new Map()
+    return current.get(orderId)
   }
-  const touchOrderWatch = (conversationId) => {
-    const key = orderWatches.has(conversationId) ? conversationId : orderWatches.has('*') ? '*' : ''
-    if (!key) return
-    const watch = orderWatches.get(key)
-    const now = Date.now()
-    watch.lastActiveAt = now
-    watch.nextPollAt = Math.min(watch.nextPollAt, now)
+  const saveOrderSnapshot = (item) => {
+    const current = orderSnapshots.get('*') || new Map()
+    current.set(item.externalId, item)
+    orderSnapshots.set('*', current)
   }
-  const watchOrders = async () => {
-    if (disposed || orderPollBusy || !orderWatches.size) return
-    const startedAt = Date.now()
-    pruneOrderWatches(startedAt)
-    const due = [...orderWatches.entries()].filter(([, watch]) => watch.nextPollAt <= startedAt).sort((left, right) => left[1].nextPollAt - right[1].nextPollAt).slice(0, ORDER_POLL_BATCH_SIZE)
-    if (!due.length) return
-    orderPollBusy = true
-    try {
-      for (const [conversationId, watch] of due) {
-        const previous = orderSnapshots.get(conversationId) || new Map()
-        const current = await orders(conversationId === '*' ? '' : conversationId, watch.orderId)
-        const next = new Map(current.map((item) => [item.externalId, item]))
-        const now = Date.now()
-        watch.nextPollAt = now + (now - watch.lastActiveAt <= ORDER_ACTIVE_WINDOW_MS ? ORDER_ACTIVE_INTERVAL_MS : ORDER_IDLE_INTERVAL_MS)
-        if (!next.size && previous.size) continue
-        for (const [id, item] of next) {
-          const old = previous.get(id)
-          if (!old) { emit({ type: 'order.created', payload: { order: item } }); continue }
-          if (orderKey(old) !== orderKey(item)) {
-            const changedFields = ['status', 'items', 'total', 'receiver'].filter((key) => JSON.stringify(old[key]) !== JSON.stringify(item[key]))
-            emit({ type: 'order.updated', payload: { order: item, previous: old, changedFields } })
-          }
-        }
-        orderSnapshots.set(conversationId, next)
+  const notificationObject = (value) => {
+    if (typeof value === 'string') value = json(value)
+    const visited = new Set()
+    const queue = [value]
+    while (queue.length && visited.size < 100) {
+      const item = queue.shift()
+      if (!item || typeof item !== 'object' || visited.has(item)) continue
+      visited.add(item)
+      if (item.msgItem || item.msg_item || item.messageItem) {
+        const nested = item.msgItem || item.msg_item || item.messageItem
+        return typeof nested === 'string' ? json(nested) : nested
       }
-    } finally { orderPollBusy = false }
+      for (const key of ['data', 'payload', 'message', 'item', 'items', 'list', 'messages', 'notice', 'notification']) {
+        const nested = item[key]
+        if (Array.isArray(nested)) queue.push(...nested)
+        else if (nested && typeof nested === 'object') queue.push(nested)
+      }
+    }
+    return value && typeof value === 'object' ? value : {}
+  }
+  const notificationOrderId = (value) => {
+    const item = notificationObject(value)
+    const rawExt = item.ext_info || item.extInfo || item.ext || item.extra
+    const ext = json(rawExt)
+    const candidates = [
+      ext.order_id, ext.shop_order_id, ext.orderId, ext.shopOrderId, ext.order_id_str, ext.shop_order_id_str,
+      ext.point_info && json(ext.point_info).shop_order_id,
+      item.order_id, item.shop_order_id, item.orderId, item.shopOrderId,
+    ]
+    const urls = [rawExt, ext.url, ext.detail_url, ext.order_url, ext.order_detail_url, ext.orderDetailUrl, ext.order_detail_url_h5, item.url].map(text).filter(Boolean)
+    const pending = [ext]
+    const visited = new Set()
+    while (pending.length && visited.size < 100) {
+      const current = pending.shift()
+      if (!current || typeof current !== 'object' || visited.has(current)) continue
+      visited.add(current)
+      for (const [key, nested] of Object.entries(current)) {
+        if (/(?:order.*id|id.*order)/i.test(key)) candidates.push(nested)
+        if (/url|link/i.test(key) && typeof nested === 'string') urls.push(nested)
+        if (nested && ['object', 'function'].includes(typeof nested)) pending.push(nested)
+      }
+    }
+    for (const url of urls) {
+      try {
+        const parsed = new URL(url, location.origin)
+        candidates.push(parsed.searchParams.get('order_id'), parsed.searchParams.get('orderId'), parsed.searchParams.get('shop_order_id'))
+      } catch (_) {}
+      const matches = url.match(/\b\d{8,24}\b/g)
+      if (matches) candidates.push(...matches)
+    }
+    const orderId = candidates.map(identifier).find(Boolean) || ''
+    return orderId ? {
+      orderId,
+      type: text(item.type || item.msg_type || item.notice_type || ext.type || ext.msg_type),
+      eventId: identifier(item.event_id || item.eventId || item.msg_id || item.id || ext.event_id || ext.eventId || ext.msg_id),
+      bizType: text(item.biz_type || item.bizType || ext.biz_type || ext.bizType),
+      timestamp: time(item.timestamp || item.create_time || ext.timestamp || ext.create_time) || Date.now(),
+      raw: { type: item.type || item.msg_type || item.notice_type, extInfo: ext },
+    } : undefined
+  }
+  const isCreationNotification = (notification) => /^(6001|create|created|new|order_created)$/i.test(notification.type) || /new.?order|order.?created|下单|新订单/i.test(notification.type)
+  const refreshOrderByNotification = async (notification) => {
+    if (!orderListening || disposed) return
+    if (notification.eventId) {
+      const fingerprint = notification.orderId + ':' + notification.eventId
+      if (notificationFingerprints.has(fingerprint)) return
+      notificationFingerprints.add(fingerprint)
+      if (notificationFingerprints.size > 2000) notificationFingerprints.delete(notificationFingerprints.values().next().value)
+    }
+    const current = await requestCommerceOrders(notification.orderId)
+    const next = current.find((item) => item.externalId === notification.orderId)
+    if (!next) return
+    const enriched = { ...next, raw: { ...(next.raw || {}), notification: { type: notification.type || undefined, bizType: notification.bizType || undefined, timestamp: notification.timestamp } } }
+    const previous = orderSnapshot(enriched.externalId)
+    if (!previous) {
+      if (isCreationNotification(notification) && (enriched.createdAt || 0) >= orderListenerStartedAt) emit({ type: 'order.created', payload: { order: enriched } })
+      else emit({ type: 'order.updated', payload: { order: enriched, changedFields: ['status', 'items', 'total', 'receiver', 'buyer'] } })
+    } else if (orderKey(previous) !== orderKey(enriched)) {
+      emit({ type: 'order.updated', payload: { order: enriched, previous, changedFields: changedOrderFields(previous, enriched) } })
+    }
+    saveOrderSnapshot(enriched)
+  }
+  const notificationCandidates = () => {
+    const relevant = /notification|notify|notice|reach|alert|frontier|broadcast|event/i
+    const candidates = [
+      window.__DOUYIN_NOTIFICATION_RUNTIME__, window.__DOUYIN_NOTIFICATION_STORE__, window.__NOTIFICATION_RUNTIME__,
+      window.__NOTIFICATION_STORE__, window.__NOTICE_RUNTIME__, window.__REACH_RUNTIME__, window.__FRONTIER_NOTIFICATION_RUNTIME__,
+      store()?.notificationRuntime, store()?.notificationStore, store()?.noticeStore, store()?.notice, store()?.notification,
+      pageContext()?.notificationRuntime, pageContext()?.notificationStore, pageContext()?.noticeStore, pageContext()?.notice, pageContext()?.notification,
+      window.__monaGlobalStore, window.__mona_light_event, window.__lightEvent, window.__wbUpdateEventEmitter,
+      window.__WORKBENCH_EVENT_SDK__, window.__WORKBENCH_EVENT_SDK_IN_WINDOW__, window.__WORKBENCH_EVENT_INSTANCE_MAP_NEW__,
+      window.__WORKBENCH_EVENT_INSTANCE_MAP__, window.__MONA_EVENT_MAP_GLOBAL_KEY__, window.rootStore, window.SDKRuntime,
+    ]
+    const roots = []
+    try {
+      for (const key of Object.getOwnPropertyNames(window)) {
+        if (!relevant.test(key)) continue
+        try { roots.push(window[key]) } catch (_) {}
+      }
+    } catch (_) {}
+    roots.push(window.ss?._frontStore, window.ss?.instance, window.__mona_pigeon_event, window.__monaGlobalStore, window.__mona_light_event, window.__lightEvent, window.__wbUpdateEventEmitter, pageContext())
+    const seen = new Set()
+    const visit = (value, path, depth) => {
+      if (!value || !['object', 'function'].includes(typeof value) || seen.has(value) || depth > 3) return
+      seen.add(value)
+      const hasListener = ['subscribe', 'listen', 'addListener', 'on', 'addEventListener'].some((name) => typeof value[name] === 'function')
+      if (hasListener && relevant.test(path)) candidates.push(value)
+      let keys = []
+      try { keys = Object.getOwnPropertyNames(value).slice(0, 120) } catch (_) { return }
+      for (const key of keys) {
+        if (!relevant.test(key) && !['data', 'globalStore', 'store', 'runtime', 'bus'].includes(key)) continue
+        let nested
+        try { nested = value[key] } catch (_) { continue }
+        visit(nested, path + '.' + key, depth + 1)
+      }
+    }
+    roots.forEach((root, index) => visit(root, 'root' + index, 0))
+    const result = []
+    const unique = new Set()
+    for (const candidate of candidates) {
+      if (!candidate || !['object', 'function'].includes(typeof candidate) || unique.has(candidate)) continue
+      if (!['subscribe', 'listen', 'addListener', 'on', 'addEventListener'].some((name) => typeof candidate[name] === 'function')) continue
+      unique.add(candidate); result.push(candidate)
+    }
+    return result
+  }
+  const bindNotificationSource = (source, subscriptions) => {
+    if (!source || typeof source !== 'object') return
+    const publish = (value) => { const notification = notificationOrderId(value); if (notification) void refreshOrderByNotification(notification) }
+    for (const name of ['subscribe', 'listen']) {
+      if (typeof source[name] !== 'function') continue
+      try {
+        const result = source[name](publish)
+        subscriptions.push(() => { try { typeof result === 'function' ? result() : result?.unsubscribe?.() } catch (_) {} })
+        return true
+      } catch (_) {}
+    }
+    for (const name of ['addListener', 'on', 'addEventListener']) {
+      if (typeof source[name] !== 'function') continue
+      try {
+        if (source[name].length <= 1) {
+          const result = source[name](publish)
+          subscriptions.push(() => { try { typeof result === 'function' ? result() : result?.unsubscribe?.() } catch (_) {} })
+          return true
+        }
+        for (const eventName of ['notification', 'notice', 'alert', 'reach', 'message', 'event']) {
+          try {
+            const result = source[name](eventName, publish)
+            subscriptions.push(() => {
+              try {
+                if (name === 'addEventListener') source.removeEventListener?.(eventName, publish)
+                else source.removeListener?.(eventName, publish) || source.off?.(eventName, publish)
+                typeof result === 'function' ? result() : result?.unsubscribe?.()
+              } catch (_) {}
+            })
+            return true
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    return false
+  }
+  const bindOrderNotifications = () => {
+    if (PAGE !== 'orders' || !orderListening) return
+    const candidates = notificationCandidates()
+    if (orderNotificationCleanup && candidates.length === orderNotificationSources.length && candidates.every((candidate) => orderNotificationSources.includes(candidate))) return
+    try { orderNotificationCleanup?.() } catch (_) {}
+    const subscriptions = []
+    for (const candidate of candidates) bindNotificationSource(candidate, subscriptions)
+    orderNotificationSources = candidates
+    orderNotificationCleanup = () => { subscriptions.splice(0).forEach((unsubscribe) => unsubscribe()); orderNotificationSources = []; orderNotificationCleanup = null }
+  }
+  const reconcileOrders = async () => {
+    if (!orderListening || orderReconciliationBusy || disposed) return
+    orderReconciliationBusy = true
+    try {
+      const current = await requestCommerceOrders('')
+      for (const item of current.slice(0, ORDER_RECONCILIATION_LIMIT)) {
+        const previous = orderSnapshot(item.externalId)
+        if (previous && orderKey(previous) !== orderKey(item)) emit({ type: 'order.updated', payload: { order: item, previous, changedFields: changedOrderFields(previous, item) } })
+        saveOrderSnapshot(item)
+      }
+    } finally { orderReconciliationBusy = false }
   }
   const bindMessages = () => {
     if (messageCleanup || PAGE !== 'primary') return
@@ -657,7 +830,6 @@ export const douyinHookRuntimeScript = String.raw `(() => {
           }
           continue
         }
-        touchOrderWatch(item.conversationId)
         if (item.type === 'order') {
           const orderValue = orderFromMessage(item, item.conversationId)
           if (orderValue) {
@@ -730,7 +902,18 @@ export const douyinHookRuntimeScript = String.raw `(() => {
         case 'products.list': return { ok: true, data: await waitForProducts() }
         case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
         case 'orders.list': { const result = await orders(text(input.conversationId), text(input.orderId || input.externalId)); return { ok: true, data: result } }
-        case 'orders.listen': { const conversationId = text(input.conversationId); const orderId = text(input.orderId || input.externalId); const key = conversationId || '*'; const current = await orders(conversationId, orderId); const now = Date.now(); orderSnapshots.set(key, new Map(current.map((item) => [item.externalId, item]))); orderWatches.set(key, { lastActiveAt: now, nextPollAt: now, orderId }); pruneOrderWatches(now); if (!orderTimer) orderTimer = setInterval(() => { void watchOrders() }, 1000); return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } } }
+        case 'orders.listen': {
+          const conversationId = text(input.conversationId)
+          const orderId = text(input.orderId || input.externalId)
+          const current = await orders(conversationId, orderId)
+          orderSnapshots.set('*', new Map(current.map((item) => [item.externalId, item])))
+          orderListening = true
+          orderListenerStartedAt = Date.now()
+          setListenerState(orderListenerStartedAt)
+          bindOrderNotifications()
+          if (!orderReconciliationTimer) orderReconciliationTimer = setInterval(() => { void reconcileOrders() }, ORDER_RECONCILIATION_INTERVAL_MS)
+          return { ok: true, data: { listening: true, watermark: Math.max(0, ...current.map((item) => item.updatedAt || item.createdAt || 0)) } }
+        }
         case 'handoff.targets.list': {
           const available = await handoffTargets()
           return available ? { ok: true, data: available.targets } : runtimeError()
@@ -769,8 +952,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     protocolVersion: VERSION,
     describe: () => ({ protocolVersion: VERSION, platform: PLATFORM, pageId: PAGE, capabilities: [...operations], operations: [...operations] }),
     invoke,
-    drainEvents: async () => { bindMessages(); return queue.splice(0, queue.length) },
-    dispose: async () => { if (disposed) return; disposed = true; try { messageCleanup?.() } catch (_) {} if (orderTimer) clearInterval(orderTimer); orderTimer = null; orderPollBusy = false; queue.length = 0; seenMessages.clear(); seenFingerprints.clear(); orderSnapshots.clear(); orderWatches.clear(); messageOrderSnapshots.clear() },
+    drainEvents: async () => { bindMessages(); bindOrderNotifications(); return queue.splice(0, queue.length) },
+    dispose: async () => { if (disposed) return; disposed = true; try { messageCleanup?.() } catch (_) {} try { orderNotificationCleanup?.() } catch (_) {} if (orderReconciliationTimer) clearInterval(orderReconciliationTimer); orderReconciliationTimer = null; orderReconciliationBusy = false; orderListening = false; queue.length = 0; seenMessages.clear(); seenFingerprints.clear(); notificationFingerprints.clear(); orderSnapshots.clear(); messageOrderSnapshots.clear() },
   }
 })()`;
 //# sourceMappingURL=runtime-source.js.map

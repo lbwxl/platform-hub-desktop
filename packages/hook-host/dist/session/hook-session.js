@@ -1,13 +1,16 @@
 import { assertPageHookRuntime, fail, hookError, HOOK_OPERATION_PRIORITIES, noopHookLogger, } from '@platform-hub/hook-sdk';
+import { PersistentPageManager } from '../pages/persistent-page-manager.js';
 import { WorkerPageManager } from '../pages/worker-page-manager.js';
 import { schedulerErrorResult, WorkerScheduler, WorkerSchedulerError } from '../scheduler/worker-scheduler.js';
 export class HookSession {
     options;
     partition;
     workerPages;
+    persistentPages;
     primaryPage;
     primaryRuntime;
     primaryRuntimeUncertain = false;
+    persistentRuntimeUncertain = new Set();
     primaryPushUnsubscribe;
     listeners = new Set();
     lifecycleController = new AbortController();
@@ -34,6 +37,16 @@ export class HookSession {
             factory: options.factory,
             maxWorkers: options.maxWorkers,
             defaultIdleTtlMs: options.workerIdleTtlMs,
+            logger: this.logger,
+            onEvent: (event) => this.emit(event),
+            onEventError: (error) => this.emit(this.runtimeError(error)),
+        });
+        this.persistentPages = new PersistentPageManager({
+            sessionId: options.sessionId,
+            shopId: options.shopId,
+            partition: this.partition,
+            manifest: options.manifest,
+            factory: options.factory,
             logger: this.logger,
             onEvent: (event) => this.emit(event),
             onEventError: (error) => this.emit(this.runtimeError(error)),
@@ -75,6 +88,7 @@ export class HookSession {
             this.primaryRuntime = runtime;
             this.primaryRuntimeUncertain = false;
             this.primaryPushUnsubscribe = unsubscribe;
+            await this.persistentPages.start();
             this.started = true;
             this.scheduleEventPoll();
             this.logger.info('Hook session started');
@@ -92,6 +106,7 @@ export class HookSession {
                 await page?.close();
             }
             catch { /* start cleanup */ }
+            await this.persistentPages.dispose();
             this.logger.error('Hook session start failed', { error: errorMessage(error) });
             throw error;
         }
@@ -108,6 +123,9 @@ export class HookSession {
         try {
             if (definition.kind === 'primary') {
                 return await this.invokePrimary(operation, input, linked.signal, options?.timeoutMs);
+            }
+            if (definition.kind === 'persistent') {
+                return await this.invokePersistent(definition, operation, input, linked.signal, options?.timeoutMs);
             }
             return await this.options.scheduler.schedule({
                 manager: this.workerPages,
@@ -155,6 +173,10 @@ export class HookSession {
             count += workerEvents.length;
             for (const event of workerEvents)
                 this.emit(event);
+            const persistentEvents = await this.persistentPages.drainEvents();
+            count += persistentEvents.length;
+            for (const event of persistentEvents)
+                this.emit(event);
             return count;
         }
         finally {
@@ -177,6 +199,8 @@ export class HookSession {
             this.logger.warn('Primary event subscription cleanup failed', { error: errorMessage(error) });
         }
         this.primaryPushUnsubscribe = undefined;
+        await this.persistentPages.dispose();
+        this.persistentRuntimeUncertain.clear();
         await this.workerPages.dispose();
         const runtime = this.primaryRuntime;
         this.primaryRuntime = undefined;
@@ -234,6 +258,50 @@ export class HookSession {
         finally {
             if (onAbort)
                 deadline.signal.removeEventListener('abort', onAbort);
+            deadline.cleanup();
+        }
+    }
+    async invokePersistent(definition, operation, input, signal, timeoutMs) {
+        const deadline = operationSignal(signal, timeoutMs);
+        let invocationStarted = false;
+        try {
+            const handle = await this.persistentPages.ensure(definition);
+            if (this.persistentRuntimeUncertain.has(definition.id)) {
+                await handle.refreshRuntime();
+                this.persistentRuntimeUncertain.delete(definition.id);
+            }
+            if (deadline.signal.aborted)
+                return fail(hookError('TIMEOUT', 'Persistent operation 已取消', undefined, true));
+            invocationStarted = true;
+            const pending = this.invokeWithRecovery(handle.page, handle.runtime, operation, input, deadline.signal, handle.refreshRuntime, timeoutMs);
+            const interrupted = Symbol('persistent-operation-interrupted');
+            let onAbort;
+            const interruption = new Promise((resolve) => {
+                onAbort = () => resolve(interrupted);
+                if (deadline.signal.aborted)
+                    onAbort();
+                else
+                    deadline.signal.addEventListener('abort', onAbort, { once: true });
+            });
+            try {
+                const outcome = await Promise.race([pending, interruption]);
+                if (outcome !== interrupted)
+                    return outcome;
+                if (invocationStarted)
+                    this.persistentRuntimeUncertain.add(definition.id);
+                void pending.catch((error) => this.logger.warn('Interrupted persistent operation settled with an error', { operation, pageId: definition.id, error: errorMessage(error) }));
+                return fail(hookError('TIMEOUT', deadline.timedOut() ? `Persistent operation 超过 ${timeoutMs}ms` : 'Persistent operation 已取消', undefined, true));
+            }
+            finally {
+                if (onAbort)
+                    deadline.signal.removeEventListener('abort', onAbort);
+            }
+        }
+        catch (error) {
+            this.logger.warn('Persistent operation failed', { operation, pageId: definition.id, error: errorMessage(error) });
+            return fail(hookError('PLATFORM_ERROR', errorMessage(error), undefined, true));
+        }
+        finally {
             deadline.cleanup();
         }
     }
