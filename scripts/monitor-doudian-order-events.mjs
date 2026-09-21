@@ -1,5 +1,6 @@
 const listenMs = Number(process.argv[2] || 5 * 60_000)
-const targets = await fetch('http://127.0.0.1:9333/json/list').then((response) => response.json())
+const cdpPort = process.env.PLATFORM_HUB_CDP_PORT || '9333'
+const targets = await fetch(`http://127.0.0.1:${cdpPort}/json/list`).then((response) => response.json())
 const target = targets.find((item) => /im\.jinritemai\.com\/pc_seller_v2\/main\/workspace/i.test(item.url))
 if (!target) throw new Error('未找到抖店 CDP 页面')
 
