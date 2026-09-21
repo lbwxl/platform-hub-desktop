@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { CdpSession, partitionFor } from './CdpSession'
-import type { ChatSession, HookPackageManifest, ImportedHookPackage, OrderSyncResult, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../shared/platform'
+import type { ChatSession, HandoffTarget, HookPackageManifest, ImportedHookPackage, OrderListenResult, OrderSyncResult, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../shared/platform'
 import { builtinHooks, builtinPlatforms } from '../hooks'
 
 type Persisted = { accounts: PlatformAccount[]; hooks: ImportedHookPackage[] }
@@ -32,6 +32,7 @@ export class PlatformManager {
       id: manifest.id,
       label: manifest.label,
       url: manifest.url,
+      executionModel: manifest.executionModel,
       capabilities: manifest.capabilities,
       hookVersion: manifest.version,
       source: 'imported' as const,
@@ -110,6 +111,9 @@ export class PlatformManager {
   async messagesFor(accountId: string, sessionId: string): Promise<PlatformMessage[]> { return this.withLogin<PlatformMessage[]>(accountId, 'listMessages', sessionId) }
   async ordersFor(accountId: string, userId?: string): Promise<unknown[]> { return this.withLogin<unknown[]>(accountId, 'getOrders', userId) }
   async syncOrdersFor(accountId: string, sessionId?: string, userId?: string): Promise<OrderSyncResult> { return this.withLogin<OrderSyncResult>(accountId, 'syncOrders', sessionId, userId) }
+  async listenOrdersFor(accountId: string, sessionId?: string, orderId?: string): Promise<OrderListenResult> { return this.withLogin<OrderListenResult>(accountId, 'listenOrders', sessionId, orderId) }
+  async listenMessagesFor(accountId: string): Promise<{ listening: boolean; watermark?: number }> { return this.withLogin(accountId, 'listenMessages') }
+  async handoffTargetsFor(accountId: string): Promise<HandoffTarget[]> { return this.withLogin<HandoffTarget[]>(accountId, 'listHandoffTargets') }
   async sendMessage(accountId: string, sessionId: string, content: string): Promise<{ success: boolean; error?: string }> { return this.withLogin(accountId, 'sendMessage', sessionId, content) }
   async sendFile(accountId: string, sessionId: string, dataUrl: string, fileName?: string): Promise<{ success: boolean; error?: string }> { return this.withLogin(accountId, 'sendFile', sessionId, dataUrl, fileName) }
   async transferSession(accountId: string, sessionId: string, target: string): Promise<unknown> { return this.withLogin(accountId, 'transferSession', sessionId, target) }

@@ -84,9 +84,10 @@ export class CdpSession extends EventEmitter {
     try { await opening } finally { if (this.opening === opening) this.opening = null }
   }
 
-  async installHook(contents: WebContents | null = this.contents, primary = true): Promise<void> {
+  async installHook(contents: WebContents | null = this.contents, primary = true, pageId = primary ? 'primary' : undefined): Promise<void> {
     if (!contents || contents.isDestroyed()) return
     if (!this.options.hook.script) throw new Error('Hook 包没有可执行脚本')
+    if (pageId) await this.evaluate(contents, `globalThis.__PLATFORM_HOOK_PAGE_ID__ = ${JSON.stringify(pageId)}`)
     await this.evaluate(contents, this.options.hook.script)
     if (primary) {
       this.connected = true
@@ -285,8 +286,8 @@ export class CdpSession extends EventEmitter {
     }
   }
 
-  private reinstallHook(contents: WebContents | null, primary: boolean): void {
-    void this.installHook(contents, primary).catch((error) => this.emitError(`Hook 注入失败: ${String(error)}`))
+  private reinstallHook(contents: WebContents | null, primary: boolean, pageId?: string): void {
+    void this.installHook(contents, primary, pageId).catch((error) => this.emitError(`Hook 注入失败: ${String(error)}`))
   }
 
   private reinstallPrimaryHook(contents: WebContents | null): void {
@@ -344,7 +345,7 @@ export class CdpSession extends EventEmitter {
       })
       this.runtimeWindows.set(route.id, target)
       const contents = target.webContents
-      contents.on('did-finish-load', () => this.reinstallHook(contents, false))
+      contents.on('did-finish-load', () => this.reinstallHook(contents, false, route.id))
       contents.on('render-process-gone', (_event, details) => this.emitError(`${route.id} 页面进程退出: ${details.reason}`))
       target.on('closed', () => {
         this.clearRuntimeWindowTimer(route.id)
@@ -354,7 +355,7 @@ export class CdpSession extends EventEmitter {
     } else if (route.refreshBeforeInvoke) {
       await this.loadRuntimeUrl(target, route.url)
     }
-    await this.installHook(target.webContents, false)
+    await this.installHook(target.webContents, false, route.id)
     return target.webContents
   }
 
@@ -413,7 +414,7 @@ export class CdpSession extends EventEmitter {
   private emitStatus(message: string): void {
     const status = this.getStatus()
     this.options.emit({
-      id: `${this.options.accountId}:status:${Date.now()}`,
+      id: `${this.options.accountId}:status:${Date.now()}:${Math.random().toString(16).slice(2)}`,
       accountId: this.options.accountId,
       platform: this.options.platform,
       type: 'connection',

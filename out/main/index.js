@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import "node:module";
-import { kuaishouHook } from "@platform-hub/kuaishou-hook";
+import { kuaishouHook as kuaishouHook$1 } from "@platform-hub/kuaishou-hook";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
@@ -77,9 +77,10 @@ class CdpSession extends EventEmitter {
       if (this.opening === opening) this.opening = null;
     }
   }
-  async installHook(contents = this.contents, primary = true) {
+  async installHook(contents = this.contents, primary = true, pageId = primary ? "primary" : void 0) {
     if (!contents || contents.isDestroyed()) return;
     if (!this.options.hook.script) throw new Error("Hook 包没有可执行脚本");
+    if (pageId) await this.evaluate(contents, `globalThis.__PLATFORM_HOOK_PAGE_ID__ = ${JSON.stringify(pageId)}`);
     await this.evaluate(contents, this.options.hook.script);
     if (primary) {
       this.connected = true;
@@ -263,8 +264,8 @@ class CdpSession extends EventEmitter {
       return current === expected;
     }
   }
-  reinstallHook(contents, primary) {
-    void this.installHook(contents, primary).catch((error) => this.emitError(`Hook 注入失败: ${String(error)}`));
+  reinstallHook(contents, primary, pageId) {
+    void this.installHook(contents, primary, pageId).catch((error) => this.emitError(`Hook 注入失败: ${String(error)}`));
   }
   reinstallPrimaryHook(contents) {
     if (!contents || contents.isDestroyed()) return;
@@ -320,7 +321,7 @@ class CdpSession extends EventEmitter {
       });
       this.runtimeWindows.set(route.id, target);
       const contents = target.webContents;
-      contents.on("did-finish-load", () => this.reinstallHook(contents, false));
+      contents.on("did-finish-load", () => this.reinstallHook(contents, false, route.id));
       contents.on("render-process-gone", (_event, details) => this.emitError(`${route.id} 页面进程退出: ${details.reason}`));
       target.on("closed", () => {
         this.clearRuntimeWindowTimer(route.id);
@@ -330,7 +331,7 @@ class CdpSession extends EventEmitter {
     } else if (route.refreshBeforeInvoke) {
       await this.loadRuntimeUrl(target, route.url);
     }
-    await this.installHook(target.webContents, false);
+    await this.installHook(target.webContents, false, route.id);
     return target.webContents;
   }
   async loadRuntimeUrl(target, url) {
@@ -380,7 +381,7 @@ class CdpSession extends EventEmitter {
   emitStatus(message) {
     const status = this.getStatus();
     this.options.emit({
-      id: `${this.options.accountId}:status:${Date.now()}`,
+      id: `${this.options.accountId}:status:${Date.now()}:${Math.random().toString(16).slice(2)}`,
       accountId: this.options.accountId,
       platform: this.options.platform,
       type: "connection",
@@ -1174,6 +1175,7 @@ const douyinHook = {
   label: "抖店",
   version: douyinHookManifest.version,
   url: primaryPage?.url || "https://im.jinritemai.com/pc_seller_v2/main/workspace",
+  executionModel: "page",
   loginUrl: "https://fxg.jinritemai.com/login/common",
   loginMatch: ["https://im.jinritemai.com/login*"],
   capabilities: capabilities$1,
@@ -1255,6 +1257,7 @@ ${douyinHookRuntimeScript}
   }
   window.__platformHub = {
     getAuthState: () => unwrap('auth.state'),
+    listenMessages: async () => unwrap('messages.listen'),
     listSessions: async () => {
       const rows = await unwrap('sessions.list')
       return Array.isArray(rows) ? rows.map((item) => ({ ...item, unread: item.unreadCount || 0, avatar: item.avatarUrl })) : rows
@@ -1287,6 +1290,11 @@ ${douyinHookRuntimeScript}
       const rows = await unwrap('orders.list', { conversationId, orderId })
       return rows?.errorCode ? rows : { orders: Array.isArray(rows) ? rows.map((item) => order(item, conversationId)) : [], authoritative: true, source: 'platform-runtime', syncedAt: Date.now() }
     },
+    listenOrders: async (conversationId, orderId) => unwrap('orders.listen', { conversationId, orderId }),
+    listHandoffTargets: async () => {
+      const rows = await unwrap('handoff.targets.list')
+      return Array.isArray(rows) ? rows : []
+    },
     transferSession: (conversationId, target) => unwrap('handoff.transfer', { conversationId, targetId: target }),
     drainEvents: async () => (await runtime.drainEvents()).map(event),
     dispose: () => runtime.dispose(),
@@ -1299,6 +1307,7 @@ const goofishHook = {
   label: "闲鱼",
   version: "1.0.0",
   url: "https://www.goofish.com/",
+  executionModel: "page",
   capabilities,
   source: "builtin",
   script: `(() => {
@@ -1316,6 +1325,7 @@ const goofishHook = {
     }
   })()`
 };
+const kuaishouHook = { ...kuaishouHook$1, executionModel: "page" };
 const builtinHooks = {
   [douyinHook.id]: douyinHook,
   [kuaishouHook.id]: kuaishouHook,
@@ -1325,6 +1335,7 @@ const builtinPlatforms = [douyinHook, kuaishouHook, goofishHook].map((hook) => (
   id: hook.id,
   label: hook.label,
   url: hook.url,
+  executionModel: hook.executionModel,
   capabilities: hook.capabilities,
   hookVersion: hook.version,
   source: "builtin"
@@ -1348,6 +1359,7 @@ class PlatformManager {
       id: manifest.id,
       label: manifest.label,
       url: manifest.url,
+      executionModel: manifest.executionModel,
       capabilities: manifest.capabilities,
       hookVersion: manifest.version,
       source: "imported"
@@ -1450,6 +1462,15 @@ class PlatformManager {
   }
   async syncOrdersFor(accountId, sessionId, userId) {
     return this.withLogin(accountId, "syncOrders", sessionId, userId);
+  }
+  async listenOrdersFor(accountId, sessionId, orderId) {
+    return this.withLogin(accountId, "listenOrders", sessionId, orderId);
+  }
+  async listenMessagesFor(accountId) {
+    return this.withLogin(accountId, "listenMessages");
+  }
+  async handoffTargetsFor(accountId) {
+    return this.withLogin(accountId, "listHandoffTargets");
   }
   async sendMessage(accountId, sessionId, content) {
     return this.withLogin(accountId, "sendMessage", sessionId, content);
@@ -1660,6 +1681,18 @@ function registerIpc() {
   ipcMain.handle("orders:sync", (event, id, sessionId, userId) => {
     assertRenderer(event);
     return manager.syncOrdersFor(id, sessionId, userId);
+  });
+  ipcMain.handle("orders:listen", (event, id, sessionId, orderId) => {
+    assertRenderer(event);
+    return manager.listenOrdersFor(id, sessionId, orderId);
+  });
+  ipcMain.handle("messages:listen", (event, id) => {
+    assertRenderer(event);
+    return manager.listenMessagesFor(id);
+  });
+  ipcMain.handle("handoff:targets", (event, id) => {
+    assertRenderer(event);
+    return manager.handoffTargetsFor(id);
   });
   ipcMain.handle("message:send", (event, id, sessionId, content) => {
     assertRenderer(event);

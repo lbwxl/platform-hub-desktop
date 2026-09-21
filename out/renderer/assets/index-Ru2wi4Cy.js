@@ -14420,7 +14420,7 @@ function createLucideIcon(iconDataOrName, iconNode = [], aliases = []) {
   }
   return Component;
 }
-const __iconData$f = {
+const __iconData$k = {
   name: "activity",
   size: 24,
   node: [
@@ -14433,9 +14433,9 @@ const __iconData$f = {
     ]
   ]
 };
-__iconData$f.node;
-const Activity = createLucideIcon(__iconData$f);
-const __iconData$e = {
+__iconData$k.node;
+const Activity = createLucideIcon(__iconData$k);
+const __iconData$j = {
   name: "bell",
   size: 24,
   node: [
@@ -14449,9 +14449,9 @@ const __iconData$e = {
     ]
   ]
 };
-__iconData$e.node;
-const Bell = createLucideIcon(__iconData$e);
-const __iconData$d = {
+__iconData$j.node;
+const Bell = createLucideIcon(__iconData$j);
+const __iconData$i = {
   name: "boxes",
   size: 24,
   node: [
@@ -14487,9 +14487,21 @@ const __iconData$d = {
     ["path", { d: "M12 13.5V8", key: "1io7kd" }]
   ]
 };
-__iconData$d.node;
-const Boxes = createLucideIcon(__iconData$d);
-const __iconData$c = {
+__iconData$i.node;
+const Boxes = createLucideIcon(__iconData$i);
+const __iconData$h = {
+  name: "circle-alert",
+  size: 24,
+  node: [
+    ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+    ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
+    ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
+  ],
+  aliases: ["alert-circle"]
+};
+__iconData$h.node;
+const CircleAlert = createLucideIcon(__iconData$h);
+const __iconData$g = {
   name: "circle-check",
   size: 24,
   node: [
@@ -14498,9 +14510,26 @@ const __iconData$c = {
   ],
   aliases: ["check-circle-2"]
 };
-__iconData$c.node;
-const CircleCheck = createLucideIcon(__iconData$c);
-const __iconData$b = {
+__iconData$g.node;
+const CircleCheck = createLucideIcon(__iconData$g);
+const __iconData$f = {
+  name: "clipboard-check",
+  size: 24,
+  node: [
+    ["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1", key: "tgr4d6" }],
+    [
+      "path",
+      {
+        d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+        key: "116196"
+      }
+    ],
+    ["path", { d: "m9 14 2 2 4-4", key: "df797q" }]
+  ]
+};
+__iconData$f.node;
+const ClipboardCheck = createLucideIcon(__iconData$f);
+const __iconData$e = {
   name: "clock-3",
   size: 24,
   node: [
@@ -14508,9 +14537,9 @@ const __iconData$b = {
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ]
 };
-__iconData$b.node;
-const Clock3 = createLucideIcon(__iconData$b);
-const __iconData$a = {
+__iconData$e.node;
+const Clock3 = createLucideIcon(__iconData$e);
+const __iconData$d = {
   name: "message-square",
   size: 24,
   node: [
@@ -14523,9 +14552,9 @@ const __iconData$a = {
     ]
   ]
 };
-__iconData$a.node;
-const MessageSquare = createLucideIcon(__iconData$a);
-const __iconData$9 = {
+__iconData$d.node;
+const MessageSquare = createLucideIcon(__iconData$d);
+const __iconData$c = {
   name: "package-search",
   size: 24,
   node: [
@@ -14543,9 +14572,24 @@ const __iconData$9 = {
     ["circle", { cx: "18.5", cy: "16.5", r: "2.5", key: "ke13xx" }]
   ]
 };
-__iconData$9.node;
-const PackageSearch = createLucideIcon(__iconData$9);
-const __iconData$8 = {
+__iconData$c.node;
+const PackageSearch = createLucideIcon(__iconData$c);
+const __iconData$b = {
+  name: "play",
+  size: 24,
+  node: [
+    [
+      "path",
+      {
+        d: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",
+        key: "10ikf1"
+      }
+    ]
+  ]
+};
+__iconData$b.node;
+const Play = createLucideIcon(__iconData$b);
+const __iconData$a = {
   name: "plus",
   size: 24,
   node: [
@@ -14553,9 +14597,9 @@ const __iconData$8 = {
     ["path", { d: "M12 5v14", key: "s699le" }]
   ]
 };
-__iconData$8.node;
-const Plus = createLucideIcon(__iconData$8);
-const __iconData$7 = {
+__iconData$a.node;
+const Plus = createLucideIcon(__iconData$a);
+const __iconData$9 = {
   name: "receipt-text",
   size: 24,
   node: [
@@ -14571,9 +14615,9 @@ const __iconData$7 = {
     ]
   ]
 };
-__iconData$7.node;
-const ReceiptText = createLucideIcon(__iconData$7);
-const __iconData$6 = {
+__iconData$9.node;
+const ReceiptText = createLucideIcon(__iconData$9);
+const __iconData$8 = {
   name: "refresh-cw",
   size: 24,
   node: [
@@ -14583,9 +14627,25 @@ const __iconData$6 = {
     ["path", { d: "M8 16H3v5", key: "1cv678" }]
   ]
 };
-__iconData$6.node;
-const RefreshCw = createLucideIcon(__iconData$6);
-const __iconData$5 = {
+__iconData$8.node;
+const RefreshCw = createLucideIcon(__iconData$8);
+const __iconData$7 = {
+  name: "send",
+  size: 24,
+  node: [
+    [
+      "path",
+      {
+        d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
+        key: "1ffxy3"
+      }
+    ],
+    ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
+  ]
+};
+__iconData$7.node;
+const Send = createLucideIcon(__iconData$7);
+const __iconData$6 = {
   name: "settings-2",
   size: 24,
   node: [
@@ -14595,9 +14655,9 @@ const __iconData$5 = {
     ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
   ]
 };
-__iconData$5.node;
-const Settings2 = createLucideIcon(__iconData$5);
-const __iconData$4 = {
+__iconData$6.node;
+const Settings2 = createLucideIcon(__iconData$6);
+const __iconData$5 = {
   name: "sparkles",
   size: 24,
   node: [
@@ -14614,9 +14674,9 @@ const __iconData$4 = {
   ],
   aliases: ["stars"]
 };
-__iconData$4.node;
-const Sparkles = createLucideIcon(__iconData$4);
-const __iconData$3 = {
+__iconData$5.node;
+const Sparkles = createLucideIcon(__iconData$5);
+const __iconData$4 = {
   name: "store",
   size: 24,
   node: [
@@ -14631,9 +14691,9 @@ const __iconData$3 = {
     ["path", { d: "M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05", key: "wn3emo" }]
   ]
 };
-__iconData$3.node;
-const Store = createLucideIcon(__iconData$3);
-const __iconData$2 = {
+__iconData$4.node;
+const Store = createLucideIcon(__iconData$4);
+const __iconData$3 = {
   name: "trash",
   size: 24,
   node: [
@@ -14645,9 +14705,9 @@ const __iconData$2 = {
   ],
   aliases: ["trash-2"]
 };
-__iconData$2.node;
-const Trash = createLucideIcon(__iconData$2);
-const __iconData$1 = {
+__iconData$3.node;
+const Trash = createLucideIcon(__iconData$3);
+const __iconData$2 = {
   name: "upload",
   size: 24,
   node: [
@@ -14656,8 +14716,20 @@ const __iconData$1 = {
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }]
   ]
 };
+__iconData$2.node;
+const Upload = createLucideIcon(__iconData$2);
+const __iconData$1 = {
+  name: "user-round-check",
+  size: 24,
+  node: [
+    ["path", { d: "M2 21a8 8 0 0 1 13.292-6", key: "bjp14o" }],
+    ["circle", { cx: "10", cy: "8", r: "5", key: "o932ke" }],
+    ["path", { d: "m16 19 2 2 4-4", key: "1b14m6" }]
+  ],
+  aliases: ["user-check-2"]
+};
 __iconData$1.node;
-const Upload = createLucideIcon(__iconData$1);
+const UserRoundCheck = createLucideIcon(__iconData$1);
 const __iconData = {
   name: "wifi",
   size: 24,
@@ -14689,19 +14761,201 @@ function upsertPlatformMessage(messages, incoming) {
   const next = index < 0 ? [...messages, incoming] : messages.map((message, currentIndex) => currentIndex === index ? mergePlatformMessage(message, incoming) : message);
   return next.sort((left, right) => left.timestamp - right.timestamp);
 }
+function AcceptanceCenter(props) {
+  const authenticated = props.status?.authenticated === true;
+  const platformName = props.platform?.label || props.account?.platform || "当前平台";
+  const executionLabel = props.platform?.executionModel === "native" ? "原生适配器" : props.platform?.executionModel === "service" ? "服务适配器" : "网页会话";
+  const capabilities = new Set(props.platform?.capabilities || []);
+  const supportsMessages = capabilities.has("messages.listen") || capabilities.has("messages.history") || capabilities.has("messages.send");
+  const supportsSessions = capabilities.has("sessions.list");
+  const supportsMessageListen = capabilities.has("messages.listen");
+  const supportsMessageHistory = capabilities.has("messages.history");
+  const supportsMessageSend = capabilities.has("messages.send");
+  const supportsProducts = capabilities.has("products.collect") || capabilities.has("products.detail");
+  const supportsProductCollect = capabilities.has("products.collect");
+  const supportsOrders = capabilities.has("orders.listen") || capabilities.has("orders.read");
+  const supportsOrderListen = capabilities.has("orders.listen");
+  const supportsHandoff = capabilities.has("session.transfer");
+  const productCards = props.messages.filter((message) => message.type === "product" || message.type === "order");
+  const orderStatuses = props.events.filter((event) => event.type === "order").map((event) => normalizeOrderStatus(String(event.payload.order?.status || "unknown")));
+  const statusSeen = new Set(orderStatuses);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "acceptance-center workspace-card", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-heading card-title", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ClipboardCheck, { size: 16 }),
+          "真人验收中心 · ",
+          platformName
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          executionLabel,
+          " · 每一步都由你确认或在平台运行窗口手工完成，结果会实时回填"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `acceptance-login ${authenticated ? "ready" : ""}`, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}),
+        authenticated ? "已登录" : "先完成登录"
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-grid", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "01", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 18 }), title: "消息监听与发送", tone: "blue", done: props.messageListening, unsupported: !supportsMessages, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "打开一个会话，点击开始监听；然后发送一条测试文本，观察实时事件和发送结果。" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("select", { value: props.selectedSessionId, onChange: (event) => props.onSelectSession(event.target.value), disabled: !props.sessions.length || !supportsSessions || !supportsMessageHistory, "aria-label": "选择验收会话", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "选择会话" }),
+            props.sessions.map((session) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: session.id, children: session.title }, session.id))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "mini-button", onClick: props.onRefreshSessions, disabled: !supportsSessions || props.busy === "sessions", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 13 }),
+            "刷新"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: props.messageDraft, onChange: (event) => props.onMessageDraftChange(event.target.value), placeholder: "输入一条真人验收消息", disabled: !props.selectedSessionId || !supportsMessageSend }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "send-mini", onClick: props.onSendMessage, disabled: !props.selectedSessionId || !props.messageDraft.trim() || props.busy === "send" || !supportsMessageSend, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 13 }),
+            "发送"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button", onClick: props.onStartMessages, disabled: !authenticated || props.busy === "messages-listen" || !supportsMessageListen, children: [
+            props.messageListening ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 14 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 14 }),
+            props.messageListening ? "监听已启动" : "开始监听消息"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-hint", children: productCards.length ? `已识别 ${productCards.length} 条卡片消息` : "商品卡片消息将在这里标记" })
+        ] }),
+        !supportsMessages ? /* @__PURE__ */ jsxRuntimeExports.jsx(UnsupportedMessage, {}) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message-check-list", children: [
+            props.messages.slice(-4).map((message) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message-check-item", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `message-check-type ${message.isMine ? "mine" : ""}`, children: message.isMine ? "我" : message.senderName || "客户" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: message.content || `[${message.type}]` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("time", { children: new Date(message.timestamp).toLocaleTimeString() })
+            ] }, message.id)),
+            !props.messages.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "监听启动后，最新消息会显示在这里…" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "recognition-list", children: [
+            productCards.slice(-3).map((message) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "recognition-item", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `recognition-tag ${message.type}`, children: message.type === "product" ? "商品卡片" : "订单卡片" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: message.content || "已识别结构化卡片" })
+            ] }, message.id)),
+            !productCards.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "等待客户发送商品/订单卡片…" })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "02", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 18 }), title: "店铺商品采集", tone: "purple", done: props.products.length > 0, unsupported: !supportsProducts, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "点击采集后，平台适配器会读取当前店铺商品、价格、库存和 SKU。" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button purple", onClick: props.onCollectProducts, disabled: !authenticated || props.busy === "products" || !supportsProductCollect, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 14 }),
+            props.busy === "products" ? "采集中…" : "开始采集商品"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-hint", children: props.products.length ? `已获得 ${props.products.length} 件商品` : "尚未采集" })
+        ] }),
+        supportsProducts ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "compact-results", children: [
+          props.products.slice(0, 3).map((product) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "compact-result", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-thumb", children: product.images?.[0] ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: product.images[0], alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 15 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: product.name }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
+                "¥",
+                product.price.toFixed(2),
+                " · 库存 ",
+                product.stockQuantity ?? "-"
+              ] })
+            ] })
+          ] }, product.id)),
+          !props.products.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "采集结果会显示在这里…" })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UnsupportedMessage, {})
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "03", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 18 }), title: "订单变化监听", tone: "orange", done: props.orderListening && orderStatuses.length > 0, unsupported: !supportsOrders, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "先点击启动监听，再按提示在真实店铺完成下单、支付、退款。不要把历史快照当作新订单。" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button orange", onClick: props.onStartOrders, disabled: !authenticated || props.busy === "orders-listen" || !supportsOrderListen, children: [
+            props.orderListening ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 14 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 14 }),
+            props.orderListening ? "订单监听中" : "启动订单监听"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-hint", children: props.orderWatermark ? `水位 ${new Date(props.orderWatermark).toLocaleTimeString()}` : "等待建立快照水位" })
+        ] }),
+        supportsOrders ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "order-checklist", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCheck, { label: "ORDER_CREATED", active: statusSeen.has("created") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCheck, { label: "ORDER_PAID", active: statusSeen.has("paid") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCheck, { label: "ORDER_REFUNDING", active: statusSeen.has("refunding") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCheck, { label: "ORDER_REFUNDED", active: statusSeen.has("refunded") })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UnsupportedMessage, {})
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "04", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(UserRoundCheck, { size: 18 }), title: "转人工", tone: "green", done: props.handoffTargets.length > 0, unsupported: !supportsHandoff, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "先读取平台官方可转目标，再选择客服或客服组，将当前验收会话转交给目标。" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("select", { value: props.selectedHandoffTarget, onChange: (event) => props.onSelectHandoffTarget(event.target.value), disabled: !props.handoffTargets.length || !supportsHandoff, "aria-label": "选择转人工目标", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "选择目标" }),
+            props.handoffTargets.map((target) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: target.id || target.name, children: target.name }, target.id || target.name))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "mini-button", onClick: props.onLoadHandoffTargets, disabled: !authenticated || props.busy === "handoff-targets" || !supportsHandoff, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 13 }),
+            "读取"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button green", onClick: props.onTransfer, disabled: !props.selectedSessionId || !props.selectedHandoffTarget || props.busy === "handoff-transfer" || !supportsHandoff, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(UserRoundCheck, { size: 14 }),
+            "转交当前会话"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-hint", children: props.handoffTargets.length ? `${props.handoffTargets.length} 个官方目标` : "尚未读取目标" })
+        ] }),
+        supportsHandoff ? !props.handoffTargets.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "需要登录并存在可转人工目标…" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UnsupportedMessage, {})
+      ] })
+    ] }),
+    !props.account && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-blocked", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 16 }),
+      "请先添加并打开平台店铺"
+    ] })
+  ] });
+}
+function AcceptanceCard({ number, icon, title, tone, done, unsupported, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: `acceptance-card ${tone} ${unsupported ? "unsupported" : ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-card-title", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "acceptance-number", children: number }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "acceptance-icon", children: icon }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: title }),
+      unsupported && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "acceptance-support-label", children: "未声明" }),
+      done && !unsupported && /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { className: "acceptance-done", size: 16 })
+    ] }),
+    children
+  ] });
+}
+function StatusCheck({ label, active }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `order-status-check ${active ? "active" : ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: active ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 13 }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "status-empty" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: label })
+  ] });
+}
+function UnsupportedMessage() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-unavailable", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 14 }),
+    "当前平台未声明这项能力，验收入口会在对应 Adapter 接入后启用。"
+  ] });
+}
+function normalizeOrderStatus(value) {
+  const status = value.toLowerCase().replace(/^order_/, "");
+  if (status.includes("refund") && (status.includes("success") || status.includes("complete") || status.includes("refunded"))) return "refunded";
+  if (status.includes("refund")) return "refunding";
+  if (status.includes("paid") || status.includes("pay")) return "paid";
+  if (status.includes("created") || status.includes("pending") || status.includes("new")) return "created";
+  return status;
+}
 function PlatformViewport(props) {
   if (!props.account) return /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "platform-viewport empty-viewport", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "viewport-placeholder", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "placeholder-icon", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Store, { size: 30 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "选择一个店铺开始工作" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "左侧添加抖店或其他平台店铺，平台页面将在独立的 Electron 会话中运行 Hook。" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "左侧添加平台店铺，工作区会按 manifest 选择网页、原生或服务执行模型。" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "placeholder-points", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 16 }),
-        "独立 Partition"
+        "独立店铺分区"
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 16 }),
-        "CDP Runtime"
+        "Runtime 运行实例"
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 16 }),
@@ -14710,6 +14964,8 @@ function PlatformViewport(props) {
     ] })
   ] }) });
   const ready = props.status?.authenticated === true;
+  const supports = (capability) => props.platform?.capabilities.includes(capability) === true;
+  const executionHost = props.platform?.executionModel === "native" ? "Native Adapter" : props.platform?.executionModel === "service" ? "Service Adapter" : "Electron BrowserWindow";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "platform-viewport", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "viewport-header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -14736,14 +14992,14 @@ function PlatformViewport(props) {
       /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "消息", value: `${props.sessions.length} 个会话`, ready }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "商品", value: `${props.products.length} 件已采集`, ready }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "订单", value: "实时监听", ready }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 17 }), label: "页面", value: "Electron WebContents", ready: Boolean(props.account.connected) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 17 }), label: "执行模型", value: executionHost, ready: Boolean(props.account.connected) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "workspace-panels", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card platform-frame", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "平台展示区域" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "WebView / 自研 UI 均可挂载在此区域" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "平台原生工作区或自研 UI 均可挂载在此区域" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "frame-pill", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
@@ -14755,7 +15011,7 @@ function PlatformViewport(props) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "frame-logo", children: (props.platform?.label || props.account.platform).slice(0, 1) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: props.platform?.label || props.account.platform }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: ready ? "平台页面由 Electron BrowserWindow 承载，Hook 只读取平台事实。" : "登录后这里会展示平台工作区状态与 Hook 能力。" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: ready ? `${executionHost} 承载当前平台执行实例，Hook 只读取平台事实。` : "登录或连接后这里会展示平台工作区状态与适配器能力。" })
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "frame-grid", children: [
@@ -14788,11 +15044,15 @@ function PlatformViewport(props) {
         ] })
       ] })
     ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCenter, { account: props.account, platform: props.platform, status: props.status, sessions: props.sessions, selectedSessionId: props.selectedSessionId, messages: props.messages, messageDraft: props.messageDraft, messageListening: props.messageListening, products: props.products, orderListening: props.orderListening, orderWatermark: props.orderWatermark, handoffTargets: props.handoffTargets, selectedHandoffTarget: props.selectedHandoffTarget, events: props.events, busy: props.busy, onSelectSession: props.onSelectSession, onMessageDraftChange: props.onMessageDraftChange, onStartMessages: props.onStartMessages, onRefreshSessions: props.onRefreshSessions, onSendMessage: props.onSendMessage, onCollectProducts: props.onCollectProducts, onStartOrders: props.onStartOrders, onLoadHandoffTargets: props.onLoadHandoffTargets, onSelectHandoffTarget: props.onSelectHandoffTarget, onTransfer: props.onTransfer }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card hook-card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Hook 能力" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "由 packages/douyin-hook 提供统一运行时能力" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "平台能力" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            props.platform?.label || props.account.platform,
+            " 适配器按 manifest 声明能力，网页 / 原生 / 服务执行模型均可复用"
+          ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "outline-button", onClick: props.onRefreshSessions, disabled: props.busy === "sessions", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14 }),
@@ -14801,10 +15061,10 @@ function PlatformViewport(props) {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "hook-grid", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 17 }), label: "auth.state", enabled: ready }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "messages.listen", enabled: ready }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "products.list", enabled: ready }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "orders.listen", enabled: ready }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings2, { size: 17 }), label: "handoff.transfer", enabled: ready }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "messages.listen", enabled: ready && supports("messages.listen") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "products.list", enabled: ready && supports("products.collect") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "orders.listen", enabled: ready && supports("orders.listen") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings2, { size: 17 }), label: "handoff.transfer", enabled: ready && supports("session.transfer") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 17 }), label: "runtime.events", enabled: Boolean(props.account.connected) })
       ] })
     ] })
@@ -14891,7 +15151,7 @@ function StoreSidebar(props) {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-footer", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Hook runtime · Electron CDP" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Platform Runtime · 多执行模型" })
     ] })
   ] });
 }
@@ -14903,7 +15163,14 @@ function App() {
   const [label, setLabel] = reactExports.useState("");
   const [products, setProducts] = reactExports.useState([]);
   const [sessions, setSessions] = reactExports.useState([]);
+  const [selectedSessionId, setSelectedSessionId] = reactExports.useState("");
   const [messages, setMessages] = reactExports.useState([]);
+  const [messageDraft, setMessageDraft] = reactExports.useState("");
+  const [messageListening, setMessageListening] = reactExports.useState(false);
+  const [orderListening, setOrderListening] = reactExports.useState(false);
+  const [orderWatermark, setOrderWatermark] = reactExports.useState();
+  const [handoffTargets, setHandoffTargets] = reactExports.useState([]);
+  const [selectedHandoffTarget, setSelectedHandoffTarget] = reactExports.useState("");
   const [status, setStatus] = reactExports.useState(null);
   const [events, setEvents] = reactExports.useState([]);
   const [busy, setBusy] = reactExports.useState("");
@@ -14925,7 +15192,9 @@ function App() {
   }, [notify]);
   const loadMessages = reactExports.useCallback(async (accountId, sessionId) => {
     try {
-      setMessages(await window.platformApi.messages(accountId, sessionId));
+      const result = await window.platformApi.messages(accountId, sessionId);
+      if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回消息列表");
+      setMessages(result);
     } catch (error) {
       notify(errorMessage(error));
     }
@@ -14934,9 +15203,14 @@ function App() {
     if (!accountId) return;
     setBusy("sessions");
     try {
-      const nextSessions = await window.platformApi.sessions(accountId);
+      const result = await window.platformApi.sessions(accountId);
+      if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回会话列表");
+      const nextSessions = result;
       setSessions(nextSessions);
-      if (nextSessions[0]) await loadMessages(accountId, nextSessions[0].id);
+      const nextSessionId = nextSessions[0]?.id || "";
+      setSelectedSessionId(nextSessionId);
+      if (nextSessionId) await loadMessages(accountId, nextSessionId);
+      else setMessages([]);
       notify(`已读取 ${nextSessions.length} 个会话`);
     } catch (error) {
       notify(errorMessage(error));
@@ -14944,12 +15218,26 @@ function App() {
       setBusy("");
     }
   }, [activeAccountId, loadMessages, notify]);
+  const resetAccountView = reactExports.useCallback(() => {
+    setStatus(null);
+    setProducts([]);
+    setSessions([]);
+    setSelectedSessionId("");
+    setMessages([]);
+    setMessageDraft("");
+    setMessageListening(false);
+    setOrderListening(false);
+    setOrderWatermark(void 0);
+    setHandoffTargets([]);
+    setSelectedHandoffTarget("");
+  }, []);
   const refresh = reactExports.useCallback(async () => {
     try {
       const [nextPlatforms, nextAccounts] = await Promise.all([window.platformApi.platforms.list(), window.platformApi.accounts.list()]);
       setPlatforms(nextPlatforms);
       setAccounts(nextAccounts);
       const accountId = activeAccountId && nextAccounts.some((item) => item.id === activeAccountId) ? activeAccountId : nextAccounts[0]?.id || "";
+      if (accountId !== activeAccountId) resetAccountView();
       setActiveAccountId(accountId);
       if (accountId) {
         await inspect(accountId);
@@ -14958,13 +15246,14 @@ function App() {
     } catch (error) {
       notify(errorMessage(error));
     }
-  }, [activeAccountId, inspect, notify, refreshSessions]);
+  }, [activeAccountId, inspect, notify, refreshSessions, resetAccountView]);
   const addAccount = reactExports.useCallback(async () => {
     setBusy("add");
     try {
       const account = await window.platformApi.accounts.add({ platform: selectedPlatform, label: label || activePlatform?.label || "平台店铺" });
       setLabel("");
       setAccounts((current) => [...current, account]);
+      resetAccountView();
       setActiveAccountId(account.id);
       await window.platformApi.accounts.open(account.id);
       await inspect(account.id);
@@ -14974,8 +15263,9 @@ function App() {
     } finally {
       setBusy("");
     }
-  }, [activePlatform, inspect, label, notify, selectedPlatform]);
+  }, [activePlatform, inspect, label, notify, resetAccountView, selectedPlatform]);
   const openAccount = reactExports.useCallback(async (account) => {
+    if (account.id !== activeAccountId) resetAccountView();
     setActiveAccountId(account.id);
     setBusy(`open:${account.id}`);
     try {
@@ -14987,7 +15277,7 @@ function App() {
     } finally {
       setBusy("");
     }
-  }, [inspect, notify]);
+  }, [activeAccountId, inspect, notify, resetAccountView]);
   const removeAccount = reactExports.useCallback(async (account) => {
     if (!window.confirm(`确定移除“${account.label}”吗？`)) return;
     try {
@@ -15014,7 +15304,9 @@ function App() {
     if (!activeAccountId) return;
     setBusy("products");
     try {
-      setProducts(await window.platformApi.collectProducts(activeAccountId));
+      const result = await window.platformApi.collectProducts(activeAccountId);
+      if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回商品列表");
+      setProducts(result);
       notify("商品采集完成");
     } catch (error) {
       notify(errorMessage(error));
@@ -15022,20 +15314,116 @@ function App() {
       setBusy("");
     }
   }, [activeAccountId, notify]);
+  const selectSession = reactExports.useCallback((sessionId) => {
+    setSelectedSessionId(sessionId);
+    if (activeAccountId && sessionId) void loadMessages(activeAccountId, sessionId);
+  }, [activeAccountId, loadMessages]);
+  const startMessageListening = reactExports.useCallback(async () => {
+    if (!activeAccountId) return;
+    setBusy("messages-listen");
+    try {
+      const result = await window.platformApi.listenMessages(activeAccountId);
+      const failure = operationError(result);
+      if (failure) throw new Error(failure);
+      setMessageListening(result.listening === true);
+      notify(result.listening ? "消息监听已启动，等待客户消息或商品卡片" : "平台未返回消息监听状态");
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [activeAccountId, notify]);
+  const sendTestMessage = reactExports.useCallback(async () => {
+    if (!activeAccountId || !selectedSessionId || !messageDraft.trim()) return;
+    setBusy("send");
+    try {
+      const result = await window.platformApi.sendMessage(activeAccountId, selectedSessionId, messageDraft.trim());
+      if (!result.success) throw new Error(result.error || "消息发送失败");
+      const sent = messageDraft.trim();
+      setMessageDraft("");
+      await loadMessages(activeAccountId, selectedSessionId);
+      notify(`测试消息已发送：${sent.slice(0, 24)}`);
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [activeAccountId, loadMessages, messageDraft, notify, selectedSessionId]);
+  const startOrderListening = reactExports.useCallback(async () => {
+    if (!activeAccountId) return;
+    setBusy("orders-listen");
+    try {
+      const result = await window.platformApi.listenOrders(activeAccountId, selectedSessionId || void 0);
+      const failure = operationError(result);
+      if (failure) throw new Error(failure);
+      setOrderListening(result.listening === true);
+      setOrderWatermark(result.watermark);
+      notify(result.listening ? "订单监听已启动，请按验收清单操作真实订单" : "平台未返回订单监听状态");
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [activeAccountId, notify, selectedSessionId]);
+  const loadHandoffTargets = reactExports.useCallback(async () => {
+    if (!activeAccountId) return;
+    setBusy("handoff-targets");
+    try {
+      const targets = await window.platformApi.handoffTargets(activeAccountId);
+      if (!Array.isArray(targets)) throw new Error(operationError(targets) || "平台未返回可转人工目标");
+      setHandoffTargets(targets);
+      setSelectedHandoffTarget("");
+      notify(targets.length ? `已读取 ${targets.length} 个官方转人工目标` : "当前平台没有可转人工目标");
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [activeAccountId, notify]);
+  const transferSession = reactExports.useCallback(async () => {
+    if (!activeAccountId || !selectedSessionId || !selectedHandoffTarget) return;
+    const target = handoffTargets.find((item) => (item.id || item.name) === selectedHandoffTarget);
+    if (!window.confirm(`确认将当前会话转交给“${target?.name || selectedHandoffTarget}”吗？`)) return;
+    setBusy("handoff-transfer");
+    try {
+      const result = await window.platformApi.transferSession(activeAccountId, selectedSessionId, selectedHandoffTarget);
+      const failure = operationError(result);
+      if (failure) throw new Error(failure);
+      notify(`已将会话转交给 ${target?.name || selectedHandoffTarget}`);
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [activeAccountId, handoffTargets, notify, selectedHandoffTarget, selectedSessionId]);
   const eventSummary = reactExports.useCallback((event) => {
     if (!event.payload || typeof event.payload !== "object") return String(event.payload || event.type);
     const payload = event.payload;
     if (event.type === "order") return `订单事件 · ${String(payload.order?.status || "状态变化")}`;
-    if (event.type === "message") return `收到消息 · ${String(payload.content || "新消息")}`;
+    if (event.type === "message") {
+      const message = payload.message || payload;
+      return `收到消息 · ${String(message.content || "新消息")}`;
+    }
     return `${event.type} · ${String(payload.message || payload.connected || payload.authenticated || "")}`;
   }, []);
   reactExports.useEffect(() => {
     const dispose = window.platformApi.onEvent((event) => {
       setEvents((current) => [event, ...current].slice(0, 80));
       if (event.accountId !== activeAccountId) return;
-      if (event.type === "connection") setStatus(event.payload);
+      if (event.type === "connection") {
+        const nextStatus = event.payload;
+        setStatus(nextStatus);
+        if (!nextStatus.authenticated) {
+          setMessageListening(false);
+          setOrderListening(false);
+          setOrderWatermark(void 0);
+          setHandoffTargets([]);
+          setSelectedHandoffTarget("");
+        }
+      }
       if (event.type === "message") {
-        const message = event.payload;
+        const message = extractMessage(event.payload);
+        if (!message) return;
         setMessages((current) => upsertPlatformMessage(current, message));
         setSessions((current) => current.some((item) => item.id === message.sessionId) ? current : [{ id: message.sessionId, title: message.senderName || "新会话", unread: 0 }, ...current]);
       }
@@ -15067,7 +15455,7 @@ function App() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-layout", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(StoreSidebar, { platforms, accounts, activeAccountId, selectedPlatform, label, busy, onPlatformChange: setSelectedPlatform, onLabelChange: setLabel, onAdd: () => void addAccount(), onSelect: (account) => void openAccount(account), onRemove: (account) => void removeAccount(account), onImport: () => void importHook() }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), eventSummary })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: setMessageDraft, onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: setSelectedHandoffTarget, onTransfer: () => void transferSession(), eventSummary })
     ] }),
     toast && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toast", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 15 }),
@@ -15077,5 +15465,20 @@ function App() {
 }
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+function operationError(value) {
+  if (!value || typeof value !== "object") return void 0;
+  const record = value;
+  if (record.errorCode || record.success === false) return String(record.error || record.errorCode || "平台操作失败");
+  return void 0;
+}
+function extractMessage(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  const candidate = record.message && typeof record.message === "object" ? record.message : record.payload && typeof record.payload === "object" ? record.payload : value;
+  if (!candidate || typeof candidate !== "object") return null;
+  const message = candidate;
+  if (!message.id || !message.sessionId) return null;
+  return message;
 }
 clientExports.createRoot(document.getElementById("app")).render(/* @__PURE__ */ jsxRuntimeExports.jsx(reactExports.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }));

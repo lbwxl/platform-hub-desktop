@@ -4,7 +4,7 @@ const capabilities: PlatformCapability[] = ['messages.listen', 'messages.history
 
 /** 导入闲鱼原有 bridge 后的统一入口；真正的 bridge 可替换，不让 UI 依赖实现细节。 */
 export const goofishHook: HookPackageManifest = {
-  id: 'goofish', label: '闲鱼', version: '1.0.0', url: 'https://www.goofish.com/',
+  id: 'goofish', label: '闲鱼', version: '1.0.0', url: 'https://www.goofish.com/', executionModel: 'page',
   capabilities, source: 'builtin',
   script: `(() => {
     const bridge = window.__GOOFISH_BRIDGE__ || window.__goofishBridge

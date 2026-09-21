@@ -1,5 +1,7 @@
 export type PlatformId = 'douyin-shop' | 'kuaishou-shop' | 'goofish' | string
 
+export type PlatformExecutionModel = 'page' | 'native' | 'service'
+
 export type PlatformCapability =
   | 'messages.listen'
   | 'messages.history'
@@ -29,6 +31,7 @@ export interface PlatformDefinition {
   id: PlatformId
   label: string
   url: string
+  executionModel?: PlatformExecutionModel
   capabilities: PlatformCapability[]
   hookVersion?: string
   source: 'builtin' | 'imported'
@@ -98,6 +101,16 @@ export interface OrderSyncResult {
   error?: string
 }
 
+export interface OrderListenResult {
+  listening: boolean
+  watermark?: number
+}
+
+export interface HandoffTarget {
+  id?: string
+  name: string
+}
+
 export interface PlatformMessage {
   id: string
   sessionId: string
@@ -146,6 +159,7 @@ export interface HookPackageManifest {
   label: string
   version: string
   url: string
+  executionModel?: PlatformExecutionModel
   loginUrl?: string
   loginMatch?: string[]
   match?: string[]
@@ -186,6 +200,9 @@ export interface PlatformApi {
   messages(accountId: string, sessionId: string): Promise<PlatformMessage[]>
   orders(accountId: string, userId?: string): Promise<unknown[]>
   syncOrders(accountId: string, sessionId?: string, userId?: string): Promise<OrderSyncResult>
+  listenOrders(accountId: string, sessionId?: string, orderId?: string): Promise<OrderListenResult>
+  listenMessages(accountId: string): Promise<{ listening: boolean; watermark?: number }>
+  handoffTargets(accountId: string): Promise<HandoffTarget[]>
   sendMessage(accountId: string, sessionId: string, content: string): Promise<{ success: boolean; error?: string }>
   sendFile(accountId: string, sessionId: string, dataUrl: string, fileName?: string): Promise<{ success: boolean; error?: string }>
   transferSession(accountId: string, sessionId: string, target: string): Promise<unknown>

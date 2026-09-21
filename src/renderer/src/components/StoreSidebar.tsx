@@ -42,7 +42,7 @@ export function StoreSidebar(props: StoreSidebarProps) {
         {!props.accounts.length && <div className="store-empty"><Store size={28} /><strong>还没有店铺</strong><span>添加店铺后，登录会话会独立保存</span></div>}
       </div>
       <button className="import-button" onClick={props.onImport}><Upload size={15} />导入 Hook 包</button>
-      <div className="sidebar-footer"><Wifi size={14} /><span>Hook runtime · Electron CDP</span></div>
+      <div className="sidebar-footer"><Wifi size={14} /><span>Platform Runtime · 多执行模型</span></div>
     </aside>
   )
 }

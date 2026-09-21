@@ -28,6 +28,7 @@ export const douyinHook: HookPackageManifest = {
   label: '抖店',
   version: douyinHookManifest.version,
   url: primaryPage?.url || 'https://im.jinritemai.com/pc_seller_v2/main/workspace',
+  executionModel: 'page',
   loginUrl: 'https://fxg.jinritemai.com/login/common',
   loginMatch: ['https://im.jinritemai.com/login*'],
   capabilities,
@@ -112,6 +113,7 @@ ${douyinHookRuntimeScript}
   }
   window.__platformHub = {
     getAuthState: () => unwrap('auth.state'),
+    listenMessages: async () => unwrap('messages.listen'),
     listSessions: async () => {
       const rows = await unwrap('sessions.list')
       return Array.isArray(rows) ? rows.map((item) => ({ ...item, unread: item.unreadCount || 0, avatar: item.avatarUrl })) : rows
@@ -143,6 +145,11 @@ ${douyinHookRuntimeScript}
     syncOrders: async (conversationId, orderId) => {
       const rows = await unwrap('orders.list', { conversationId, orderId })
       return rows?.errorCode ? rows : { orders: Array.isArray(rows) ? rows.map((item) => order(item, conversationId)) : [], authoritative: true, source: 'platform-runtime', syncedAt: Date.now() }
+    },
+    listenOrders: async (conversationId, orderId) => unwrap('orders.listen', { conversationId, orderId }),
+    listHandoffTargets: async () => {
+      const rows = await unwrap('handoff.targets.list')
+      return Array.isArray(rows) ? rows : []
     },
     transferSession: (conversationId, target) => unwrap('handoff.transfer', { conversationId, targetId: target }),
     drainEvents: async () => (await runtime.drainEvents()).map(event),
