@@ -171,6 +171,7 @@ export interface HookPackageManifest {
     url: string
     methods: string[]
     refreshBeforeInvoke?: boolean
+    persistent?: boolean
   }>
   source?: 'builtin' | 'imported'
 }

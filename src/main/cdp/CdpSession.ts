@@ -128,7 +128,7 @@ export class CdpSession extends EventEmitter {
         `window.__platformHub && window.__platformHub[${JSON.stringify(method)}](...${JSON.stringify(args)})`,
       )
     } finally {
-      if (route) this.scheduleRuntimeWindowClose(route.id)
+      if (route && !route.persistent) this.scheduleRuntimeWindowClose(route.id)
     }
   }
 
@@ -210,10 +210,20 @@ export class CdpSession extends EventEmitter {
     const generation = this.pollGeneration
     this.pollInFlight = true
     try {
-      const result = await this.evaluate<RuntimePollResult>(contents, this.runtimePollExpression(includeAuth))
+      const targets: Array<{ contents: WebContents; includeAuth: boolean }> = [{ contents, includeAuth }]
+      for (const [id, target] of this.runtimeWindows) {
+        const route = this.options.hook.runtimePages?.find((page) => page.id === id)
+        if (!route?.persistent || target.isDestroyed()) continue
+        targets.push({ contents: target.webContents, includeAuth: false })
+      }
+      const results = await Promise.all(targets.map(async (target) => {
+        if (target.contents.isDestroyed()) return null
+        try { return await this.evaluate<RuntimePollResult>(target.contents, this.runtimePollExpression(target.includeAuth)) } catch { return null }
+      }))
       if (generation !== this.pollGeneration || contents !== this.contents || contents.isDestroyed()) return
-      if (result.auth) this.applyAuthState(result.auth)
-      for (const item of result.events || []) this.emitRuntimeEvent(item)
+      const primary = results[0]
+      if (primary?.auth) this.applyAuthState(primary.auth)
+      for (const result of results) for (const item of result?.events || []) this.emitRuntimeEvent(item)
     } catch {
       // Navigation and renderer teardown are recovered by the next hook install.
     } finally {
@@ -341,6 +351,7 @@ export class CdpSession extends EventEmitter {
           contextIsolation: false,
           nodeIntegration: false,
           webSecurity: true,
+          backgroundThrottling: false,
         },
       })
       this.runtimeWindows.set(route.id, target)

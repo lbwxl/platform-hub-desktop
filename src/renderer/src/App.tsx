@@ -200,7 +200,13 @@ export default function App() {
   const eventSummary = useCallback((event: PlatformEvent) => {
     if (!event.payload || typeof event.payload !== 'object') return String(event.payload || event.type)
     const payload = event.payload as Record<string, unknown>
-    if (event.type === 'order') return `订单事件 · ${String((payload.order as Record<string, unknown> | undefined)?.status || '状态变化')}`
+    if (event.type === 'order') {
+      const order = (payload.order as Record<string, unknown> | undefined) || {}
+      const status = String(order.status || '状态变化')
+      const orderId = String(order.orderId || order.id || '').replace(/^douyin:[^:]+:/, '')
+      const eventType = String(payload.eventType || '').replace(/^order\./, '')
+      return `订单事件 · ${eventType ? `${eventType} · ` : ''}${status}${orderId ? ` · ${orderId}` : ''}`
+    }
     if (event.type === 'message') {
       const message = (payload.message as Record<string, unknown> | undefined) || payload
       return `收到消息 · ${String(message.content || '新消息')}`

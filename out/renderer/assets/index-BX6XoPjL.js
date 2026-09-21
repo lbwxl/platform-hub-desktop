@@ -15399,7 +15399,13 @@ function App() {
   const eventSummary = reactExports.useCallback((event) => {
     if (!event.payload || typeof event.payload !== "object") return String(event.payload || event.type);
     const payload = event.payload;
-    if (event.type === "order") return `订单事件 · ${String(payload.order?.status || "状态变化")}`;
+    if (event.type === "order") {
+      const order = payload.order || {};
+      const status2 = String(order.status || "状态变化");
+      const orderId = String(order.orderId || order.id || "").replace(/^douyin:[^:]+:/, "");
+      const eventType = String(payload.eventType || "").replace(/^order\./, "");
+      return `订单事件 · ${eventType ? `${eventType} · ` : ""}${status2}${orderId ? ` · ${orderId}` : ""}`;
+    }
     if (event.type === "message") {
       const message = payload.message || payload;
       return `收到消息 · ${String(message.content || "新消息")}`;

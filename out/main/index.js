@@ -119,7 +119,7 @@ class CdpSession extends EventEmitter {
         `window.__platformHub && window.__platformHub[${JSON.stringify(method)}](...${JSON.stringify(args)})`
       );
     } finally {
-      if (route) this.scheduleRuntimeWindowClose(route.id);
+      if (route && !route.persistent) this.scheduleRuntimeWindowClose(route.id);
     }
   }
   showPrimaryPage() {
@@ -193,10 +193,24 @@ class CdpSession extends EventEmitter {
     const generation = this.pollGeneration;
     this.pollInFlight = true;
     try {
-      const result = await this.evaluate(contents, this.runtimePollExpression(includeAuth));
+      const targets = [{ contents, includeAuth }];
+      for (const [id, target] of this.runtimeWindows) {
+        const route = this.options.hook.runtimePages?.find((page) => page.id === id);
+        if (!route?.persistent || target.isDestroyed()) continue;
+        targets.push({ contents: target.webContents, includeAuth: false });
+      }
+      const results = await Promise.all(targets.map(async (target) => {
+        if (target.contents.isDestroyed()) return null;
+        try {
+          return await this.evaluate(target.contents, this.runtimePollExpression(target.includeAuth));
+        } catch {
+          return null;
+        }
+      }));
       if (generation !== this.pollGeneration || contents !== this.contents || contents.isDestroyed()) return;
-      if (result.auth) this.applyAuthState(result.auth);
-      for (const item of result.events || []) this.emitRuntimeEvent(item);
+      const primary = results[0];
+      if (primary?.auth) this.applyAuthState(primary.auth);
+      for (const result of results) for (const item of result?.events || []) this.emitRuntimeEvent(item);
     } catch {
     } finally {
       if (generation === this.pollGeneration) this.pollInFlight = false;
@@ -316,7 +330,8 @@ class CdpSession extends EventEmitter {
           partition: this.options.partition,
           contextIsolation: false,
           nodeIntegration: false,
-          webSecurity: true
+          webSecurity: true,
+          backgroundThrottling: false
         }
       });
       this.runtimeWindows.set(route.id, target);
@@ -406,6 +421,7 @@ function partitionFor(platform, accountId) {
 const DOUYIN_PLATFORM_ID = "douyin";
 const DOUYIN_PRIMARY_PAGE_ID = "primary";
 const DOUYIN_PRODUCTS_PAGE_ID = "products";
+const DOUYIN_ORDERS_PAGE_ID = "orders";
 const DOUYIN_PRIMARY_OPERATIONS = [
   "auth.state",
   "sessions.list",
@@ -413,8 +429,6 @@ const DOUYIN_PRIMARY_OPERATIONS = [
   "messages.history",
   "messages.send.text",
   "messages.send.file",
-  "orders.list",
-  "orders.listen",
   "handoff.targets.list",
   "handoff.transfer"
 ];
@@ -422,9 +436,13 @@ const DOUYIN_PRODUCTS_OPERATIONS = [
   "products.list",
   "products.detail"
 ];
+const DOUYIN_ORDERS_OPERATIONS = [
+  "orders.list",
+  "orders.listen"
+];
 const douyinHookManifest = {
   version: "1.0.0",
-  capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS],
+  capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS, ...DOUYIN_ORDERS_OPERATIONS],
   pages: [
     {
       id: DOUYIN_PRIMARY_PAGE_ID,
@@ -434,6 +452,15 @@ const douyinHookManifest = {
     {
       id: DOUYIN_PRODUCTS_PAGE_ID,
       kind: "worker",
+      url: "https://fxg.jinritemai.com/ffa/g/list?tab=all",
+      idleTtlMs: 3e4
+    },
+    {
+      id: DOUYIN_ORDERS_PAGE_ID,
+      kind: "worker",
+      // This is the confirmed commerce page target. The order API is
+      // available in this same authenticated fxg partition even when the
+      // page is not navigated to the order-management sub-route.
       url: "https://fxg.jinritemai.com/ffa/g/list?tab=all",
       idleTtlMs: 3e4
     }
@@ -447,7 +474,8 @@ const douyinHookRuntimeScript = String.raw`(() => {
   const PAGE = window.__PLATFORM_HOOK_PAGE_ID__ || (/fxg\.jinritemai\.com/i.test(String(location?.hostname || '')) ? 'products' : 'primary')
   const primaryOperations = ${JSON.stringify(DOUYIN_PRIMARY_OPERATIONS)}
   const productOperations = ${JSON.stringify(DOUYIN_PRODUCTS_OPERATIONS)}
-  const operations = PAGE === 'products' ? productOperations : primaryOperations
+  const orderOperations = ['orders.list', 'orders.listen']
+  const operations = PAGE === 'products' ? productOperations : PAGE === 'orders' ? orderOperations : primaryOperations
   const existing = window[KEY]
   if (existing && !existing.__disposed && existing.protocolVersion === VERSION && existing.describe?.().pageId === PAGE) return
   try { existing?.dispose?.() } catch (_) {}
@@ -465,7 +493,10 @@ const douyinHookRuntimeScript = String.raw`(() => {
   const ORDER_WATCH_MAX = 50
   const ORDER_WATCH_TTL_MS = 30 * 60 * 1000
   const ORDER_ACTIVE_WINDOW_MS = 2 * 60 * 1000
-  const ORDER_ACTIVE_INTERVAL_MS = 5 * 1000
+  // The commerce API is a snapshot endpoint. Keep the active window at the
+  // same cadence as the host drain loop so short-lived created/refunding
+  // states are not skipped when a human completes the next transition.
+  const ORDER_ACTIVE_INTERVAL_MS = 1 * 1000
   const ORDER_IDLE_INTERVAL_MS = 30 * 1000
   const ORDER_POLL_BATCH_SIZE = 1
 
@@ -537,7 +568,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
       return error('CHALLENGE_REQUIRED', '抖店要求完成官方安全验证', true)
     }
     const current = store()
-    const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId)
+    const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId || window.__shop_id)
     const userId = identifier(current?.selfInfo?.id)
     if (shopId || userId) return {
       ok: true,
@@ -770,7 +801,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
     const item = raw && typeof raw === 'object' ? raw : {}
     const externalId = text(item.orderId || item.order_id || item.shopOrderId || item.shop_order_id || item.skuOrderId || item.sku_order_id || item.id)
     if (!externalId) return undefined
-    const shopId = text(item.shopId || item.shop_id || store()?.shopInfo?.id)
+    const shopId = text(item.shopId || item.shop_id || store()?.shopInfo?.id || window.__shop_id)
     const itemRows = array(item.items || item.orderItems || item.skuOrders)
     const quantity = number(item.quantity ?? item.count ?? item.product_count ?? item.item_num) || 1
     const fallback = { productId: text(item.productId || item.product_id || item.goodsId || item.goods_id) || undefined, skuId: text(item.skuId || item.sku_id) || undefined, skuName: text(item.skuName || item.sku_name || item.spec_desc || item.goods_spec_desc || item.sku) || undefined, title: text(item.productName || item.product_name || item.goodsName || item.goods_name) || '未知商品', quantity }
@@ -790,8 +821,9 @@ const douyinHookRuntimeScript = String.raw`(() => {
     const cents = number(item.pay_amount ?? item.order_amount ?? item.total_fee)
     const total = amount !== undefined ? amount : cents !== undefined ? cents / 100 : undefined
     const platformStatus = text(item.platformStatus || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc || item.status)
-    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc)
-    const status = (platformAftersaleStatus || platformStatus).toLowerCase()
+    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc).trim()
+    const effectiveAftersaleStatus = /^[-—]?$/.test(platformAftersaleStatus) ? '' : platformAftersaleStatus
+    const status = (effectiveAftersaleStatus || platformStatus).toLowerCase()
     const normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
     return {
       id: 'douyin:' + (shopId || 'unknown') + ':' + externalId, externalId,
@@ -803,7 +835,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
       ...((text(item.receiverName || item.receiver_name) || text(item.receiverAddress || item.receiver_address) || text(item.phoneMasked || item.receiver_phone_mask)) ? { receiver: { ...(text(item.receiverName || item.receiver_name) ? { name: text(item.receiverName || item.receiver_name) } : {}), ...(text(item.phoneMasked || item.receiver_phone_mask) ? { phoneMasked: text(item.phoneMasked || item.receiver_phone_mask) } : {}), ...(text(item.receiverAddress || item.receiver_address) ? { address: text(item.receiverAddress || item.receiver_address) } : {}) } } : {}),
       ...(time(item.createdAt || item.create_time || item.order_create_time) ? { createdAt: time(item.createdAt || item.create_time || item.order_create_time) } : {}),
       ...(time(item.updatedAt || item.update_time || item.timestamp) ? { updatedAt: time(item.updatedAt || item.update_time || item.timestamp) } : {}),
-      raw: { platformStatus, ...(platformAftersaleStatus ? { platformAftersaleStatus } : {}) },
+      raw: { platformStatus, ...(effectiveAftersaleStatus ? { platformAftersaleStatus: effectiveAftersaleStatus } : {}) },
     }
   }
   const orderMessages = (conversationId) => messages(conversationId).map((item) => item.type === 'order' ? orderFromMessage(item, conversationId) : undefined).filter(Boolean)
@@ -908,6 +940,57 @@ const douyinHookRuntimeScript = String.raw`(() => {
     }
     return []
   }
+  const requestCommerceOrders = async (explicitOrderId) => {
+    if (PAGE !== 'orders') return []
+    const request = window['fetch']
+    if (typeof request !== 'function') return []
+    const query = 'page=0&pageSize=100&order_by=create_time&order=desc&tab=all'
+    try {
+      const response = await request.call(window, '/api/order/searchlist?' + query.toString(), { credentials: 'include' })
+      if (!response?.ok) return []
+      const payload = await response.json()
+      const rows = array(payload?.data)
+      const normalizedRows = rows.map((item) => {
+        const value = item && typeof item === 'object' ? item : {}
+        const productRows = array(value.product_item).map((productItem) => {
+          const row = productItem && typeof productItem === 'object' ? productItem : {}
+          return {
+            ...row,
+            product_id: row.product_id || row.goods_id,
+            product_name: row.product_name || row.goods_name,
+            sku_id: row.sku_id || row.sku_id_str,
+            sku_name: row.sku_name || (Array.isArray(row.sku_spec) ? row.sku_spec.map((spec) => text(spec?.value || spec?.name || spec)).filter(Boolean).join(', ') : ''),
+            quantity: row.combo_num || row.quantity || row.buy_num,
+            actual_pay_amount: row.pay_amount ?? row.total_amount ?? row.combo_amount,
+            after_sale_orders: row.after_sale_info ? [row.after_sale_info] : [],
+          }
+        })
+        const firstProduct = productRows[0] || {}
+        const receiver = value.receiver_info && typeof value.receiver_info === 'object' ? value.receiver_info : {}
+        const aftersale = productRows.flatMap((row) => array(row.after_sale_orders)).map((row) => text(row?.after_sale_text || row?.aftersale_status_class_string || row?.after_sale_status_remark)).filter(Boolean).join(' ')
+        const statusText = text(value.order_status_info?.order_status_text || value.status_desc || value.order_status_desc || value.order_status)
+        const paidStatus = value.pay_time ? '已付款' : statusText
+        return {
+          ...value,
+          order_id: value.shop_order_id || value.order_id,
+          sku_order_list: productRows,
+          order_status_desc: paidStatus,
+          aftersale_sum_status_desc: aftersale,
+          user_id: value.user_id,
+          post_receiver: receiver.post_receiver,
+          mobile: receiver.post_tel || receiver.post_tel_mask,
+          post_address: receiver.post_addr,
+          createdAt: value.create_time,
+          update_time: value.pay_time || value.update_time || value.create_time,
+          ...(firstProduct.product_id ? { product_id: firstProduct.product_id } : {}),
+        }
+      })
+      const rowsForOrder = explicitOrderId ? normalizedRows.filter((item) => identifier(item.order_id) === identifier(explicitOrderId)) : normalizedRows
+      return officialOrders({ data: rowsForOrder }, '', '').map((item) => ({ ...item, raw: { ...item.raw, source: 'fxg.order.searchlist' } }))
+    } catch (_) {
+      return []
+    }
+  }
   const mergeOrders = (rows) => {
     const result = new Map()
     for (const item of rows) {
@@ -938,6 +1021,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
     return [...result.values()]
   }
   const orders = async (conversationId, explicitOrderId) => {
+    if (PAGE === 'orders') return mergeOrders(await requestCommerceOrders(explicitOrderId))
     const current = store()
     const service = current?.orderInvitation || current?.orderInfo
     const collected = []
@@ -1158,6 +1242,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
 })()`;
 const primaryPage = douyinHookManifest.pages.find((page) => page.kind === "primary");
 const productsPage = douyinHookManifest.pages.find((page) => page.id === "products");
+const ordersPage = douyinHookManifest.pages.find((page) => page.id === "orders");
 const capabilities$1 = [
   "messages.listen",
   "messages.history",
@@ -1179,7 +1264,10 @@ const douyinHook = {
   loginUrl: "https://fxg.jinritemai.com/login/common",
   loginMatch: ["https://im.jinritemai.com/login*"],
   capabilities: capabilities$1,
-  runtimePages: productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ["collectProducts", "getProductDetail"] }] : void 0,
+  runtimePages: [
+    ...productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ["collectProducts", "getProductDetail"] }] : [],
+    ...ordersPage?.url ? [{ id: ordersPage.id, url: ordersPage.url, methods: ["getOrders", "syncOrders", "listenOrders"], persistent: true }] : []
+  ],
   script: createShellRuntimeScript(),
   source: "builtin"
 };
@@ -1250,7 +1338,7 @@ ${douyinHookRuntimeScript}
     const item = value && typeof value === 'object' ? value : {}
     if (item.type === 'message.created') return { ...item, type: 'message', payload: { message: message(item.payload?.message) } }
     if (item.type === 'order.created' || item.type === 'order.updated') {
-      return { ...item, type: 'order', payload: { ...item.payload, order: order(item.payload?.order, item.payload?.order?.conversationId || '') } }
+      return { ...item, type: 'order', payload: { ...item.payload, eventType: item.type, order: order(item.payload?.order, item.payload?.order?.conversationId || '') } }
     }
     if (item.type === 'runtime.error') return { ...item, type: 'error' }
     return item

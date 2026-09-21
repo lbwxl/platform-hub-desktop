@@ -3,6 +3,7 @@ import type { HookPackageManifest, PlatformCapability } from '../../shared/platf
 
 const primaryPage = douyinHookManifest.pages.find((page) => page.kind === 'primary')
 const productsPage = douyinHookManifest.pages.find((page) => page.id === 'products')
+const ordersPage = douyinHookManifest.pages.find((page) => page.id === 'orders')
 
 const capabilities: PlatformCapability[] = [
   'messages.listen',
@@ -32,7 +33,10 @@ export const douyinHook: HookPackageManifest = {
   loginUrl: 'https://fxg.jinritemai.com/login/common',
   loginMatch: ['https://im.jinritemai.com/login*'],
   capabilities,
-  runtimePages: productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ['collectProducts', 'getProductDetail'] }] : undefined,
+  runtimePages: [
+    ...(productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ['collectProducts', 'getProductDetail'] }] : []),
+    ...(ordersPage?.url ? [{ id: ordersPage.id, url: ordersPage.url, methods: ['getOrders', 'syncOrders', 'listenOrders'], persistent: true }] : []),
+  ],
   script: createShellRuntimeScript(),
   source: 'builtin',
 }
@@ -106,7 +110,7 @@ ${douyinHookRuntimeScript}
     const item = value && typeof value === 'object' ? value : {}
     if (item.type === 'message.created') return { ...item, type: 'message', payload: { message: message(item.payload?.message) } }
     if (item.type === 'order.created' || item.type === 'order.updated') {
-      return { ...item, type: 'order', payload: { ...item.payload, order: order(item.payload?.order, item.payload?.order?.conversationId || '') } }
+      return { ...item, type: 'order', payload: { ...item.payload, eventType: item.type, order: order(item.payload?.order, item.payload?.order?.conversationId || '') } }
     }
     if (item.type === 'runtime.error') return { ...item, type: 'error' }
     return item

@@ -7,7 +7,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   const PAGE = window.__PLATFORM_HOOK_PAGE_ID__ || (/fxg\.jinritemai\.com/i.test(String(location?.hostname || '')) ? 'products' : 'primary')
   const primaryOperations = ${JSON.stringify(DOUYIN_PRIMARY_OPERATIONS)}
   const productOperations = ${JSON.stringify(DOUYIN_PRODUCTS_OPERATIONS)}
-  const operations = PAGE === 'products' ? productOperations : primaryOperations
+  const orderOperations = ['orders.list', 'orders.listen']
+  const operations = PAGE === 'products' ? productOperations : PAGE === 'orders' ? orderOperations : primaryOperations
   const existing = window[KEY]
   if (existing && !existing.__disposed && existing.protocolVersion === VERSION && existing.describe?.().pageId === PAGE) return
   try { existing?.dispose?.() } catch (_) {}
@@ -25,7 +26,10 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   const ORDER_WATCH_MAX = 50
   const ORDER_WATCH_TTL_MS = 30 * 60 * 1000
   const ORDER_ACTIVE_WINDOW_MS = 2 * 60 * 1000
-  const ORDER_ACTIVE_INTERVAL_MS = 5 * 1000
+  // The commerce API is a snapshot endpoint. Keep the active window at the
+  // same cadence as the host drain loop so short-lived created/refunding
+  // states are not skipped when a human completes the next transition.
+  const ORDER_ACTIVE_INTERVAL_MS = 1 * 1000
   const ORDER_IDLE_INTERVAL_MS = 30 * 1000
   const ORDER_POLL_BATCH_SIZE = 1
 
@@ -97,7 +101,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       return error('CHALLENGE_REQUIRED', '抖店要求完成官方安全验证', true)
     }
     const current = store()
-    const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId)
+    const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId || window.__shop_id)
     const userId = identifier(current?.selfInfo?.id)
     if (shopId || userId) return {
       ok: true,
@@ -330,7 +334,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const item = raw && typeof raw === 'object' ? raw : {}
     const externalId = text(item.orderId || item.order_id || item.shopOrderId || item.shop_order_id || item.skuOrderId || item.sku_order_id || item.id)
     if (!externalId) return undefined
-    const shopId = text(item.shopId || item.shop_id || store()?.shopInfo?.id)
+    const shopId = text(item.shopId || item.shop_id || store()?.shopInfo?.id || window.__shop_id)
     const itemRows = array(item.items || item.orderItems || item.skuOrders)
     const quantity = number(item.quantity ?? item.count ?? item.product_count ?? item.item_num) || 1
     const fallback = { productId: text(item.productId || item.product_id || item.goodsId || item.goods_id) || undefined, skuId: text(item.skuId || item.sku_id) || undefined, skuName: text(item.skuName || item.sku_name || item.spec_desc || item.goods_spec_desc || item.sku) || undefined, title: text(item.productName || item.product_name || item.goodsName || item.goods_name) || '未知商品', quantity }
@@ -350,8 +354,9 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const cents = number(item.pay_amount ?? item.order_amount ?? item.total_fee)
     const total = amount !== undefined ? amount : cents !== undefined ? cents / 100 : undefined
     const platformStatus = text(item.platformStatus || item.orderStatus || item.order_status || item.status_desc || item.order_status_desc || item.status)
-    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc)
-    const status = (platformAftersaleStatus || platformStatus).toLowerCase()
+    const platformAftersaleStatus = text(item.platformAftersaleStatus || item.aftersaleStatus || item.aftersale_sum_status_desc).trim()
+    const effectiveAftersaleStatus = /^[-—]?$/.test(platformAftersaleStatus) ? '' : platformAftersaleStatus
+    const status = (effectiveAftersaleStatus || platformStatus).toLowerCase()
     const normalizedStatus = /退款成功|退款完成|已退款|售后完成|售后成功|refunded/.test(status) ? 'refunded' : /退款|退货|售后|refund/.test(status) ? 'refunding' : /取消|关闭|cancel|closed/.test(status) ? 'cancelled' : /完成|交易成功|已收货|complete|success/.test(status) ? 'completed' : /已发货|运输中|物流|shipped|shipping/.test(status) ? 'shipped' : /待发货|备货|处理中|processing/.test(status) ? 'processing' : /已付款|已支付|支付成功|paid/.test(status) ? 'paid' : /待付款|待支付|未付款|新订单|created|pending/.test(status) ? 'created' : 'unknown'
     return {
       id: 'douyin:' + (shopId || 'unknown') + ':' + externalId, externalId,
@@ -363,7 +368,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       ...((text(item.receiverName || item.receiver_name) || text(item.receiverAddress || item.receiver_address) || text(item.phoneMasked || item.receiver_phone_mask)) ? { receiver: { ...(text(item.receiverName || item.receiver_name) ? { name: text(item.receiverName || item.receiver_name) } : {}), ...(text(item.phoneMasked || item.receiver_phone_mask) ? { phoneMasked: text(item.phoneMasked || item.receiver_phone_mask) } : {}), ...(text(item.receiverAddress || item.receiver_address) ? { address: text(item.receiverAddress || item.receiver_address) } : {}) } } : {}),
       ...(time(item.createdAt || item.create_time || item.order_create_time) ? { createdAt: time(item.createdAt || item.create_time || item.order_create_time) } : {}),
       ...(time(item.updatedAt || item.update_time || item.timestamp) ? { updatedAt: time(item.updatedAt || item.update_time || item.timestamp) } : {}),
-      raw: { platformStatus, ...(platformAftersaleStatus ? { platformAftersaleStatus } : {}) },
+      raw: { platformStatus, ...(effectiveAftersaleStatus ? { platformAftersaleStatus: effectiveAftersaleStatus } : {}) },
     }
   }
   const orderMessages = (conversationId) => messages(conversationId).map((item) => item.type === 'order' ? orderFromMessage(item, conversationId) : undefined).filter(Boolean)
@@ -468,6 +473,57 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     }
     return []
   }
+  const requestCommerceOrders = async (explicitOrderId) => {
+    if (PAGE !== 'orders') return []
+    const request = window['fetch']
+    if (typeof request !== 'function') return []
+    const query = 'page=0&pageSize=100&order_by=create_time&order=desc&tab=all'
+    try {
+      const response = await request.call(window, '/api/order/searchlist?' + query.toString(), { credentials: 'include' })
+      if (!response?.ok) return []
+      const payload = await response.json()
+      const rows = array(payload?.data)
+      const normalizedRows = rows.map((item) => {
+        const value = item && typeof item === 'object' ? item : {}
+        const productRows = array(value.product_item).map((productItem) => {
+          const row = productItem && typeof productItem === 'object' ? productItem : {}
+          return {
+            ...row,
+            product_id: row.product_id || row.goods_id,
+            product_name: row.product_name || row.goods_name,
+            sku_id: row.sku_id || row.sku_id_str,
+            sku_name: row.sku_name || (Array.isArray(row.sku_spec) ? row.sku_spec.map((spec) => text(spec?.value || spec?.name || spec)).filter(Boolean).join(', ') : ''),
+            quantity: row.combo_num || row.quantity || row.buy_num,
+            actual_pay_amount: row.pay_amount ?? row.total_amount ?? row.combo_amount,
+            after_sale_orders: row.after_sale_info ? [row.after_sale_info] : [],
+          }
+        })
+        const firstProduct = productRows[0] || {}
+        const receiver = value.receiver_info && typeof value.receiver_info === 'object' ? value.receiver_info : {}
+        const aftersale = productRows.flatMap((row) => array(row.after_sale_orders)).map((row) => text(row?.after_sale_text || row?.aftersale_status_class_string || row?.after_sale_status_remark)).filter(Boolean).join(' ')
+        const statusText = text(value.order_status_info?.order_status_text || value.status_desc || value.order_status_desc || value.order_status)
+        const paidStatus = value.pay_time ? '已付款' : statusText
+        return {
+          ...value,
+          order_id: value.shop_order_id || value.order_id,
+          sku_order_list: productRows,
+          order_status_desc: paidStatus,
+          aftersale_sum_status_desc: aftersale,
+          user_id: value.user_id,
+          post_receiver: receiver.post_receiver,
+          mobile: receiver.post_tel || receiver.post_tel_mask,
+          post_address: receiver.post_addr,
+          createdAt: value.create_time,
+          update_time: value.pay_time || value.update_time || value.create_time,
+          ...(firstProduct.product_id ? { product_id: firstProduct.product_id } : {}),
+        }
+      })
+      const rowsForOrder = explicitOrderId ? normalizedRows.filter((item) => identifier(item.order_id) === identifier(explicitOrderId)) : normalizedRows
+      return officialOrders({ data: rowsForOrder }, '', '').map((item) => ({ ...item, raw: { ...item.raw, source: 'fxg.order.searchlist' } }))
+    } catch (_) {
+      return []
+    }
+  }
   const mergeOrders = (rows) => {
     const result = new Map()
     for (const item of rows) {
@@ -498,6 +554,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     return [...result.values()]
   }
   const orders = async (conversationId, explicitOrderId) => {
+    if (PAGE === 'orders') return mergeOrders(await requestCommerceOrders(explicitOrderId))
     const current = store()
     const service = current?.orderInvitation || current?.orderInfo
     const collected = []

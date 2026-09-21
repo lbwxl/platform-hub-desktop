@@ -1,6 +1,7 @@
 export const DOUYIN_PLATFORM_ID = 'douyin';
 export const DOUYIN_PRIMARY_PAGE_ID = 'primary';
 export const DOUYIN_PRODUCTS_PAGE_ID = 'products';
+export const DOUYIN_ORDERS_PAGE_ID = 'orders';
 export const DOUYIN_PRIMARY_OPERATIONS = [
     'auth.state',
     'sessions.list',
@@ -8,8 +9,6 @@ export const DOUYIN_PRIMARY_OPERATIONS = [
     'messages.history',
     'messages.send.text',
     'messages.send.file',
-    'orders.list',
-    'orders.listen',
     'handoff.targets.list',
     'handoff.transfer',
 ];
@@ -17,10 +16,14 @@ export const DOUYIN_PRODUCTS_OPERATIONS = [
     'products.list',
     'products.detail',
 ];
+export const DOUYIN_ORDERS_OPERATIONS = [
+    'orders.list',
+    'orders.listen',
+];
 export const douyinHookManifest = {
     platform: DOUYIN_PLATFORM_ID,
     version: '1.0.0',
-    capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS],
+    capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS, ...DOUYIN_ORDERS_OPERATIONS],
     pages: [
         {
             id: DOUYIN_PRIMARY_PAGE_ID,
@@ -30,6 +33,15 @@ export const douyinHookManifest = {
         {
             id: DOUYIN_PRODUCTS_PAGE_ID,
             kind: 'worker',
+            url: 'https://fxg.jinritemai.com/ffa/g/list?tab=all',
+            idleTtlMs: 30_000,
+        },
+        {
+            id: DOUYIN_ORDERS_PAGE_ID,
+            kind: 'worker',
+            // This is the confirmed commerce page target. The order API is
+            // available in this same authenticated fxg partition even when the
+            // page is not navigated to the order-management sub-route.
             url: 'https://fxg.jinritemai.com/ffa/g/list?tab=all',
             idleTtlMs: 30_000,
         },
@@ -43,8 +55,8 @@ export const douyinHookManifest = {
         'messages.send.file': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.send.file' },
         'products.list': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.list' },
         'products.detail': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.detail' },
-        'orders.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.list' },
-        'orders.listen': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'orders.listen' },
+        'orders.list': { page: DOUYIN_ORDERS_PAGE_ID, capability: 'orders.list' },
+        'orders.listen': { page: DOUYIN_ORDERS_PAGE_ID, capability: 'orders.listen' },
         'handoff.targets.list': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'handoff.targets.list' },
         'handoff.transfer': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'handoff.transfer' },
     },
