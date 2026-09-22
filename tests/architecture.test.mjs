@@ -12,6 +12,9 @@ const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'u
 const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
 const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/hook-sdk/package.json', import.meta.url), 'utf8'))
 const hookHostPackage = JSON.parse(await readFile(new URL('../packages/hook-host/package.json', import.meta.url), 'utf8'))
+const hookTransportPackage = JSON.parse(await readFile(new URL('../packages/hook-transport/package.json', import.meta.url), 'utf8'))
+const hookTransportTypes = await readFile(new URL('../packages/hook-transport/src/types.ts', import.meta.url), 'utf8')
+const pageHookTransport = await readFile(new URL('../packages/hook-transport/src/page-hook-transport.ts', import.meta.url), 'utf8')
 const foundationSources = await Promise.all([
   '../packages/hook-sdk/src/protocol/index.ts',
   '../packages/hook-sdk/src/contracts/index.ts',
@@ -35,6 +38,26 @@ test('Hook foundation contains no platform branches or direct console logging', 
   assert.doesNotMatch(source, /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
   assert.doesNotMatch(source, /console\.(?:log|info|warn|error|debug)/)
   assert.equal(hookHostPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
+})
+
+test('HookTransport keeps the public contract execution-model-neutral', () => {
+  const dependencies = { ...hookTransportPackage.dependencies, ...hookTransportPackage.devDependencies }
+  assert.equal(hookTransportPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
+  assert.equal(hookTransportPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
+  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/kuaishou-hook']) {
+    assert.equal(dependencies[forbidden], undefined)
+  }
+  assert.doesNotMatch(hookTransportTypes, /hook-host|electron|react|vue|douyin|kuaishou|goofish|wechat|wework|qianniu/i)
+  assert.match(hookTransportTypes, /interface HookTransport/)
+  assert.match(hookTransportTypes, /HookEvent/)
+  assert.match(hookTransportTypes, /HookResult/)
+})
+
+test('PageHookTransport is a thin session adapter without host ownership or platform branches', () => {
+  assert.match(pageHookTransport, /from '@platform-hub\/hook-host'/)
+  assert.doesNotMatch(pageHookTransport, /new\s+HookHost/)
+  assert.doesNotMatch(pageHookTransport, /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|goofish|wechat|wework|qianniu/i)
+  assert.match(pageHookTransport, /disposeSession/)
 })
 
 test('正式 Douyin Hook 仅将 DOM 投影限制在会话原生 attention，且不依赖 Legacy', () => {

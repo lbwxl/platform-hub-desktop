@@ -1202,6 +1202,31 @@ Douyin Page Hook 已完成最终真实验收。进入 `HookTransport` 阶段后�
 
 Phase 进入 `HookTransport 抽象` 不代表每次任务都自动授权实现 `HookTransport`；仍必须服从用户当轮明确范围。
 
+## 34.1 HookTransport Ownership Boundary
+
+当前 Phase `HookTransport 抽象` 中，统一执行模型边界固定为：
+
+```text
+PlatformRuntime
+↓
+Platform Adapter
+↓
+HookTransport
+├─ PageHookTransport
+│  ↓ HookSession
+│  ↓ HookHost
+└─ Legacy / Native Transport
+   ↓ future adapters
+```
+
+`HookTransport` 是跨执行模型的统一边界；它只暴露统一的 `start`、`invoke`、`subscribe`、`stop` Contract，不依赖 Electron、DOM、CDP 或具体平台。
+
+`HookHost` 仍是 Page Hook 专用基础设施，负责共享的 HookSession registry 和 WorkerScheduler。`PageHookTransport` 只是 `HookTransport` 到一个现有 `HookSession` 的薄适配层：它拥有一个 Session lifecycle handle，但不拥有也不创建 `HookHost`。
+
+`PageHookTransport.stop()` 只能通过所属 Host 的 `disposeSession(sessionId)` 释放自己的 Session；不得调用 `HookHost.dispose()`，不得停止共享 Scheduler，也不得影响兄弟 Session。
+
+除非发现明确 bug 或 Contract incompatibility，后续 `HookTransport` 工作不得随意重构 Douyin runtime、HookSession、HookHost、PersistentPageManager 或 WorkerScheduler。
+
 ---
 
 ## 35. Douyin / Doudian Naming Rule
