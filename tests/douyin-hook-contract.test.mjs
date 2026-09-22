@@ -250,7 +250,7 @@ test('Douyin commerce page polls the official shop order API and emits lifecycle
   await recoveredRuntime.dispose()
 })
 
-test('Douyin orders bind the official Frontier message runtime and decode msgItem ext_info', async () => {
+test('Douyin Frontier event with an orderId uses the exact authoritative query', async () => {
   const registrations = []
   const removals = []
   let row = {
@@ -299,6 +299,289 @@ test('Douyin orders bind the official Frontier message runtime and decode msgIte
   assert.ok(events.some((event) => event.type === 'order.updated' && event.payload.order.status === 'processing' && event.payload.order.raw?.notification?.source === 'frontierInstance.fws.message'))
   await runtime.dispose()
   assert.deepEqual(removals.map((item) => item.eventName), ['message'])
+})
+
+test('Douyin Frontier order-domain wakeups reconcile recent authoritative snapshots', async () => {
+  const registrations = []
+  const timers = []
+  const clock = 1_700_000_000_000
+  const requests = []
+  const historical = {
+    shop_order_id: 'historical-order',
+    order_status: 1,
+    order_status_info: { order_status_text: '待支付' },
+    create_time: Math.floor(clock / 1000) - 600,
+    actual_pay_amount: 100,
+    product_item: [{ product_id: 'goods-1', product_name: '历史商品', combo_num: 1, pay_amount: 100 }],
+  }
+  let rows = [historical]
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'orders',
+      __shop_id: 'shop-1',
+      frontierInstance: {
+        fws: {
+          addEventListener(eventName, callback) { registrations.push({ eventName, callback }) },
+          removeEventListener() {},
+        },
+      },
+      async fetch(url) {
+        requests.push(String(url))
+        return { ok: true, async json() { return { data: rows } } }
+      },
+    },
+    setTimeout(callback, delay) {
+      const timer = { cleared: false, delay }
+      timers.push(timer)
+      queueMicrotask(() => { if (!timer.cleared) callback() })
+      return timer
+    },
+    clearTimeout(timer) { timer.cleared = true },
+    setInterval(callback, interval) { return { callback, interval } },
+    clearInterval() {},
+    queueMicrotask,
+    AbortController,
+    Date: { now: () => clock, parse: Date.parse },
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const runtime = context.window.__PLATFORM_HOOK__
+  assert.equal((await runtime.invoke('orders.listen', {})).ok, true)
+  assert.equal((await runtime.drainEvents()).length, 0)
+  const listener = registrations[0].callback
+  const newOrder = {
+    ...historical,
+    shop_order_id: 'new-domain-order',
+    create_time: Math.ceil(clock / 1000) + 1,
+    product_item: [{ product_id: 'goods-2', product_name: '新订单商品', combo_num: 1, pay_amount: 100 }],
+  }
+  rows = [newOrder, historical]
+  listener({ message: { service: 20132, method: 0 } })
+  listener({ message: { service: 20132, method: 0 } })
+  listener({ message: { service: 20132, method: 0 } })
+  for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  const created = await runtime.drainEvents()
+  assert.deepEqual(Array.from(created.filter((event) => event.type === 'order.created'), (event) => event.payload.order.externalId), ['new-domain-order'])
+  assert.equal(requests.length, 2)
+  assert.equal(timers.filter((timer) => timer.delay === 500).length, 1)
+  assert.ok(requests.slice(1).every((url) => !url.includes('search_words=')))
+
+  rows = [{ ...newOrder, order_status: 2, order_status_info: { order_status_text: '待发货' } }, historical]
+  listener({ message: { service: '20132', method: '0' } })
+  for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  const updated = await runtime.drainEvents()
+  assert.deepEqual(Array.from(updated.filter((event) => event.type === 'order.updated'), (event) => event.payload.order.status), ['processing'])
+
+  listener({ message: { service: 20132, method: 0 } })
+  for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal((await runtime.drainEvents()).length, 0)
+  rows = [{ ...rows[0], buyer_id: 'buyer-enriched', user_nick_name: '补全的买家' }, historical]
+  listener({ message: { service: 20132, method: 0 } })
+  for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal((await runtime.drainEvents()).length, 0)
+  const requestCount = requests.length
+  listener({ message: { service: 20131, method: 0 } })
+  for (let index = 0; index < 2; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(requests.length, requestCount)
+  await runtime.dispose()
+})
+
+test('Douyin order-domain wakeups run one dirty follow-up refresh while a refresh is in flight', async () => {
+  const registrations = []
+  const clock = 1_700_000_000_000
+  let requests = 0
+  let active = 0
+  let maxActive = 0
+  let releaseRefresh
+  const row = {
+    shop_order_id: 'coalesced-domain-order',
+    order_status: 1,
+    order_status_info: { order_status_text: '待支付' },
+    create_time: Math.floor(clock / 1000),
+    actual_pay_amount: 100,
+    product_item: [{ product_id: 'goods-1', product_name: '合并商品', combo_num: 1, pay_amount: 100 }],
+  }
+  const response = () => ({ ok: true, async json() { return { data: [row] } } })
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'orders',
+      __shop_id: 'shop-1',
+      frontierInstance: {
+        fws: {
+          addEventListener(eventName, callback) { registrations.push({ eventName, callback }) },
+          removeEventListener() {},
+        },
+      },
+      fetch() {
+        requests += 1
+        if (requests !== 2) return Promise.resolve(response())
+        active += 1
+        maxActive = Math.max(maxActive, active)
+        return new Promise((resolve) => {
+          releaseRefresh = () => { active -= 1; resolve(response()) }
+        })
+      },
+    },
+    setTimeout(callback) {
+      const timer = { cleared: false }
+      queueMicrotask(() => { if (!timer.cleared) callback() })
+      return timer
+    },
+    clearTimeout(timer) { timer.cleared = true },
+    setInterval(callback, interval) { return { callback, interval } },
+    clearInterval() {},
+    queueMicrotask,
+    AbortController,
+    Date: { now: () => clock, parse: Date.parse },
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const runtime = context.window.__PLATFORM_HOOK__
+  assert.equal((await runtime.invoke('orders.listen', {})).ok, true)
+  const listener = registrations[0].callback
+  listener({ message: { service: 20132, method: 0 } })
+  for (let index = 0; index < 4 && !releaseRefresh; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(typeof releaseRefresh, 'function')
+  listener({ message: { service: 20132, method: 0 } })
+  listener({ message: { service: 20132, method: 0 } })
+  listener({ message: { service: 20132, method: 0 } })
+  releaseRefresh()
+  for (let index = 0; index < 8; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(maxActive, 1)
+  assert.equal(requests, 3)
+  await runtime.dispose()
+})
+
+test('Douyin order-domain wakeup debounce is cancelled on dispose', async () => {
+  const registrations = []
+  const timers = []
+  let requests = 0
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'orders',
+      __shop_id: 'shop-1',
+      frontierInstance: {
+        fws: {
+          addEventListener(eventName, callback) { registrations.push({ eventName, callback }) },
+          removeEventListener() {},
+        },
+      },
+      async fetch() { requests += 1; return { ok: true, async json() { return { data: [] } } } },
+    },
+    setTimeout(callback, delay) { const timer = { callback, delay, cleared: false }; timers.push(timer); return timer },
+    clearTimeout(timer) { timer.cleared = true },
+    setInterval(callback, interval) { return { callback, interval } },
+    clearInterval() {},
+    AbortController,
+    Date,
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const runtime = context.window.__PLATFORM_HOOK__
+  assert.equal((await runtime.invoke('orders.listen', {})).ok, true)
+  registrations[0].callback({ message: { service: 20132, method: 0 } })
+  assert.equal(timers.length, 1)
+  await runtime.dispose()
+  assert.equal(timers[0].cleared, true)
+  timers[0].callback()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(requests, 1)
+})
+
+test('Douyin order-domain refresh is aborted on dispose', async () => {
+  const registrations = []
+  const timers = []
+  let requests = 0
+  let refreshSignal
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'orders',
+      __shop_id: 'shop-1',
+      frontierInstance: {
+        fws: {
+          addEventListener(eventName, callback) { registrations.push({ eventName, callback }) },
+          removeEventListener() {},
+        },
+      },
+      fetch(_url, options) {
+        requests += 1
+        if (requests === 1) return Promise.resolve({ ok: true, async json() { return { data: [] } } })
+        refreshSignal = options.signal
+        return new Promise(() => {})
+      },
+    },
+    setTimeout(callback, delay) { const timer = { callback, delay, cleared: false }; timers.push(timer); return timer },
+    clearTimeout(timer) { timer.cleared = true },
+    setInterval(callback, interval) { return { callback, interval } },
+    clearInterval() {},
+    AbortController,
+    Date,
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const runtime = context.window.__PLATFORM_HOOK__
+  assert.equal((await runtime.invoke('orders.listen', {})).ok, true)
+  registrations[0].callback({ message: { service: 20132, method: 0 } })
+  timers[0].callback()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(refreshSignal?.aborted, false)
+  await runtime.dispose()
+  assert.equal(refreshSignal?.aborted, true)
+})
+
+test('Douyin refund without a Frontier frame is detected by reconciliation', async () => {
+  const timers = []
+  const clock = 1_700_000_000_000
+  let row = {
+    shop_order_id: 'refund-reconciliation-order',
+    order_status: 2,
+    order_status_info: { order_status_text: '待发货' },
+    create_time: Math.floor(clock / 1000),
+    actual_pay_amount: 100,
+    product_item: [{ product_id: 'goods-1', product_name: '退款商品', combo_num: 1, pay_amount: 100 }],
+  }
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'orders',
+      __shop_id: 'shop-1',
+      async fetch() { return { ok: true, async json() { return { data: [row] } } } },
+    },
+    setInterval(callback, interval) { const timer = { callback, interval }; timers.push(timer); return timer },
+    clearInterval() {},
+    AbortController,
+    Date: { now: () => clock, parse: Date.parse },
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const runtime = context.window.__PLATFORM_HOOK__
+  assert.equal((await runtime.invoke('orders.listen', {})).ok, true)
+  row = { ...row, product_item: [{ ...row.product_item[0], after_sale_info: { after_sale_text: '退款成功' } }] }
+  const reconciliationTimer = timers.find((timer) => timer.interval === 5 * 60 * 1000)
+  reconciliationTimer.callback()
+  for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve))
+  const events = await runtime.drainEvents()
+  assert.equal(events.find((event) => event.type === 'order.updated')?.payload.order.status, 'refunded')
+  await runtime.dispose()
 })
 
 test('Douyin order notifications retry eventual-consistency misses and emit once', async () => {

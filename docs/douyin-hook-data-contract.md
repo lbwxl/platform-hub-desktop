@@ -357,13 +357,14 @@ const result = await runtime.invoke('orders.listen', {})
 监听流程：
 
 1. 首次读取全店订单快照并建立 watermark。
-2. 订阅抖店页面已经建立的官方通知 runtime；通知对象中的 `msgItem.ext_info` 只作为订单变化唤醒信号。
-3. 从通知提取 `orderId` 后，直接请求 `/api/order/searchlist?...&search_words=<orderId>` 获取权威订单快照；索引尚未可见时只进行有限的 0 / 300 / 1000 / 2500ms 重试。
-4. 同一个 `orderId` 的刷新严格串行；刷新期间到达的通知合并为一次最新刷新，不同订单可以并行。
-5. 快照中的历史订单不会冒充 `order.created`；历史订单收到退款等更新通知时发布 `order.updated`。
-6. 订单实际新增时发布 `order.created`，状态、商品、金额、收件人等有意义字段变化时发布 `order.updated`。
-7. 没有实际变化不会重复发布事件；通知重复也不会重复发布事件。`updatedAt` 和通知诊断字段不参与 material diff。
-8. 通知源断开或漏通知时，每五分钟执行一次低频 reconciliation；监听开始后新出现的订单补发 `order.created`，监听开始前的历史订单只建立 baseline。
+2. 实时通知有两种语义，二者都不直接决定订单状态：
+   - 官方 runtime event 能真实提取 `orderId` 时，直接请求 `/api/order/searchlist?...&search_words=<orderId>` 获取该订单权威快照；索引尚未可见时只进行有限的 0 / 300 / 1000 / 2500ms 重试。
+   - Electron 中页面已有的 Frontier runtime 发出已解码 `service=20132`、`method=0` frame，但没有可用 `orderId` 时，只标记 `ORDER_DOMAIN_DIRTY`。它经短 debounce 后刷新最近订单快照，不能被解释为下单、支付或退款事件。
+3. 无订单号的 order-domain wakeup 在同一店铺最多保留一个 recent-order refresh in-flight。连续 frame 合并；刷新期间再到达的 frame 只安排一次后续刷新。
+4. 每次 authoritative snapshot 都与本地 order snapshot 做 material diff：监听开始后才创建的未知订单发布 `order.created`；已有订单的状态、商品、金额、收件人等有意义字段变化发布 `order.updated`；买家身份和会话上下文的补全或缺失不构成订单状态变化。监听开始前的未知历史订单只建立 baseline。
+5. 没有实际变化不会重复发布事件；通知重复也不会重复发布事件。`updatedAt` 和通知诊断字段不参与 material diff。
+6. `getshopbroadcastv3` 和 `reach/list` 仅可用于历史、审计或订单号发现，不能作为当前订单状态真相。Frontier 也只是 wake-up signal，订单真相始终是 `/api/order/searchlist`。
+7. 退款当前没有确认的 Frontier frame；通知源断开或漏通知时，每五分钟执行一次低频 reconciliation，作为退款、断连和漏 push 兜底。监听开始后新出现的订单补发 `order.created`，监听开始前的历史订单只建立 baseline。
 
 ### 8.4 订单事件
 

@@ -25,6 +25,10 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   let orderNotificationCleanup = null
   let orderNotificationSources = []
   let orderNotificationBindingMode = ''
+  let orderDomainRefreshTimer = null
+  let orderDomainRefreshBusy = false
+  let orderDomainRefreshDirty = false
+  let orderDomainRefreshController = null
   const orderRefreshes = new Map()
   const retryTimers = new Map()
   let orderReconciliationController = null
@@ -49,6 +53,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   const ORDER_RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000
   const ORDER_RECONCILIATION_LIMIT = 20
   const ORDER_QUERY_RETRY_DELAYS_MS = [0, 300, 1000, 2500]
+  const ORDER_DOMAIN_WAKEUP_DEBOUNCE_MS = 500
 
   const store = () => window.ss?._frontStore || window.ss?.instance || null
   const pageContext = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData || null
@@ -610,8 +615,10 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     collected.push(...messageOrders)
     return mergeOrders(collected)
   }
-  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver, item.buyer, item.conversationId])
-  const changedOrderFields = (previous, next) => ['status', 'items', 'total', 'receiver', 'buyer', 'conversationId'].filter((key) => JSON.stringify(previous?.[key]) !== JSON.stringify(next?.[key]))
+  // Buyer and conversation context may be opportunistically filled by the
+  // commerce list API. They do not represent an order-domain state change.
+  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver])
+  const changedOrderFields = (previous, next) => ['status', 'items', 'total', 'receiver'].filter((key) => JSON.stringify(previous?.[key]) !== JSON.stringify(next?.[key]))
   const isOlderOrder = (previous, next) => Boolean(previous?.updatedAt && next?.updatedAt && next.updatedAt < previous.updatedAt)
   const orderSnapshot = (orderId) => {
     const current = orderSnapshots.get('*') || new Map()
@@ -788,6 +795,45 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     orderRefreshes.set(notification.orderId, state)
     void drainOrderRefresh(notification.orderId, state)
   }
+  const refreshRecentOrdersForDomainWakeup = async (signal) => {
+    const current = await requestCommerceOrders('', signal)
+    for (const item of current.slice(0, ORDER_RECONCILIATION_LIMIT)) {
+      if (orderRefreshes.has(item.externalId)) continue
+      const previous = orderSnapshot(item.externalId)
+      if (previous && isOlderOrder(previous, item)) continue
+      if (!previous && (item.createdAt || 0) >= orderListenerStartedAt) emit({ type: 'order.created', payload: { order: item } })
+      else if (previous && orderKey(previous) !== orderKey(item)) emit({ type: 'order.updated', payload: { order: item, previous, changedFields: changedOrderFields(previous, item) } })
+      saveOrderSnapshot(item)
+    }
+  }
+  const drainOrderDomainRefresh = async () => {
+    if (!orderListening || disposed || orderDomainRefreshBusy) return
+    orderDomainRefreshBusy = true
+    const controller = typeof AbortController === 'function' ? new AbortController() : undefined
+    orderDomainRefreshController = controller
+    try {
+      await refreshRecentOrdersForDomainWakeup(controller?.signal)
+    } finally {
+      if (orderDomainRefreshController === controller) orderDomainRefreshController = null
+      orderDomainRefreshBusy = false
+      if (!disposed && orderDomainRefreshDirty) {
+        orderDomainRefreshDirty = false
+        void drainOrderDomainRefresh()
+      }
+    }
+  }
+  const scheduleOrderDomainRefresh = () => {
+    if (!orderListening || disposed) return
+    orderDomainRefreshDirty = true
+    if (orderDomainRefreshBusy || orderDomainRefreshTimer) return
+    const timer = setTimeout(() => {
+      if (orderDomainRefreshTimer === timer) orderDomainRefreshTimer = null
+      if (disposed || !orderDomainRefreshDirty) return
+      orderDomainRefreshDirty = false
+      void drainOrderDomainRefresh()
+    }, ORDER_DOMAIN_WAKEUP_DEBOUNCE_MS)
+    orderDomainRefreshTimer = timer
+  }
   const explicitNotificationCandidates = () => {
     const candidates = [
       window.frontierInstance?.fws,
@@ -880,7 +926,15 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   const bindFrontierNotificationSource = (subscriptions) => {
     const source = window.frontierInstance?.fws
     if (!source || typeof source.addEventListener !== 'function') return false
-    const publish = (value) => { const notification = notificationOrderId(value); if (notification) enqueueOrderRefresh({ ...notification, source: 'frontierInstance.fws.message' }) }
+    const publish = (value) => {
+      const notification = notificationOrderId(value)
+      if (notification) {
+        enqueueOrderRefresh({ ...notification, source: 'frontierInstance.fws.message' })
+        return
+      }
+      const message = value?.message
+      if (number(message?.service) === 20132 && number(message?.method) === 0) scheduleOrderDomainRefresh()
+    }
     try {
       source.addEventListener('message', publish)
       subscriptions.push(() => { try { source.removeEventListener?.('message', publish) } catch (_) {} })
@@ -1105,6 +1159,12 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       orderReconciliationTimer = null
       orderReconciliationController?.abort?.()
       orderReconciliationController = null
+      if (orderDomainRefreshTimer) clearTimeout(orderDomainRefreshTimer)
+      orderDomainRefreshTimer = null
+      orderDomainRefreshController?.abort?.()
+      orderDomainRefreshController = null
+      orderDomainRefreshBusy = false
+      orderDomainRefreshDirty = false
       for (const [timer, resolve] of retryTimers) {
         clearTimeout(timer)
         try { resolve() } catch (_) {}
