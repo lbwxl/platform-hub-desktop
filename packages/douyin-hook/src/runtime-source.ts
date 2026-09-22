@@ -129,6 +129,13 @@ export const douyinHookRuntimeScript = String.raw`(() => {
     if (/captcha|verify|challenge|risk/i.test(String(location?.pathname || '') + String(location?.search || ''))) {
       return error('CHALLENGE_REQUIRED', '抖店要求完成官方安全验证', true)
     }
+    const primaryRedirectedHome = PAGE === 'primary'
+      && /(^|\.)fxg\.jinritemai\.com$/i.test(String(location?.hostname || ''))
+      && /^\/ffa\/mshop\/homepage(?:\/|$)/i.test(String(location?.pathname || ''))
+    if (primaryRedirectedHome) {
+      try { window.location?.replace?.('https://im.jinritemai.com/pc_seller_v2/main/workspace') } catch (_) {}
+      return error('RUNTIME_NOT_READY', '抖店已登录，正在返回飞鸽客服工作台', true)
+    }
     const current = store()
     const shopId = identifier(current?.shopInfo?.id || window.__mona_store__?.shopId || window.__shop_id)
     const userId = identifier(current?.selfInfo?.id)

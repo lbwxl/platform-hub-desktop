@@ -78,6 +78,30 @@ test('Douyin primary page identity survives redirect to the official fxg login h
   assert.equal(result.data.authenticated, false)
 })
 
+test('Douyin primary runtime returns to the official IM workspace after SSO lands on the merchant home', async () => {
+  let redirectedTo
+  const context = vm.createContext({
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/mshop/homepage/index', search: '' },
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'primary',
+      location: { replace(url) { redirectedTo = url } },
+      localStorage: { getItem() { return null } },
+    },
+    setInterval,
+    clearInterval,
+    Date,
+    JSON,
+    Map,
+    Set,
+  })
+
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const result = await context.window.__PLATFORM_HOOK__.invoke('auth.state', {})
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'RUNTIME_NOT_READY')
+  assert.equal(redirectedTo, 'https://im.jinritemai.com/pc_seller_v2/main/workspace')
+})
+
 test('Douyin page runtime handshake, normalized operations, events, handoff and lifecycle', async () => {
   const callbacks = []
   const timers = []

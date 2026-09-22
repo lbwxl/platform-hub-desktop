@@ -57,6 +57,7 @@ app.disableHardwareAcceleration()
 app.commandLine.appendSwitch('disable-gpu')
 app.commandLine.appendSwitch('disable-gpu-compositing')
 app.commandLine.appendSwitch('in-process-gpu')
+if (process.env.DOUYIN_VERIFY_DEBUG_PORT) app.commandLine.appendSwitch('remote-debugging-port', process.env.DOUYIN_VERIFY_DEBUG_PORT)
 if (process.env.DOUYIN_VERIFY_PROXY_SERVER) {
   app.commandLine.appendSwitch('proxy-server', process.env.DOUYIN_VERIFY_PROXY_SERVER)
 }

@@ -207,7 +207,7 @@ worker      按 Operation 按需创建、空闲回收的页面
 Persistent page 不是把 worker 的 `idleTtlMs` 设为无限，而是由
 `PersistentPageManager` 独立负责创建、复用、Runtime 安装、事件接收、刷新和释放。
 
-本节中的 `HookTransport` 只定义未来方向。当前 Phase 不实现该抽象。
+本节中的接口只定义 `HookTransport` 的架构方向；具体实现必须在当前 `HookTransport 抽象` Phase 中按用户明确任务推进。
 
 ---
 
@@ -309,7 +309,7 @@ packages/
 
 目录允许根据实际代码微调，但架构边界不能破坏。
 
-未来 `PlatformRuntime`、`HookTransport` 和 Legacy Adapter 的具体包目录在对应 Phase 决定。本阶段只记录边界，不创建目录或实现代码。
+`PlatformRuntime`、`HookTransport` 和 Legacy Adapter 的具体包目录在各自对应 Phase 决定。当前只允许按明确任务建立 `HookTransport` 抽象，不提前创建 Legacy Adapter 或后续阶段目录。
 
 ---
 
@@ -925,7 +925,7 @@ FakeHook 至少模拟：
 
 FakeHook 必须运行真实 Hook Protocol。
 
-未来实现 `HookTransport` 后，必须先增加 Fake Native / Legacy Transport，再迁移 WeChat Legacy Adapter。当前 Phase 不提前实现。
+完成 `HookTransport` 后，必须先增加 Fake Native / Legacy Transport，再迁移 WeChat Legacy Adapter。当前 `HookTransport 抽象` Phase 不提前迁移 Legacy 平台。
 
 ---
 
@@ -996,13 +996,13 @@ Aichat React PlatformRuntime 对接
 WeWork / Qianniu Legacy Adapter
 ```
 
-当前仍处于：
+当前已进入：
 
 ```text
-Douyin 最终真实验收
+HookTransport 抽象
 ```
 
-Douyin 没有完成最终真实验收前，禁止提前实现 `HookTransport`、迁移 WeChat / WeWork / Qianniu、开始 React 对接或推进其他 Page Hook 平台。
+Douyin Page Hook 已完成最终真实验收并冻结。当前 Phase 只允许按明确任务推进 `HookTransport` 抽象；不得顺便迁移 WeChat / WeWork / Qianniu、开始 React 对接或推进其他 Page Hook 平台。
 
 ---
 
@@ -1071,7 +1071,7 @@ Page Hook 不复制旧架构；Legacy / Native / Service 平台则优先复用�
 当前 Phase 是：
 
 ```text
-Douyin 最终真实验收
+HookTransport 抽象
 ```
 
 除非用户明确要求：
@@ -1184,6 +1184,18 @@ PageHookTransport
 ```
 
 不得为了容纳 Legacy / Native / Service 平台推翻现有 HookHost，也不得把 HookHost 扩展成所有平台的统一宿主。
+
+Douyin Page Hook Frozen。
+
+Douyin Page Hook 已完成最终真实验收。进入 `HookTransport` 阶段后，除非发现明确 bug 或 Contract incompatibility，禁止随意重构：
+
+* `douyin-hook` runtime
+* `HookSession`
+* `HookHost`
+* `PersistentPageManager`
+* `WorkerScheduler`
+
+Phase 进入 `HookTransport 抽象` 不代表每次任务都自动授权实现 `HookTransport`；仍必须服从用户当轮明确范围。
 
 ---
 
