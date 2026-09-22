@@ -185,13 +185,27 @@ Page / CDP 执行模型中的 Electron Host 提供：
 
 ```text
 HookHost
-├─ Primary Page
-├─ Worker Pages
+├─ HookSession
+│  ├─ Primary Page
+│  ├─ Persistent Auxiliary Pages
+│  │  └─ PersistentPageManager
+│  └─ Worker Pages / WorkerScheduler
 ├─ CDP
 ├─ BrowserWindow / WebContents
 ├─ Partition
 └─ Runtime lifecycle
 ```
+
+一个 Page Hook `HookSession` 内的页面模型明确分为：
+
+```text
+primary     唯一主页面
+persistent  Session 生命周期内长期存活的辅助页面
+worker      按 Operation 按需创建、空闲回收的页面
+```
+
+Persistent page 不是把 worker 的 `idleTtlMs` 设为无限，而是由
+`PersistentPageManager` 独立负责创建、复用、Runtime 安装、事件接收、刷新和释放。
 
 本节中的 `HookTransport` 只定义未来方向。当前 Phase 不实现该抽象。
 
@@ -447,6 +461,8 @@ switch (platform) {}
 ```text
 primary
 +
+0..N persistent auxiliary pages
++
 0..N worker pages
 ```
 
@@ -458,18 +474,24 @@ Shop Session
 ├─ primary
 │  └─ 客服工作台
 
-├─ products
-│  └─ 商品页面
+├─ orders (persistent)
+│  └─ fxg 商家后台壳层 / 官方通知 Runtime
 
-└─ orders
-   └─ 订单页面
+└─ products (worker)
+   └─ 按需创建的商品页面
 ```
 
-所有页面必须共享同一个店铺 Partition。
+语义必须明确：
+
+* `primary`：每个 Session 唯一的主页面。
+* `persistent`：Session 生命周期内长期存活的辅助页面，由 `PersistentPageManager` 管理。
+* `worker`：按 Operation acquire/release，空闲后可回收的页面。
+
+所有页面必须共享同一个店铺 Partition；persistent 与 worker 不能跨店铺共享。
 
 ---
 
-# 11. Worker Page Rules
+# 11. Worker / Persistent Page Rules
 
 本节只适用于 Page / CDP 平台。
 
@@ -487,6 +509,18 @@ Worker Page 必须：
 > 每个店铺长期保持 products + orders Worker。
 
 未来需要支持几十到上百个店铺，因此 Worker Page 必须节约 Chromium 资源。
+
+Persistent Page 必须：
+
+* 在 `HookPageDefinition.kind` 中显式声明为 `persistent`
+* 由当前 Session 的 `PersistentPageManager` 独立管理
+* 创建后安装并校验 `PageHookRuntime` 协议
+* 在 Session 生命周期内保持存活，不参与 WorkerScheduler 的空闲回收
+* 支持 push event 订阅和 `drainEvents()` polling fallback
+* 支持 Runtime refresh、Challenge Recovery、Timeout 和取消后的安全恢复
+* 在 Session dispose 时先释放 Runtime，再关闭页面
+
+Persistent Page 不得通过“Worker + 无限 `idleTtlMs`”隐式实现，也不得和其他店铺共享页面或 Partition。
 
 ---
 
@@ -907,6 +941,11 @@ Page Hook 平台至少测试：
 * start / stop
 * 重复 stop
 * 店铺隔离
+* Persistent Page 创建、复用和 Session 生命周期
+* Persistent Page 不被 Worker idle 回收
+* Persistent Page 事件 drain / push
+* Persistent Runtime refresh 和 Challenge Recovery
+* Session dispose 关闭 Persistent Page
 * Worker 创建
 * Worker 回收
 * Message DTO
@@ -1109,10 +1148,22 @@ Douyin 最终真实验收
 Hook SDK
 HookHost
 HookSession
+PersistentPageManager
 WorkerScheduler
 PageHookRuntime
 Douyin Hook
 ```
+
+Page Hook Foundation 的 Session 页面生命周期已经明确为：
+
+```text
+HookSession
+├─ primaryPage
+├─ persistentPages  → PersistentPageManager
+└─ workerPages      → WorkerPageManager / WorkerScheduler
+```
+
+`persistent` 是正式的 `HookPageDefinition.kind`，不是 Electron compatibility shell，也不是把 Worker 页面永久驻留的变通方案。当前 Douyin `orders` 页面使用该模型接收官方通知 Runtime。
 
 继续视为 Page Hook Foundation。
 
