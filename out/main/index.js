@@ -429,6 +429,7 @@ const DOUYIN_PRIMARY_OPERATIONS = [
   "messages.history",
   "messages.send.text",
   "messages.send.file",
+  "conversation.attention.set",
   "handoff.targets.list",
   "handoff.transfer"
 ];
@@ -441,7 +442,7 @@ const DOUYIN_ORDERS_OPERATIONS = [
   "orders.listen"
 ];
 const douyinHookManifest = {
-  version: "1.0.0",
+  version: "1.1.0",
   capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS, ...DOUYIN_ORDERS_OPERATIONS],
   pages: [
     {
@@ -484,8 +485,12 @@ const douyinHookRuntimeScript = String.raw`(() => {
   const seenFingerprints = new Set()
   const orderSnapshots = new Map()
   const messageOrderSnapshots = new Map()
+  const conversationAttention = new Map()
   let disposed = false
   let messageCleanup = null
+  let conversationAttentionObserver = null
+  let conversationAttentionStyle = null
+  let conversationAttentionRenderTimer = null
   let orderReconciliationTimer = null
   let orderReconciliationBusy = false
   let orderNotificationCleanup = null
@@ -686,6 +691,219 @@ const douyinHookRuntimeScript = String.raw`(() => {
     }
   }).filter((item) => item.id)
   const conversationFor = (conversationId) => conversations().find(({ value }) => text(value.id) === text(conversationId))
+  const ATTENTION_STYLE_ID = 'platform-hook-douyin-conversation-attention-style'
+  const ATTENTION_ROW_SELECTOR = '[data-kora="conversation"], [data-qa-id="qa-chat-item"]'
+  const ATTENTION_CLASS = 'platform-hook-douyin-conversation-attention'
+  const ATTENTION_PENDING_CLASS = ATTENTION_CLASS + '--pending'
+  const ATTENTION_OPENED_CLASS = ATTENTION_CLASS + '--opened'
+  const attentionDocument = () => {
+    try { return window.document || null } catch (_) { return null }
+  }
+  const activeAttentionId = (value) => {
+    if (!['string', 'number', 'bigint'].includes(typeof value)) return ''
+    const id = identifier(value)
+    if (conversationAttention.has(id)) return id
+    // ConversationCard stores the buyer segment as its React key; the Hook contract uses the full conversation id.
+    for (const conversationId of conversationAttention.keys()) {
+      if (text(conversationId).split(':')[0] === id) return conversationId
+    }
+    return ''
+  }
+  const attentionIdFromReact = (row) => {
+    const roots = []
+    try {
+      for (const key of Object.getOwnPropertyNames(row || {})) {
+        if (!/^__(?:react(?:Props|Fiber|Container|EventHandlers)|reactInternalInstance)\$/.test(key)) continue
+        try { roots.push(row[key]) } catch (_) {}
+      }
+    } catch (_) {}
+    const visited = new Set()
+    const visit = (value, depth, allowGenericId = false) => {
+      const direct = activeAttentionId(value)
+      if (direct || !value || !['object', 'function'].includes(typeof value) || depth > 5 || visited.has(value)) return direct
+      visited.add(value)
+      const candidateKeys = allowGenericId
+        ? ['id', 'conversationId', 'conversation_id', 'sessionId', 'session_id', 'chatId', 'chat_id']
+        : ['conversationId', 'conversation_id', 'sessionId', 'session_id', 'chatId', 'chat_id']
+      for (const key of candidateKeys) {
+        let candidate
+        try { candidate = value[key] } catch (_) { continue }
+        const id = activeAttentionId(candidate)
+        if (id) return id
+      }
+      for (const key of ['conversation', 'session', 'chat', 'target', 'item']) {
+        let nested
+        try { nested = value[key] } catch (_) { continue }
+        const id = visit(nested, depth + 1, true)
+        if (id) return id
+      }
+      let keys = []
+      try { keys = Object.getOwnPropertyNames(value).slice(0, 80) } catch (_) { return '' }
+      for (const key of keys) {
+        if (!/(conversation|session|chat|props|memoized|pending|data|item)/i.test(key)) continue
+        let nested
+        try { nested = value[key] } catch (_) { continue }
+        const id = visit(nested, depth + 1, false)
+        if (id) return id
+      }
+      return ''
+    }
+    const visitReactParents = (root) => {
+      let current = root
+      const visitedParents = new Set()
+      for (let depth = 0; current && depth < 12 && !visitedParents.has(current); depth += 1) {
+        visitedParents.add(current)
+        const id = activeAttentionId(current.key)
+        if (id) return id
+        try { current = current.return } catch (_) { break }
+      }
+      return ''
+    }
+    for (const root of roots) {
+      const id = visit(root, 0, false)
+      if (id) return id
+      const parentId = visitReactParents(root)
+      if (parentId) return parentId
+    }
+    return ''
+  }
+  const attentionIdForRow = (row) => {
+    if (!row) return ''
+    for (const name of ['data-conversation-id', 'data-conversationid', 'data-session-id', 'data-sessionid', 'data-chat-id', 'data-chatid', 'data-id']) {
+      try { const id = activeAttentionId(row.getAttribute?.(name)); if (id) return id } catch (_) {}
+    }
+    try {
+      for (const [name, value] of Object.entries(row.dataset || {})) {
+        if (!/(conversation|session|chat|id)/i.test(name)) continue
+        const id = activeAttentionId(value)
+        if (id) return id
+      }
+    } catch (_) {}
+    try {
+      for (const attribute of Array.from(row.attributes || [])) {
+        if (!/(conversation|session|chat|data-id)/i.test(attribute?.name || '')) continue
+        const id = activeAttentionId(attribute?.value)
+        if (id) return id
+      }
+    } catch (_) {}
+    return attentionIdFromReact(row)
+  }
+  const attentionRows = () => {
+    const doc = attentionDocument()
+    try { return Array.from(doc?.querySelectorAll?.(ATTENTION_ROW_SELECTOR) || []) } catch (_) { return [] }
+  }
+  const attentionClassPresent = (row, name) => {
+    try { return Boolean(row?.classList?.contains?.(name)) } catch (_) { return false }
+  }
+  const setAttentionClass = (row, name, enabled) => {
+    if (attentionClassPresent(row, name) === enabled) return
+    try { row?.classList?.[enabled ? 'add' : 'remove']?.(name) } catch (_) {}
+  }
+  const clearAttentionRow = (row) => {
+    setAttentionClass(row, ATTENTION_CLASS, false)
+    setAttentionClass(row, ATTENTION_PENDING_CLASS, false)
+    setAttentionClass(row, ATTENTION_OPENED_CLASS, false)
+    try {
+      if (row?.getAttribute?.('data-platform-hook-conversation-attention') !== null) {
+        row.removeAttribute?.('data-platform-hook-conversation-attention')
+      }
+    } catch (_) {}
+  }
+  const applyConversationAttention = () => {
+    for (const row of attentionRows()) {
+      const conversationId = attentionIdForRow(row)
+      const state = conversationId ? conversationAttention.get(conversationId) : undefined
+      if (!state) {
+        clearAttentionRow(row)
+        continue
+      }
+      setAttentionClass(row, ATTENTION_CLASS, true)
+      setAttentionClass(row, ATTENTION_PENDING_CLASS, state === 'pending')
+      setAttentionClass(row, ATTENTION_OPENED_CLASS, state === 'opened')
+      try {
+        if (row.getAttribute?.('data-platform-hook-conversation-attention') !== state) {
+          row.setAttribute?.('data-platform-hook-conversation-attention', state)
+        }
+      } catch (_) {}
+    }
+  }
+  const ensureAttentionStyle = () => {
+    const doc = attentionDocument()
+    if (!doc?.createElement) return
+    const current = doc.getElementById?.(ATTENTION_STYLE_ID)
+    if (current) { conversationAttentionStyle = current; return }
+    const root = doc.head || doc.documentElement || doc.body
+    if (!root?.appendChild) return
+    const style = doc.createElement('style')
+    style.id = ATTENTION_STYLE_ID
+    style.textContent = [
+      '@keyframes platformHookDouyinConversationAttentionPulse{0%,100%{box-shadow:inset 3px 0 0 #ff4d4f;background-color:rgba(255,77,79,.12)}50%{box-shadow:inset 5px 0 0 #ff7875;background-color:rgba(255,77,79,.28)}}',
+      '.' + ATTENTION_CLASS + '{box-shadow:inset 3px 0 0 #ff4d4f!important;background-color:rgba(255,77,79,.12)!important}',
+      '.' + ATTENTION_PENDING_CLASS + '{animation:platformHookDouyinConversationAttentionPulse 1.1s ease-in-out infinite!important}',
+      '.' + ATTENTION_OPENED_CLASS + '{animation:none!important}',
+    ].join('')
+    root.appendChild(style)
+    conversationAttentionStyle = style
+  }
+  const renderConversationAttention = () => {
+    if (conversationAttention.size) ensureAttentionStyle()
+    applyConversationAttention()
+  }
+  const scheduleConversationAttentionRender = () => {
+    if (disposed || !conversationAttention.size || conversationAttentionRenderTimer) return
+    if (typeof setTimeout !== 'function') { renderConversationAttention(); return }
+    conversationAttentionRenderTimer = setTimeout(() => {
+      conversationAttentionRenderTimer = null
+      if (!disposed && conversationAttention.size) renderConversationAttention()
+    }, 80)
+  }
+  const removeAttentionStyle = () => {
+    const doc = attentionDocument()
+    const style = conversationAttentionStyle || doc?.getElementById?.(ATTENTION_STYLE_ID)
+    try { style?.parentNode?.removeChild?.(style) } catch (_) {}
+    conversationAttentionStyle = null
+  }
+  const stopConversationAttentionProjection = () => {
+    try { conversationAttentionObserver?.disconnect?.() } catch (_) {}
+    conversationAttentionObserver = null
+    if (conversationAttentionRenderTimer) {
+      try { clearTimeout?.(conversationAttentionRenderTimer) } catch (_) {}
+      conversationAttentionRenderTimer = null
+    }
+    removeAttentionStyle()
+  }
+  const ensureConversationAttentionProjection = () => {
+    renderConversationAttention()
+    if (conversationAttentionObserver) return
+    const doc = attentionDocument()
+    const root = doc?.documentElement || doc?.body
+    const Observer = window.MutationObserver
+    if (!root || typeof Observer !== 'function') return
+    try {
+      conversationAttentionObserver = new Observer(() => { scheduleConversationAttentionRender() })
+      conversationAttentionObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'data-conversation-id', 'data-conversationid', 'data-session-id', 'data-sessionid', 'data-chat-id', 'data-chatid', 'data-id'],
+      })
+    } catch (_) { conversationAttentionObserver = null }
+  }
+  const setConversationAttention = (input) => {
+    const conversationId = identifier(input?.conversationId)
+    const state = text(input?.state)
+    if (!conversationId) return error('INVALID_INPUT', 'conversationId 必填')
+    if (!['pending', 'opened', 'resolved'].includes(state)) return error('INVALID_INPUT', 'state 必须是 pending、opened 或 resolved')
+    if (state === 'resolved') {
+      conversationAttention.delete(conversationId)
+      applyConversationAttention()
+      if (!conversationAttention.size) stopConversationAttentionProjection()
+      return { ok: true, data: { conversationId, state, active: false } }
+    }
+    conversationAttention.set(conversationId, state)
+    ensureConversationAttentionProjection()
+    return { ok: true, data: { conversationId, state, active: true } }
+  }
   const buyerFor = (conversationId) => {
     const conversation = conversationFor(conversationId)
     const person = conversation ? talker(conversation.raw) : {}
@@ -1569,6 +1787,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
             return { ok: true, data: { id: id || 'pending-' + Date.now(), conversationId, content: name, type: 'image', direction: 'outbound', origin: 'automation', deliveryStatus: id || value?.success === true ? 'sent' : 'pending', timestamp: Date.now(), attachments: [{ name, mimeType }] } }
           } finally { bitmap.close?.(); URL.revokeObjectURL(uri) }
         }
+        case 'conversation.attention.set': return setConversationAttention(input)
         case 'products.list': return { ok: true, data: await waitForProducts() }
         case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
         case 'orders.list': { const result = await orders(text(input.conversationId), text(input.orderId || input.externalId)); return { ok: true, data: result } }
@@ -1626,6 +1845,9 @@ const douyinHookRuntimeScript = String.raw`(() => {
     dispose: async () => {
       if (disposed) return
       disposed = true
+      conversationAttention.clear()
+      applyConversationAttention()
+      stopConversationAttentionProjection()
       try { messageCleanup?.() } catch (_) {}
       try { orderNotificationCleanup?.() } catch (_) {}
       if (orderReconciliationTimer) clearInterval(orderReconciliationTimer)

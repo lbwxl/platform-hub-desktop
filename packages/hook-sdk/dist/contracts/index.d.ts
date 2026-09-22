@@ -104,4 +104,19 @@ export interface HookHandoffTransferResult {
     transferred: boolean;
     target?: HookHandoffTarget;
 }
+export type HookConversationAttentionState = 'pending' | 'opened' | 'resolved';
+/**
+ * Requests a platform-native visual reminder for one conversation. The
+ * platform owns row lookup, styling, and lifecycle; callers never pass DOM
+ * selectors or CSS details.
+ */
+export interface HookConversationAttentionInput {
+    conversationId: string;
+    state: HookConversationAttentionState;
+}
+export interface HookConversationAttentionResult {
+    conversationId: string;
+    state: HookConversationAttentionState;
+    active: boolean;
+}
 //# sourceMappingURL=index.d.ts.map

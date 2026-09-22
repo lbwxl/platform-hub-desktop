@@ -356,6 +356,7 @@ messaging  ✅
 products   ✅
 orders     ✅
 handoff    ✅
+attention  ✅
 
 WeChat
 auth       ✅
@@ -363,6 +364,7 @@ messaging  ✅
 products   ❌
 orders     ❌
 handoff    按实际能力
+attention  按实际能力
 
 WeWork
 auth       ✅
@@ -370,6 +372,7 @@ messaging  ✅
 products   ❌
 orders     ❌
 handoff    按实际能力
+attention  按实际能力
 ```
 
 Page Hook 首版公共 Capability 包括：
@@ -378,6 +381,8 @@ Page Hook 首版公共 Capability 包括：
 auth.state
 
 sessions.list
+
+conversation.attention.set
 
 messages.listen
 messages.history

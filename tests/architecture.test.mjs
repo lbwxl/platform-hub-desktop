@@ -37,14 +37,17 @@ test('Hook foundation contains no platform branches or direct console logging', 
   assert.equal(hookHostPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
 })
 
-test('正式 Douyin Hook 只使用 window runtime 且不依赖 Legacy', () => {
-  assert.doesNotMatch(douyinRuntime, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+test('正式 Douyin Hook 仅将 DOM 投影限制在会话原生 attention，且不依赖 Legacy', () => {
+  assert.doesNotMatch(douyinRuntime, /\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
   assert.match(douyinRuntime, /__PLATFORM_HOOK__/)
   assert.match(douyinRuntime, /conversationsInfo/)
   assert.match(douyinRuntime, /_message\$/)
   assert.match(douyinRuntime, /customRequestUpload/)
+  assert.match(douyinRuntime, /conversation\.attention\.set/)
+  assert.match(douyinRuntime, /MutationObserver/)
+  assert.equal((douyinRuntime.match(/querySelectorAll/g) || []).length, 1)
   assert.match(douyinManifest, /handoff\.targets\.list/)
 })
 

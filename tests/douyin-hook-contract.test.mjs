@@ -20,14 +20,18 @@ test('Douyin manifest routes only supported operations and passes protocol valid
   assert.equal(douyinHookManifest.operations['orders.listen'].page, 'orders')
   assert.equal(douyinHookManifest.pages.find((page) => page.id === 'orders').kind, 'persistent')
   assert.equal(douyinHookManifest.operations['products.list'].page, 'products')
+  assert.equal(douyinHookManifest.operations['conversation.attention.set'].page, 'primary')
   assert.equal(douyinHookManifest.operations['handoff.targets.list'].page, 'primary')
 })
 
-test('Douyin package is independent from Legacy and uses no DOM or network interception', async () => {
+test('Douyin package is independent from Legacy and limits DOM work to native conversation attention', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
   assert.equal(packageJson.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(packageJson.dependencies['@platform-hub/hook-host'], 'workspace:*')
-  assert.doesNotMatch(douyinHookRuntimeScript, /document\.|querySelector|MutationObserver|\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+  assert.doesNotMatch(douyinHookRuntimeScript, /\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+  assert.match(douyinHookRuntimeScript, /conversation\.attention\.set/)
+  assert.match(douyinHookRuntimeScript, /MutationObserver/)
+  assert.equal((douyinHookRuntimeScript.match(/querySelectorAll/g) || []).length, 1)
   assert.match(douyinHookRuntimeScript, /pigeon\.jinritemai\.com\/chat\/api\/backstage\/conversation\/transfer_conversation/)
 })
 

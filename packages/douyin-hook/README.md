@@ -8,7 +8,7 @@ Unified Hook Protocol implementation for the Douyin merchant workbench.
 - `products`: `https://fxg.jinritemai.com/ffa/g/list?tab=all`
 - `orders`: `https://fxg.jinritemai.com/ffa/arrival-pages/home`
 
-The primary page owns authentication, sessions, messages, and handoff. The products page is an on-demand worker. The orders page is a lazy-created persistent auxiliary page: the first `orders.list` or `orders.listen` call creates it, and it remains alive until the owning `HookSession` is disposed. It is not a persistent worker and is never idle-recycled. `handoff.targets.list` exposes the official targets currently available to the logged-in customer-service account; the application selects a target and calls `handoff.transfer` when its business flow requires handoff.
+The primary page owns authentication, sessions, messages, native conversation attention, and handoff. The products page is an on-demand worker. The orders page is a lazy-created persistent auxiliary page: the first `orders.list` or `orders.listen` call creates it, and it remains alive until the owning `HookSession` is disposed. It is not a persistent worker and is never idle-recycled. `conversation.attention.set` applies `pending`, `opened`, or `resolved` to one platform-native conversation row without exposing selectors or CSS to callers; multiple conversations remain independent. `handoff.targets.list` exposes the official targets currently available to the logged-in customer-service account; the application selects a target and calls `handoff.transfer` when its business flow requires handoff.
 
 ## Runtime sources
 
@@ -19,7 +19,7 @@ The primary page owns authentication, sessions, messages, and handoff. The produ
 - Orders: `/api/order/searchlist` is always the authoritative current-state source. An official runtime event with an `orderId` uses an exact `search_words=<orderId>` query. Electron verification also confirmed that the page's existing Frontier runtime dispatches decoded frames with `service=20132` and `method=0` for new-order and payment activity, but those frames do not expose an order ID or a semantic state. They only mark the order domain dirty and debounce one recent-order reconciliation; they never directly emit an order lifecycle event. `getshopbroadcastv3` and `reach/list` are historical/audit sources only. A bounded five-minute reconciliation remains the refund, disconnect, and missed-push fallback.
 - Handoff targets and transfer: `uiState.chatRooms.transferConv`
 
-The implementation does not read or operate DOM elements. Challenge handling returns `CHALLENGE_REQUIRED` to `HookSession`, which shows the official page and performs the Foundation recovery flow.
+Data capabilities use the official Runtime and do not operate the DOM. The sole DOM projection is the platform-specific implementation of `conversation.attention.set`: it restores native row highlighting after list rerenders and releases its observer and injected style on runtime disposal. Challenge handling returns `CHALLENGE_REQUIRED` to `HookSession`, which shows the official page and performs the Foundation recovery flow.
 
 For the normalized DTOs, result envelope, event payloads, and Electron shell compatibility mapping, see [Douyin Hook 数据契约](../../docs/douyin-hook-data-contract.md).
 

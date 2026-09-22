@@ -59,6 +59,7 @@ type HookResult<T> =
 ```text
 auth.state
 sessions.list
+conversation.attention.set
 messages.listen
 messages.history
 messages.send.text
@@ -128,7 +129,36 @@ interface HookSessionSummary {
 }
 ```
 
-会话 ID 是后续 `messages.history`、`messages.send.*` 和转人工操作的 `conversationId`。
+会话 ID 是后续 `messages.history`、`messages.send.*`、会话原生提醒和转人工操作的 `conversationId`。
+
+### 5.1 原生会话提醒
+
+Operation：`conversation.attention.set`
+
+```ts
+type HookConversationAttentionState = 'pending' | 'opened' | 'resolved'
+
+interface HookConversationAttentionInput {
+  conversationId: string
+  state: HookConversationAttentionState
+}
+
+await runtime.invoke('conversation.attention.set', {
+  conversationId: 'conversation-1',
+  state: 'pending',
+})
+// HookResult<{ conversationId: string; state: HookConversationAttentionState; active: boolean }>
+```
+
+这是平台原生会话列表的纯视觉能力，不是 `handoff.transfer`。上层只决定哪个会话进入 `pending`、`opened` 或 `resolved`，不传 DOM selector、class 或 CSS。
+
+| state | 原生会话行行为 |
+| --- | --- |
+| `pending` | 保持高亮，并允许 pulse 提醒 |
+| `opened` | 保持高亮，但停止 pulse |
+| `resolved` | 清除该会话的原生高亮 |
+
+多个 `conversationId` 独立共存。`active: true` 表示 Hook 已登记该 attention state，不表示目标行此刻一定已经渲染。未知会话不会报错，Hook 会保留状态并在该原生行以后出现时投影高亮。平台重渲染或虚拟列表替换行时，Hook 会恢复仍未 resolved 的状态；Runtime 重新安装或 Session dispose 时，内部 observer、style 和 attention state 会释放，上层需要按自己的业务状态重新下发尚未 resolved 的会话。
 
 ## 6. 消息
 
@@ -457,7 +487,7 @@ interface PlatformOrderEvent {
 
 - 不要调用旧 Legacy 路径或旧客服工作台订单 probe。
 - 不要把 `raw` 当成稳定公共协议。
-- 不要用页面 DOM、CSS 选择器或点击行为实现 Hook 对接。
+- 上层不要传递或依赖页面 DOM、CSS 选择器、class 或点击行为；`conversation.attention.set` 的原生会话行定位和样式投影仅属于具体 Platform Hook 内部。
 - 不要假设每笔订单都经过 `created → paid → refunding → refunded` 的每一个状态。
 - 不要在上层根据抖店原始状态码自行判断订单或商品状态。
 

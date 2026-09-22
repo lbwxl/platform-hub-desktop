@@ -9,6 +9,7 @@ export const DOUYIN_PRIMARY_OPERATIONS = [
     'messages.history',
     'messages.send.text',
     'messages.send.file',
+    'conversation.attention.set',
     'handoff.targets.list',
     'handoff.transfer',
 ];
@@ -22,7 +23,7 @@ export const DOUYIN_ORDERS_OPERATIONS = [
 ];
 export const douyinHookManifest = {
     platform: DOUYIN_PLATFORM_ID,
-    version: '1.0.0',
+    version: '1.1.0',
     capabilities: [...DOUYIN_PRIMARY_OPERATIONS, ...DOUYIN_PRODUCTS_OPERATIONS, ...DOUYIN_ORDERS_OPERATIONS],
     pages: [
         {
@@ -52,6 +53,7 @@ export const douyinHookManifest = {
         'messages.history': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.history' },
         'messages.send.text': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.send.text' },
         'messages.send.file': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'messages.send.file' },
+        'conversation.attention.set': { page: DOUYIN_PRIMARY_PAGE_ID, capability: 'conversation.attention.set' },
         'products.list': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.list' },
         'products.detail': { page: DOUYIN_PRODUCTS_PAGE_ID, capability: 'products.detail' },
         'orders.list': { page: DOUYIN_ORDERS_PAGE_ID, capability: 'orders.list' },
