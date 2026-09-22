@@ -23,6 +23,10 @@ export interface PlatformAccount {
   webContentsId?: number
   connected: boolean
   authenticated: boolean
+  /** AI automation lifecycle. This is independent from the selected UI account. */
+  online: boolean
+  runtimeState: 'stopped' | 'starting' | 'running' | 'error'
+  messageListening?: boolean
   lastSeenAt?: string
   createdAt: string
 }
@@ -119,6 +123,9 @@ export interface PlatformMessage {
   content: string
   type: 'text' | 'image' | 'product' | 'order' | 'system' | string
   isMine: boolean
+  /** Kept alongside isMine so the Main-process reply pipeline never guesses. */
+  direction?: 'inbound' | 'outbound'
+  origin?: 'customer' | 'human' | 'automation' | 'system' | 'unknown'
   timestamp: number
   avatar?: string
   order?: OrderRecord
@@ -187,6 +194,7 @@ export interface PlatformApi {
     add(input: { platform: PlatformId; label: string; url?: string }): Promise<PlatformAccount>
     remove(accountId: string): Promise<void>
     open(accountId: string): Promise<PlatformAccount>
+    setOnline(accountId: string, online: boolean): Promise<PlatformAccount>
   }
   platforms: {
     list(): Promise<PlatformDefinition[]>
@@ -207,5 +215,7 @@ export interface PlatformApi {
   sendMessage(accountId: string, sessionId: string, content: string): Promise<{ success: boolean; error?: string }>
   sendFile(accountId: string, sessionId: string, dataUrl: string, fileName?: string): Promise<{ success: boolean; error?: string }>
   transferSession(accountId: string, sessionId: string, target: string): Promise<unknown>
+  setConversationAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void>
+  runtimeStates(): Promise<Array<{ accountId: string; online: boolean; runtimeState: 'stopped' | 'starting' | 'running' | 'error'; messageListening: boolean; lastIncomingAt?: number; lastReplyAt?: number; lastReplyType?: 'reply' | 'human_required' | 'ignore'; attention: Record<string, 'pending' | 'opened' | 'resolved'> }>>
   onEvent(callback: (event: PlatformEvent) => void): () => void
 }

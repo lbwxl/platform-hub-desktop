@@ -426,6 +426,7 @@ class FakePageRuntime implements PageHookRuntime {
       }
       case 'handoff.targets.list': return ok(this.state.handoffTargets)
       case 'handoff.transfer': return this.transfer(input)
+      case 'conversation.attention.set': return this.setConversationAttention(input)
       default: return fail(hookError('NOT_SUPPORTED', `FakeHook 不支持 ${operation}`))
     }
   }
@@ -513,6 +514,14 @@ class FakePageRuntime implements PageHookRuntime {
     const result: HookHandoffTransferResult = { transferred: true, ...(target ? { target } : {}) }
     this.state.handoffs.push(result)
     return ok(result)
+  }
+
+  private setConversationAttention(input: unknown): HookResult<{ conversationId: string; state: string; active: boolean }> {
+    const value = input as { conversationId?: string; state?: string }
+    if (!value?.conversationId || !['pending', 'opened', 'resolved'].includes(String(value.state))) {
+      return fail(hookError('INVALID_INPUT', 'conversationId 和有效 attention state 必填'))
+    }
+    return ok({ conversationId: value.conversationId, state: String(value.state), active: value.state !== 'resolved' })
   }
 }
 
