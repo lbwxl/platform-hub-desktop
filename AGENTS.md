@@ -1196,3 +1196,139 @@ packages/douyin-hook
 Doudian 属于 Legacy 名称，不得作为新实现目标。
 
 除历史文档说明外，新代码、新测试、新脚本禁止新增 `doudian` 命名。
+
+# Real Verification Environment
+
+本章是 Page Hook 真实验收的项目级硬规则。Page Hook 的正式生产运行环境是 Electron，不得用外部浏览器替代 Electron 验收。
+
+## 1. Default Verification Environment
+
+Page Hook 的正式真实验收环境必须是 Electron `BrowserWindow` / `WebContents`，不是系统浏览器。
+
+正式链路：
+
+```text
+Electron Main
+↓
+HookHost
+↓
+HookSession
+↓
+ElectronHookPageFactory
+↓
+BrowserWindow / WebContents
+↓
+CDP / executeJavaScript
+↓
+window.__PLATFORM_HOOK__
+↓
+平台官方 Runtime
+```
+
+只要任务涉及真实登录态、Cookie / Session、partition、`PageHookRuntime`、`HookSession`、`HookHost`、`BrowserWindow`、`WebContents`、CDP、Challenge Recovery、Runtime Store、EventEmitter、Notification Runtime、商品 / 订单 Runtime、消息监听、真实订单验证、真实通知验证或真实页面 Runtime 探索，默认都必须在项目自己的 Electron 环境中验证。
+
+## 2. Browser Rule
+
+除非用户明确说“用浏览器验证”“用 Chrome 验证”或“用 browser-session”，否则禁止用以下外部环境替代 Electron 验收：
+
+* `browser-session`
+* 系统 Chrome
+* Safari
+* 独立 Chromium
+* Playwright 独立 browser profile
+* 外部浏览器 Cookie / Profile
+
+外部浏览器实验只能辅助探索，不能作为正式验收结论。如果 Chrome PASS 但 Electron FAIL，最终仍视为 Electron FAIL，必须继续排查 Electron 环境。
+
+## 3. Partition Rule
+
+同一个 Shop `HookSession` 的以下页面必须使用同一个 Electron partition：
+
+```text
+primary
+persistent auxiliary pages
+worker pages
+```
+
+不同店铺必须使用不同 partition。禁止通过复制系统浏览器 Cookie / Profile 来模拟正式登录态。
+
+## 4. Runtime Inspection Rule
+
+探索页面 Runtime 时优先使用：
+
+```text
+Electron WebContents
+↓
+executeJavaScript / CDP
+↓
+read-only inspection
+```
+
+允许检查 window runtime、store、event emitter、官方 SDK、notification object 和 network metadata；不要默认启动系统浏览器。
+
+## 5. Douyin Verification Rule
+
+Douyin 的真实订单 / 通知验收必须在 Electron 中完成：
+
+```text
+Electron persistent auxiliary page
+↓
+fxg.jinritemai.com
+↓
+官方 Notification Runtime
+↓
+msgItem.ext_info
+↓
+orderId
+↓
+authoritative order query
+```
+
+已确认底层存在：
+
+```text
+wss://frontier.snssdk.com/ws/v2
+/b/a/api/v1/reach/notice/alert
+/b/a/api/v1/reach/list
+```
+
+生产代码禁止自行执行：
+
+```ts
+new WebSocket('wss://frontier.snssdk.com/ws/v2')
+```
+
+必须复用 Electron 页面里官方已经建立好的 Runtime、Store 或 EventEmitter。
+
+## 6. Verification Failure Rule
+
+如果 Codex 尝试 `browser-session` 或系统浏览器，并因为 profile 权限、Chrome 启动失败、浏览器桥接失败或 Cookie / Profile 不可复用而失败，不得把它当成项目真实验收失败。
+
+必须停止浏览器方向，切回：
+
+```text
+Electron
+BrowserWindow
+WebContents
+HookSession
+```
+
+继续验证。
+
+## 7. Default Decision Rule
+
+以后新会话中，只要任务出现真实验证、真实登录、真实 Runtime、真实通知、真实订单、真实消息、真实页面或 CDP 检查，默认解释为“在 Electron 应用中验证”，而不是“打开外部浏览器验证”。
+
+## 8. Priority Rule
+
+验证优先级固定为：
+
+```text
+Electron production runtime
+>
+FakeHook / automated test
+>
+external browser experiment
+```
+
+外部浏览器只能用于辅助探索，不能替代 Electron production verification。
