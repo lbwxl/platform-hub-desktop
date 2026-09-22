@@ -8,7 +8,7 @@ process.stdout.write(JSON.stringify({ type: 'boot', timestamp: Date.now(), statu
 
 const partition = process.env.DOUYIN_ORDER_EVENTS_PARTITION || 'persist:platform-hook-douyin-shop-a'
 // The confirmed real-time order target; do not fall back to the old workbench probe.
-const entry = process.env.DOUYIN_ORDER_EVENTS_URL || 'https://fxg.jinritemai.com/ffa/g/list?tab=all'
+const entry = process.env.DOUYIN_ORDER_EVENTS_URL || 'https://fxg.jinritemai.com/ffa/arrival-pages/home'
 const logDir = join(process.cwd(), '.verify')
 mkdirSync(logDir, { recursive: true })
 const logFile = process.env.DOUYIN_ORDER_EVENTS_LOG || join(logDir, 'douyin-order-events.jsonl')

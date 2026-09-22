@@ -32,6 +32,7 @@ let lastCommand = ''
 let primaryEvaluate
 
 app.disableHardwareAcceleration()
+if (process.env.DOUYIN_VERIFY_DEBUG_PORT) app.commandLine.appendSwitch('remote-debugging-port', process.env.DOUYIN_VERIFY_DEBUG_PORT)
 app.setPath('userData', userDataPath)
 write('boot', { status: 'starting' })
 void app.whenReady().then(async () => {
@@ -265,7 +266,7 @@ function summarizeEvent(event) {
       senderRole: message.raw?.senderRole,
       attributionMetadata: message.raw?.attributionMetadata,
     } } : {}),
-    ...(order ? { order: { id: order.id, externalId: order.externalId, conversationId: order.conversationId, status: order.status }, changedFields: event.payload.changedFields } : {}),
+    ...(order ? { order: { id: order.id, externalId: order.externalId, conversationId: order.conversationId, status: order.status, notificationSource: order.raw?.notification?.source }, changedFields: event.payload.changedFields } : {}),
     ...(event.type === 'runtime.error' ? { message: event.payload?.message } : {}),
   }
 }

@@ -3,6 +3,7 @@ import { assertPageHookRuntime, noopHookLogger } from '@platform-hub/hook-sdk';
 export class PersistentPageManager {
     options;
     pages = new Map();
+    pending = new Map();
     disposed = false;
     started = false;
     logger;
@@ -15,29 +16,34 @@ export class PersistentPageManager {
     async start() {
         if (this.disposed)
             throw new Error('PersistentPageManager 已停止');
-        if (this.started)
-            return;
         this.started = true;
-        try {
-            for (const definition of this.options.manifest.pages.filter((page) => page.kind === 'persistent')) {
-                await this.ensure(definition);
-            }
-        }
-        catch (error) {
-            await this.dispose();
-            throw error;
-        }
     }
     async ensure(definition) {
         if (definition.kind !== 'persistent')
             throw new Error(`页面 ${definition.id} 不是 Persistent Page`);
         if (this.disposed)
             throw new Error('PersistentPageManager 已停止');
+        if (!this.started)
+            throw new Error('PersistentPageManager 尚未启动');
         const current = this.pages.get(definition.id);
         if (current?.runtime && current.page.isAlive())
             return this.handleFor(definition.id, current);
         if (current)
             await this.disposeEntry(definition.id, current);
+        const pending = this.pending.get(definition.id);
+        if (pending)
+            return pending;
+        const creation = this.create(definition);
+        this.pending.set(definition.id, creation);
+        try {
+            return await creation;
+        }
+        finally {
+            if (this.pending.get(definition.id) === creation)
+                this.pending.delete(definition.id);
+        }
+    }
+    async create(definition) {
         const page = await this.options.factory.create(this.contextFor(definition));
         let runtime;
         try {

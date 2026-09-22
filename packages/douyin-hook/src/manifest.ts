@@ -45,10 +45,10 @@ export const douyinHookManifest: HookManifest = {
     {
       id: DOUYIN_ORDERS_PAGE_ID,
       kind: 'persistent',
-      // This is the confirmed commerce page target. The order API is
-      // available in this same authenticated fxg partition. The page stays
-      // resident so the official notification runtime can wake order refreshes.
-      url: 'https://fxg.jinritemai.com/ffa/g/list?tab=all',
+      // The merchant home is the resident page that receives the official
+      // order notification runtime. The order API is available in this same
+      // authenticated fxg partition.
+      url: 'https://fxg.jinritemai.com/ffa/arrival-pages/home',
     },
   ],
   operations: {

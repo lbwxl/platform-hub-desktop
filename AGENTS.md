@@ -200,7 +200,7 @@ HookHost
 
 ```text
 primary     唯一主页面
-persistent  Session 生命周期内长期存活的辅助页面
+persistent  lazy create + Session 生命周期内长期存活 + 不参与 idle 回收的辅助页面
 worker      按 Operation 按需创建、空闲回收的页面
 ```
 
@@ -484,7 +484,7 @@ Shop Session
 语义必须明确：
 
 * `primary`：每个 Session 唯一的主页面。
-* `persistent`：Session 生命周期内长期存活的辅助页面，由 `PersistentPageManager` 管理。
+* `persistent`：lazy create；首次路由到该页面的 Operation 时创建，之后保持到 Session dispose，由 `PersistentPageManager` 管理。
 * `worker`：按 Operation acquire/release，空闲后可回收的页面。
 
 所有页面必须共享同一个店铺 Partition；persistent 与 worker 不能跨店铺共享。
@@ -514,13 +514,15 @@ Persistent Page 必须：
 
 * 在 `HookPageDefinition.kind` 中显式声明为 `persistent`
 * 由当前 Session 的 `PersistentPageManager` 独立管理
+* 默认采用 lazy create；`HookSession.start()` 只准备 Manager，不得因为 Manifest 声明 persistent page 就创建页面
+* 第一次路由到该页面的 Operation 时才 `ensure()` 创建
 * 创建后安装并校验 `PageHookRuntime` 协议
 * 在 Session 生命周期内保持存活，不参与 WorkerScheduler 的空闲回收
 * 支持 push event 订阅和 `drainEvents()` polling fallback
 * 支持 Runtime refresh、Challenge Recovery、Timeout 和取消后的安全恢复
 * 在 Session dispose 时先释放 Runtime，再关闭页面
 
-Persistent Page 不得通过“Worker + 无限 `idleTtlMs`”隐式实现，也不得和其他店铺共享页面或 Partition。
+Persistent Page 一旦创建就保持到 `HookSession.dispose()`；不得通过“Worker + 无限 `idleTtlMs`”隐式实现，也不得和其他店铺共享页面或 Partition。
 
 ---
 
@@ -1163,7 +1165,7 @@ HookSession
 └─ workerPages      → WorkerPageManager / WorkerScheduler
 ```
 
-`persistent` 是正式的 `HookPageDefinition.kind`，不是 Electron compatibility shell，也不是把 Worker 页面永久驻留的变通方案。当前 Douyin `orders` 页面使用该模型接收官方通知 Runtime。
+`persistent` 是正式的 `HookPageDefinition.kind`，语义为 lazy create、Session lifetime、no idle recycle；它不是 Electron compatibility shell，也不是把 Worker 页面永久驻留的变通方案。当前 Douyin `orders` 页面使用该模型接收官方通知 Runtime。
 
 继续视为 Page Hook Foundation。
 

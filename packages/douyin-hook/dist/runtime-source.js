@@ -24,6 +24,10 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   let orderReconciliationBusy = false
   let orderNotificationCleanup = null
   let orderNotificationSources = []
+  let orderNotificationBindingMode = ''
+  const orderRefreshes = new Map()
+  const retryTimers = new Map()
+  let orderReconciliationController = null
   const listenerState = () => {
     try { return window.sessionStorage?.getItem('__PLATFORM_HOOK_ORDER_LISTENING__') === '1' || window.__PLATFORM_HOOK_ORDER_LISTENING__ === true } catch (_) { return window.__PLATFORM_HOOK_ORDER_LISTENING__ === true }
   }
@@ -40,9 +44,11 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   }
   let orderListening = listenerState()
   let orderListenerStartedAt = listenerStartedAt()
-  const notificationFingerprints = new Set()
+  const processingFingerprints = new Set()
+  const processedFingerprints = new Set()
   const ORDER_RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000
   const ORDER_RECONCILIATION_LIMIT = 20
+  const ORDER_QUERY_RETRY_DELAYS_MS = [0, 300, 1000, 2500]
 
   const store = () => window.ss?._frontStore || window.ss?.instance || null
   const pageContext = () => window.__mona_pigeon_event?.globalStore?.data?.initContextData || null
@@ -78,6 +84,12 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const parsed = typeof value === 'string' ? Date.parse(value) : NaN
     return Number.isFinite(parsed) ? parsed : undefined
   }
+  const wait = (delayMs) => delayMs > 0 && typeof setTimeout === 'function'
+    ? new Promise((resolve) => {
+      const timer = setTimeout(() => { retryTimers.delete(timer); resolve() }, delayMs)
+      retryTimers.set(timer, resolve)
+    })
+    : Promise.resolve()
   const snapshot = (value) => {
     if (!value) return value
     try { return typeof value.toJSON === 'function' ? value.toJSON() : JSON.parse(JSON.stringify(value)) } catch (_) { return value }
@@ -486,8 +498,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     }
     return []
   }
-  const requestCommerceOrders = async (explicitOrderId) => {
-    if (PAGE !== 'orders') return []
+  const requestCommerceOrders = async (explicitOrderId, signal) => {
+    if (PAGE !== 'orders' || signal?.aborted || disposed) return []
     const request = window['fetch']
     if (typeof request !== 'function') return []
     const query = [
@@ -499,7 +511,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       ...(explicitOrderId ? [['search_words', explicitOrderId]] : []),
     ].map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(value)).join('&')
     try {
-      const response = await request.call(window, '/api/order/searchlist?' + query, { credentials: 'include' })
+      const response = await request.call(window, '/api/order/searchlist?' + query, { credentials: 'include', ...(signal ? { signal } : {}) })
       if (!response?.ok) return []
       const payload = await response.json()
       const rows = array(payload?.data)
@@ -598,19 +610,38 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     collected.push(...messageOrders)
     return mergeOrders(collected)
   }
-  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver, item.buyer])
+  const orderKey = (item) => JSON.stringify([item.externalId, item.status, item.items, item.total, item.receiver, item.buyer, item.conversationId])
   const changedOrderFields = (previous, next) => ['status', 'items', 'total', 'receiver', 'buyer', 'conversationId'].filter((key) => JSON.stringify(previous?.[key]) !== JSON.stringify(next?.[key]))
+  const isOlderOrder = (previous, next) => Boolean(previous?.updatedAt && next?.updatedAt && next.updatedAt < previous.updatedAt)
   const orderSnapshot = (orderId) => {
     const current = orderSnapshots.get('*') || new Map()
     return current.get(orderId)
   }
   const saveOrderSnapshot = (item) => {
     const current = orderSnapshots.get('*') || new Map()
+    const previous = current.get(item.externalId)
+    if (isOlderOrder(previous, item)) return false
     current.set(item.externalId, item)
     orderSnapshots.set('*', current)
+    return true
+  }
+  const decodeNotificationPayload = (value) => {
+    if (typeof value === 'string') return json(value)
+    if ((typeof Uint8Array !== 'undefined' && value instanceof Uint8Array) || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView?.(value))) {
+      try { return json(new TextDecoder().decode(value)) } catch (_) { return {} }
+    }
+    if (value?.message?.payload !== undefined) {
+      const decoded = decodeNotificationPayload(value.message.payload)
+      if (decoded && typeof decoded === 'object') return decoded.data && typeof decoded.data === 'object' ? { ...decoded, ...decoded.data } : decoded
+    }
+    if (value?.payload !== undefined && (typeof value.payload === 'string' || value.payload instanceof Uint8Array)) {
+      const decoded = decodeNotificationPayload(value.payload)
+      if (decoded && typeof decoded === 'object') return decoded.data && typeof decoded.data === 'object' ? { ...decoded, ...decoded.data } : decoded
+    }
+    return value
   }
   const notificationObject = (value) => {
-    if (typeof value === 'string') value = json(value)
+    value = decodeNotificationPayload(value)
     const visited = new Set()
     const queue = [value]
     while (queue.length && visited.size < 100) {
@@ -619,7 +650,13 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       visited.add(item)
       if (item.msgItem || item.msg_item || item.messageItem) {
         const nested = item.msgItem || item.msg_item || item.messageItem
-        return typeof nested === 'string' ? json(nested) : nested
+        const value = decodeNotificationPayload(nested)
+        if (!value || typeof value !== 'object') return value
+        const metadata = {}
+        for (const key of ['type', 'msg_type', 'notice_type', 'event_id', 'eventId', 'msg_id', 'msgId', 'biz_type', 'bizType', 'timestamp', 'create_time']) {
+          if (item[key] !== undefined && item[key] !== null) metadata[key] = item[key]
+        }
+        return { ...value, ...metadata }
       }
       for (const key of ['data', 'payload', 'message', 'item', 'items', 'list', 'messages', 'notice', 'notification']) {
         const nested = item[key]
@@ -669,38 +706,105 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       raw: { type: item.type || item.msg_type || item.notice_type, extInfo: ext },
     } : undefined
   }
-  const isCreationNotification = (notification) => /^(6001|create|created|new|order_created)$/i.test(notification.type) || /new.?order|order.?created|下单|新订单/i.test(notification.type)
-  const refreshOrderByNotification = async (notification) => {
-    if (!orderListening || disposed) return
-    if (notification.eventId) {
-      const fingerprint = notification.orderId + ':' + notification.eventId
-      if (notificationFingerprints.has(fingerprint)) return
-      notificationFingerprints.add(fingerprint)
-      if (notificationFingerprints.size > 2000) notificationFingerprints.delete(notificationFingerprints.values().next().value)
+  const queryOrderById = async (orderId, signal) => {
+    const expected = identifier(orderId)
+    if (!expected || disposed || signal?.aborted) return undefined
+    for (const delayMs of ORDER_QUERY_RETRY_DELAYS_MS) {
+      if (disposed || signal?.aborted) return undefined
+      if (delayMs) await wait(delayMs)
+      if (disposed || signal?.aborted) return undefined
+      let rows = []
+      try { rows = await requestCommerceOrders(expected, signal) } catch (_) { rows = [] }
+      const match = rows.find((item) => identifier(item.externalId) === expected)
+      if (match) return match
     }
-    const current = await requestCommerceOrders(notification.orderId)
-    const next = current.find((item) => item.externalId === notification.orderId)
-    if (!next) return
-    const enriched = { ...next, raw: { ...(next.raw || {}), notification: { type: notification.type || undefined, bizType: notification.bizType || undefined, timestamp: notification.timestamp } } }
+    return undefined
+  }
+  const isCreationNotification = (notification) => /^(6001|create|created|new|order_created)$/i.test(notification.type) || /new.?order|order.?created|下单|新订单/i.test(notification.type)
+  const refreshOrderByNotification = async (notification, signal) => {
+    const next = await queryOrderById(notification.orderId, signal)
+    if (!next) return false
+    const enriched = { ...next, raw: { ...(next.raw || {}), notification: { source: notification.source || undefined, type: notification.type || undefined, bizType: notification.bizType || undefined, timestamp: notification.timestamp } } }
     const previous = orderSnapshot(enriched.externalId)
+    if (previous && isOlderOrder(previous, enriched)) return true
     if (!previous) {
       if (isCreationNotification(notification) && (enriched.createdAt || 0) >= orderListenerStartedAt) emit({ type: 'order.created', payload: { order: enriched } })
-      else emit({ type: 'order.updated', payload: { order: enriched, changedFields: ['status', 'items', 'total', 'receiver', 'buyer'] } })
+      else emit({ type: 'order.updated', payload: { order: enriched, changedFields: ['status', 'items', 'total', 'receiver', 'buyer', 'conversationId'] } })
     } else if (orderKey(previous) !== orderKey(enriched)) {
       emit({ type: 'order.updated', payload: { order: enriched, previous, changedFields: changedOrderFields(previous, enriched) } })
     }
     saveOrderSnapshot(enriched)
+    return true
   }
-  const notificationCandidates = () => {
-    const relevant = /notification|notify|notice|reach|alert|frontier|broadcast|event/i
+  const notificationFingerprint = (notification) => {
+    const stablePayload = notification.eventId
+      ? notification.eventId
+      : JSON.stringify([notification.timestamp, notification.raw?.extInfo || notification.raw || {}])
+    return [notification.orderId, notification.eventId || '', notification.type || '', notification.bizType || '', stablePayload || ''].join(':')
+  }
+  const rememberProcessedFingerprint = (fingerprint) => {
+    processedFingerprints.add(fingerprint)
+    if (processedFingerprints.size > 2000) processedFingerprints.delete(processedFingerprints.values().next().value)
+  }
+  const drainOrderRefresh = async (orderId, state) => {
+    try {
+      while (!disposed && state.pending.length) {
+        const entry = state.pending.shift()
+        if (!entry) continue
+        let processed = false
+        try { processed = await refreshOrderByNotification(entry.notification, state.controller?.signal) } catch (_) { processed = false }
+        processingFingerprints.delete(entry.fingerprint)
+        if (processed) rememberProcessedFingerprint(entry.fingerprint)
+        if (state.pending.length > 1) {
+          const latest = state.pending.at(-1)
+          for (const discarded of state.pending.slice(0, -1)) processingFingerprints.delete(discarded.fingerprint)
+          state.pending = latest ? [latest] : []
+          state.dirty = false
+        }
+      }
+    } finally {
+      for (const entry of state.pending) processingFingerprints.delete(entry.fingerprint)
+      state.pending.length = 0
+      if (orderRefreshes.get(orderId) === state) orderRefreshes.delete(orderId)
+    }
+  }
+  const enqueueOrderRefresh = (notification) => {
+    if (!orderListening || disposed) return
+    const fingerprint = notificationFingerprint(notification)
+    if (processedFingerprints.has(fingerprint) || processingFingerprints.has(fingerprint)) return
+    processingFingerprints.add(fingerprint)
+    const pending = { notification, fingerprint }
+    const current = orderRefreshes.get(notification.orderId)
+    if (current) {
+      current.dirty = true
+      current.pending.push(pending)
+      return
+    }
+    const state = {
+      dirty: false,
+      pending: [pending],
+      controller: typeof AbortController === 'function' ? new AbortController() : undefined,
+    }
+    orderRefreshes.set(notification.orderId, state)
+    void drainOrderRefresh(notification.orderId, state)
+  }
+  const explicitNotificationCandidates = () => {
     const candidates = [
-      window.__DOUYIN_NOTIFICATION_RUNTIME__, window.__DOUYIN_NOTIFICATION_STORE__, window.__NOTIFICATION_RUNTIME__,
-      window.__NOTIFICATION_STORE__, window.__NOTICE_RUNTIME__, window.__REACH_RUNTIME__, window.__FRONTIER_NOTIFICATION_RUNTIME__,
+      window.frontierInstance?.fws,
+      window.__DOUYIN_NOTIFICATION_RUNTIME__, window.__DOUYIN_NOTIFICATION_STORE__, window.__FRONTIER_NOTIFICATION_RUNTIME__,
+      window.__REACH_RUNTIME__, window.__NOTICE_RUNTIME__, window.__NOTIFICATION_RUNTIME__, window.__NOTIFICATION_STORE__,
       store()?.notificationRuntime, store()?.notificationStore, store()?.noticeStore, store()?.notice, store()?.notification,
       pageContext()?.notificationRuntime, pageContext()?.notificationStore, pageContext()?.noticeStore, pageContext()?.notice, pageContext()?.notification,
-      window.__monaGlobalStore, window.__mona_light_event, window.__lightEvent, window.__wbUpdateEventEmitter,
+      window.__mona_light_event, window.__lightEvent, window.__wbUpdateEventEmitter,
       window.__WORKBENCH_EVENT_SDK__, window.__WORKBENCH_EVENT_SDK_IN_WINDOW__, window.__WORKBENCH_EVENT_INSTANCE_MAP_NEW__,
-      window.__WORKBENCH_EVENT_INSTANCE_MAP__, window.__MONA_EVENT_MAP_GLOBAL_KEY__, window.rootStore, window.SDKRuntime,
+      window.__WORKBENCH_EVENT_INSTANCE_MAP__, window.__MONA_EVENT_MAP_GLOBAL_KEY__,
+    ]
+    return [...new Set(candidates.filter(Boolean))]
+  }
+  const discoveredNotificationCandidates = () => {
+    const relevant = /notification|notify|notice|reach|alert|frontier|broadcast|event/i
+    const candidates = [
+      window.__monaGlobalStore, window.rootStore, window.SDKRuntime,
     ]
     const roots = []
     try {
@@ -736,8 +840,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     return result
   }
   const bindNotificationSource = (source, subscriptions) => {
-    if (!source || typeof source !== 'object') return
-    const publish = (value) => { const notification = notificationOrderId(value); if (notification) void refreshOrderByNotification(notification) }
+    if (!source || !['object', 'function'].includes(typeof source)) return false
+    const publish = (value) => { const notification = notificationOrderId(value); if (notification) enqueueOrderRefresh({ ...notification, source: 'official-runtime' }) }
     for (const name of ['subscribe', 'listen']) {
       if (typeof source[name] !== 'function') continue
       try {
@@ -754,6 +858,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
           subscriptions.push(() => { try { typeof result === 'function' ? result() : result?.unsubscribe?.() } catch (_) {} })
           return true
         }
+        let bound = false
         for (const eventName of ['notification', 'notice', 'alert', 'reach', 'message', 'event']) {
           try {
             const result = source[name](eventName, publish)
@@ -764,34 +869,72 @@ export const douyinHookRuntimeScript = String.raw `(() => {
                 typeof result === 'function' ? result() : result?.unsubscribe?.()
               } catch (_) {}
             })
-            return true
+            bound = true
           } catch (_) {}
         }
+        if (bound) return true
       } catch (_) {}
     }
     return false
   }
+  const bindFrontierNotificationSource = (subscriptions) => {
+    const source = window.frontierInstance?.fws
+    if (!source || typeof source.addEventListener !== 'function') return false
+    const publish = (value) => { const notification = notificationOrderId(value); if (notification) enqueueOrderRefresh({ ...notification, source: 'frontierInstance.fws.message' }) }
+    try {
+      source.addEventListener('message', publish)
+      subscriptions.push(() => { try { source.removeEventListener?.('message', publish) } catch (_) {} })
+      return true
+    } catch (_) { return false }
+  }
   const bindOrderNotifications = () => {
     if (PAGE !== 'orders' || !orderListening) return
-    const candidates = notificationCandidates()
-    if (orderNotificationCleanup && candidates.length === orderNotificationSources.length && candidates.every((candidate) => orderNotificationSources.includes(candidate))) return
+    const explicit = explicitNotificationCandidates()
+    const discovered = discoveredNotificationCandidates()
+    const candidateSets = explicit.length ? [['explicit', explicit]] : [['fallback', discovered]]
+    if (explicit.length) candidateSets.push(['fallback', discovered])
+    for (const [mode, candidates] of candidateSets) {
+      if (orderNotificationCleanup && mode === orderNotificationBindingMode && candidates.length === orderNotificationSources.length && candidates.every((candidate) => orderNotificationSources.includes(candidate))) return
+    }
+    let selectedMode = ''
+    let selectedCandidates = []
+    let selectedSubscriptions = []
+    for (const [mode, candidates] of candidateSets) {
+      const subscriptions = []
+      const bound = mode === 'explicit' && bindFrontierNotificationSource(subscriptions)
+        || candidates.some((candidate) => candidate !== window.frontierInstance?.fws && bindNotificationSource(candidate, subscriptions))
+      if (bound) {
+        selectedMode = mode
+        selectedCandidates = candidates
+        selectedSubscriptions = subscriptions
+        break
+      }
+      subscriptions.splice(0).forEach((unsubscribe) => unsubscribe())
+    }
     try { orderNotificationCleanup?.() } catch (_) {}
-    const subscriptions = []
-    for (const candidate of candidates) bindNotificationSource(candidate, subscriptions)
-    orderNotificationSources = candidates
-    orderNotificationCleanup = () => { subscriptions.splice(0).forEach((unsubscribe) => unsubscribe()); orderNotificationSources = []; orderNotificationCleanup = null }
+    orderNotificationBindingMode = selectedMode
+    orderNotificationSources = selectedCandidates
+    orderNotificationCleanup = () => { selectedSubscriptions.splice(0).forEach((unsubscribe) => unsubscribe()); orderNotificationSources = []; orderNotificationBindingMode = ''; orderNotificationCleanup = null }
   }
   const reconcileOrders = async () => {
     if (!orderListening || orderReconciliationBusy || disposed) return
     orderReconciliationBusy = true
+    const controller = typeof AbortController === 'function' ? new AbortController() : undefined
+    orderReconciliationController = controller
     try {
-      const current = await requestCommerceOrders('')
+      const current = await requestCommerceOrders('', controller?.signal)
       for (const item of current.slice(0, ORDER_RECONCILIATION_LIMIT)) {
+        if (orderRefreshes.has(item.externalId)) continue
         const previous = orderSnapshot(item.externalId)
-        if (previous && orderKey(previous) !== orderKey(item)) emit({ type: 'order.updated', payload: { order: item, previous, changedFields: changedOrderFields(previous, item) } })
+        if (previous && isOlderOrder(previous, item)) continue
+        if (!previous && (item.createdAt || 0) >= orderListenerStartedAt) emit({ type: 'order.created', payload: { order: item } })
+        else if (previous && orderKey(previous) !== orderKey(item)) emit({ type: 'order.updated', payload: { order: item, previous, changedFields: changedOrderFields(previous, item) } })
         saveOrderSnapshot(item)
       }
-    } finally { orderReconciliationBusy = false }
+    } finally {
+      if (orderReconciliationController === controller) orderReconciliationController = null
+      orderReconciliationBusy = false
+    }
   }
   const bindMessages = () => {
     if (messageCleanup || PAGE !== 'primary') return
@@ -953,7 +1096,32 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     describe: () => ({ protocolVersion: VERSION, platform: PLATFORM, pageId: PAGE, capabilities: [...operations], operations: [...operations] }),
     invoke,
     drainEvents: async () => { bindMessages(); bindOrderNotifications(); return queue.splice(0, queue.length) },
-    dispose: async () => { if (disposed) return; disposed = true; try { messageCleanup?.() } catch (_) {} try { orderNotificationCleanup?.() } catch (_) {} if (orderReconciliationTimer) clearInterval(orderReconciliationTimer); orderReconciliationTimer = null; orderReconciliationBusy = false; orderListening = false; queue.length = 0; seenMessages.clear(); seenFingerprints.clear(); notificationFingerprints.clear(); orderSnapshots.clear(); messageOrderSnapshots.clear() },
+    dispose: async () => {
+      if (disposed) return
+      disposed = true
+      try { messageCleanup?.() } catch (_) {}
+      try { orderNotificationCleanup?.() } catch (_) {}
+      if (orderReconciliationTimer) clearInterval(orderReconciliationTimer)
+      orderReconciliationTimer = null
+      orderReconciliationController?.abort?.()
+      orderReconciliationController = null
+      for (const [timer, resolve] of retryTimers) {
+        clearTimeout(timer)
+        try { resolve() } catch (_) {}
+      }
+      retryTimers.clear()
+      for (const state of orderRefreshes.values()) state.controller?.abort?.()
+      orderRefreshes.clear()
+      processingFingerprints.clear()
+      processedFingerprints.clear()
+      orderReconciliationBusy = false
+      orderListening = false
+      queue.length = 0
+      seenMessages.clear()
+      seenFingerprints.clear()
+      orderSnapshots.clear()
+      messageOrderSnapshots.clear()
+    },
   }
 })()`;
 //# sourceMappingURL=runtime-source.js.map

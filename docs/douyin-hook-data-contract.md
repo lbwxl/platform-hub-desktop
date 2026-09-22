@@ -21,9 +21,9 @@ HookResult<T>
 | --- | --- | --- |
 | `primary` | `https://im.jinritemai.com/pc_seller_v2/main/workspace` | 登录、会话、消息、转人工 |
 | `products` | `https://fxg.jinritemai.com/ffa/g/list?tab=all` | 商品列表和详情，按需创建 |
-| `orders` | `https://fxg.jinritemai.com/ffa/g/list?tab=all` | 全店订单列表和订单变化监听，持久辅助页 |
+| `orders` | `https://fxg.jinritemai.com/ffa/arrival-pages/home` | 商家首页官方通知 Runtime 与全店订单变化监听，lazy persistent 辅助页 |
 
-订单页必须使用 Foundation 的 persistent auxiliary page。客服工作台只提供会话相关订单上下文，不能作为全店订单水位来源。
+订单页必须使用 Foundation 的 persistent auxiliary page：`HookSession.start()` 不创建它，第一次 `orders.list` 或 `orders.listen` 路由时 lazy 创建，之后保持到该 Session dispose，不参与 idle 回收。订单监听驻留抖店商家首页以复用官方通知 Runtime；客服工作台只提供会话相关订单上下文，不能作为全店订单水位来源。
 
 ## 2. 统一 Result 协议
 
@@ -330,7 +330,7 @@ interface HookOrder {
 
 ### 8.2 订单列表
 
-Operation：`orders.list`（只在 `orders` persistent auxiliary page 执行）
+Operation：`orders.list`（只在 `orders` lazy persistent auxiliary page 执行）
 
 ```ts
 const result = await runtime.invoke('orders.list', {})
@@ -347,7 +347,7 @@ GET /api/order/searchlist?page=0&pageSize=100&order_by=create_time&order=desc&ta
 
 ### 8.3 订单监听
 
-Operation：`orders.listen`
+Operation：`orders.listen`（只在 `orders` lazy persistent auxiliary page 执行）
 
 ```ts
 const result = await runtime.invoke('orders.listen', {})
@@ -358,10 +358,12 @@ const result = await runtime.invoke('orders.listen', {})
 
 1. 首次读取全店订单快照并建立 watermark。
 2. 订阅抖店页面已经建立的官方通知 runtime；通知对象中的 `msgItem.ext_info` 只作为订单变化唤醒信号。
-3. 从通知提取 `orderId` 后，直接请求 `/api/order/searchlist?...&search_words=<orderId>` 获取权威订单快照。
-4. 快照中的历史订单不会冒充 `order.created`；历史订单收到退款等更新通知时发布 `order.updated`。
-5. 订单实际新增时发布 `order.created`，状态、商品、金额、收件人等有意义字段变化时发布 `order.updated`。
-6. 没有实际变化不会重复发布事件；通知重复也不会重复发布事件。
+3. 从通知提取 `orderId` 后，直接请求 `/api/order/searchlist?...&search_words=<orderId>` 获取权威订单快照；索引尚未可见时只进行有限的 0 / 300 / 1000 / 2500ms 重试。
+4. 同一个 `orderId` 的刷新严格串行；刷新期间到达的通知合并为一次最新刷新，不同订单可以并行。
+5. 快照中的历史订单不会冒充 `order.created`；历史订单收到退款等更新通知时发布 `order.updated`。
+6. 订单实际新增时发布 `order.created`，状态、商品、金额、收件人等有意义字段变化时发布 `order.updated`。
+7. 没有实际变化不会重复发布事件；通知重复也不会重复发布事件。`updatedAt` 和通知诊断字段不参与 material diff。
+8. 通知源断开或漏通知时，每五分钟执行一次低频 reconciliation；监听开始后新出现的订单补发 `order.created`，监听开始前的历史订单只建立 baseline。
 
 ### 8.4 订单事件
 

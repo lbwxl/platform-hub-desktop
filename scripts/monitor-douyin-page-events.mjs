@@ -1,6 +1,6 @@
 const listenMs = Number(process.argv[2] || 30 * 60_000)
 const cdpPort = process.env.PLATFORM_HUB_CDP_PORT || '9565'
-const pattern = process.env.PLATFORM_HUB_CDP_TARGET_PATTERN || 'fxg.jinritemai.com/ffa/g/list?tab=all'
+const pattern = process.env.PLATFORM_HUB_CDP_TARGET_PATTERN || 'fxg.jinritemai.com/ffa/arrival-pages/home'
 let target
 const waitUntil = Date.now() + listenMs
 while (!target && Date.now() < waitUntil) {

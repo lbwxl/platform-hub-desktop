@@ -18,7 +18,7 @@ export function createDouyinElectronPageFactory(options: DouyinElectronPageFacto
         : createCdpEvaluator(contents)
       return installDouyinPageRuntime(evaluate, context.definition, context.manifest, options.logger)
     },
-    isRuntimeReady: options.isRuntimeReady ?? (async (_context, contents) => {
+    isRuntimeReady: options.isRuntimeReady ?? (async (context, contents) => {
       try {
         return await createCdpEvaluator(contents)<boolean>(String.raw`(() => {
           if (/captcha|verify|challenge|risk/i.test(String(location.pathname || '') + String(location.search || ''))) return false
@@ -27,8 +27,18 @@ export function createDouyinElectronPageFactory(options: DouyinElectronPageFacto
             return Boolean(result && !['-1', '0', 'null', 'undefined'].includes(result))
           }
           const store = window.ss?._frontStore || window.ss?.instance
-          if (validId(store?.shopInfo?.id) || validId(store?.selfInfo?.id) || validId(window.__mona_store__?.shopId)) return true
-          if (/fxg\.jinritemai\.com/i.test(String(location.hostname || ''))) return Boolean(window.localStorage?.getItem('GOODS_SWR_CACHE_V1'))
+          const authenticated = validId(store?.shopInfo?.id) || validId(store?.selfInfo?.id) || validId(window.__mona_store__?.shopId)
+          if (context.definition.id === 'primary') return authenticated
+          if (!/fxg\.jinritemai\.com/i.test(String(location.hostname || ''))) return false
+          if (context.definition.id === 'products') {
+            return Boolean(window.localStorage?.getItem('GOODS_SWR_CACHE_V1'))
+          }
+          if (context.definition.id === 'orders') {
+            if (!authenticated || !/^\/ffa\/(?:arrival-pages\/home|g\/list|morder\/order\/list)(?:\/|$)/i.test(String(location.pathname || ''))) return false
+            const officialRuntime = window.__mona_pigeon_event?.globalStore || window.__REACH_RUNTIME__ || window.__NOTICE_RUNTIME__ || window.__NOTIFICATION_RUNTIME__ || window.__FRONTIER_NOTIFICATION_RUNTIME__
+            const hasNotificationApi = Object.values(officialRuntime || {}).some((value) => value && ['subscribe', 'listen', 'on', 'addListener', 'addEventListener'].some((name) => typeof value?.[name] === 'function'))
+            return Boolean(hasNotificationApi || window.__mona_pigeon_event?.globalStore)
+          }
           return false
         })()`)
       } catch { return false }

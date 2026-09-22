@@ -21,6 +21,7 @@ export interface PersistentPageManagerOptions {
 /** Owns pages which stay alive for the lifetime of one HookSession. */
 export class PersistentPageManager {
   private readonly pages = new Map<string, PersistentEntry>()
+  private readonly pending = new Map<string, Promise<PersistentPageHandle>>()
   private disposed = false
   private started = false
   private readonly logger: HookLogger
@@ -34,25 +35,30 @@ export class PersistentPageManager {
 
   async start(): Promise<void> {
     if (this.disposed) throw new Error('PersistentPageManager 已停止')
-    if (this.started) return
     this.started = true
-    try {
-      for (const definition of this.options.manifest.pages.filter((page) => page.kind === 'persistent')) {
-        await this.ensure(definition)
-      }
-    } catch (error) {
-      await this.dispose()
-      throw error
-    }
   }
 
   async ensure(definition: HookPageDefinition): Promise<PersistentPageHandle> {
     if (definition.kind !== 'persistent') throw new Error(`页面 ${definition.id} 不是 Persistent Page`)
     if (this.disposed) throw new Error('PersistentPageManager 已停止')
+    if (!this.started) throw new Error('PersistentPageManager 尚未启动')
     const current = this.pages.get(definition.id)
     if (current?.runtime && current.page.isAlive()) return this.handleFor(definition.id, current)
     if (current) await this.disposeEntry(definition.id, current)
 
+    const pending = this.pending.get(definition.id)
+    if (pending) return pending
+
+    const creation = this.create(definition)
+    this.pending.set(definition.id, creation)
+    try {
+      return await creation
+    } finally {
+      if (this.pending.get(definition.id) === creation) this.pending.delete(definition.id)
+    }
+  }
+
+  private async create(definition: HookPageDefinition): Promise<PersistentPageHandle> {
     const page = await this.options.factory.create(this.contextFor(definition))
     let runtime: PageHookRuntime | undefined
     try {

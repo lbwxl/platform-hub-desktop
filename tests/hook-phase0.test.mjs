@@ -391,11 +391,19 @@ test('persistent auxiliary pages stay resident, drain events, recover challenges
   a.subscribe((event) => aEvents.push(event))
   b.subscribe((event) => bEvents.push(event))
   await Promise.all([a.start(), b.start()])
-  assert.equal(a.persistentPages.ids.includes('orders'), true)
-  assert.equal(b.persistentPages.ids.includes('orders'), true)
-  assert.notEqual(factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a'))?.partition, factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-b'))?.partition)
+  assert.equal(a.persistentPages.size, 0)
+  assert.equal(b.persistentPages.size, 0)
+  assert.equal(factory.pages.filter((page) => page.id === 'orders').length, 0)
 
   await a.invoke('orders.listen')
+  assert.equal(a.persistentPages.size, 1)
+  assert.equal(b.persistentPages.size, 0)
+  const aOrdersPage = factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a'))
+  assert.ok(aOrdersPage)
+  assert.equal(aOrdersPage.partition.includes('persistent-shop-b'), false)
+  await a.invoke('orders.listen')
+  assert.equal(a.persistentPages.size, 1)
+  assert.equal(factory.pages.filter((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a')).length, 1)
   const created = {
     id: 'persistent-order', externalId: 'external-persistent-order', shopId: 'persistent-shop-a',
     conversationId: 'conversation-1', buyer: { id: 'buyer-1', name: 'Fake 买家' }, status: 'created',
@@ -414,11 +422,13 @@ test('persistent auxiliary pages stay resident, drain events, recover challenges
   assert.equal(factory.pages.find((page) => page.id === 'orders' && page.partition.includes('persistent-shop-a'))?.visible, true)
   factory.solveChallenge('persistent-shop-a', 'orders', 'orders.list')
   assert.equal((await pending).ok, true)
-  assert.ok(factory.runtimeRecords.filter((runtime) => runtime.pageId === 'orders').length >= 3)
+  assert.ok(factory.runtimeRecords.filter((runtime) => runtime.pageId === 'orders').length >= 2)
   assert.equal(bEvents.length, 0)
   await host.disposeSession(a.sessionId)
   assert.equal(b.isStarted, true)
-  assert.equal(b.persistentPages.ids.includes('orders'), true)
+  assert.equal(a.persistentPages.size, 0)
+  assert.equal(aOrdersPage.alive, false)
+  assert.equal(b.persistentPages.size, 0)
   await host.dispose()
 })
 

@@ -14,6 +14,7 @@ export interface PersistentPageManagerOptions {
 export declare class PersistentPageManager {
     private readonly options;
     private readonly pages;
+    private readonly pending;
     private disposed;
     private started;
     private readonly logger;
@@ -22,6 +23,7 @@ export declare class PersistentPageManager {
     get ids(): string[];
     start(): Promise<void>;
     ensure(definition: HookPageDefinition): Promise<PersistentPageHandle>;
+    private create;
     show(pageId: string): Promise<void>;
     drainEvents(): Promise<HookEvent[]>;
     private refreshRuntime;
