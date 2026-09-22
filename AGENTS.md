@@ -1282,23 +1282,68 @@ read-only inspection
 
 ## 5. Douyin Verification Rule
 
-Douyin 的真实订单 / 通知验收必须在 Electron 中完成：
+Douyin 的真实订单 / 通知验收必须在 Electron 中完成。订单当前状态的唯一权威来源是：
+
+```text
+/api/order/searchlist
+```
+
+订单实时唤醒有两类路径：
+
+如果官方 Runtime event 能真实提取 `orderId`：
 
 ```text
 Electron persistent auxiliary page
 ↓
-fxg.jinritemai.com
-↓
-官方 Notification Runtime
-↓
-msgItem.ext_info
+official Runtime event
 ↓
 orderId
 ↓
-authoritative order query
+/api/order/searchlist?search_words=<orderId>
+↓
+authoritative order snapshot
 ```
 
-已确认底层存在：
+如果 Electron 页面中已经建立的 Frontier Runtime 收到 `service = 20132`、`method = 0`，但没有可用 `orderId`：
+
+```text
+Electron orders persistent page
+↓
+Frontier order-domain wakeup
+↓
+mark order domain dirty
+↓
+short debounce
+↓
+recent authoritative order reconciliation
+↓
+material diff
+↓
+order.created / order.updated
+```
+
+真人验收已确认：
+
+* 下单和支付可以由 Frontier `service = 20132` / `method = 0` 实时唤醒。
+* Frontier Frame 不包含可用 `orderId`；`LogID` / `LogIDNew` 不是订单号。
+* 退款不要求存在 Frontier Frame，继续由低频 reconciliation 兜底。
+
+以下接口只允许用于历史、审计或 `orderId` discovery：
+
+```text
+getshopbroadcastv3
+/b/a/api/v1/reach/list
+```
+
+它们不能作为实时订单事件源，也不能作为当前订单状态真相。退款、漏推或断线时使用低频 reconciliation fallback：
+
+```text
+refund / missed push / disconnect
+↓
+low-frequency reconciliation fallback
+```
+
+已确认 Frontier 底层连接存在：
 
 ```text
 wss://frontier.snssdk.com/ws/v2
@@ -1312,7 +1357,7 @@ wss://frontier.snssdk.com/ws/v2
 new WebSocket('wss://frontier.snssdk.com/ws/v2')
 ```
 
-必须复用 Electron 页面里官方已经建立好的 Runtime、Store 或 EventEmitter。
+必须复用 Electron 页面里官方已经建立的 Runtime、Store 或 EventEmitter。Frontier 只提供 order-domain wakeup；订单状态必须回到 `/api/order/searchlist` 获取 authoritative snapshot。
 
 ## 6. Verification Failure Rule
 
