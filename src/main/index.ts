@@ -28,16 +28,21 @@ function assertRenderer(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('未经授权的 IPC 调用')
 }
 
-function createWindow(): void {
+function createWindow(load = true): BrowserWindow {
   mainWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1120, minHeight: 720,
     backgroundColor: '#f4f7fb',
-    webPreferences: { preload: join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false, webviewTag: true },
+    webPreferences: { preload: join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false },
   })
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
   mainWindow.on('closed', () => { mainWindow = null })
-  if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  if (load) loadRenderer(mainWindow)
+  return mainWindow
+}
+
+function loadRenderer(window: BrowserWindow): void {
+  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL)
+  else void window.loadFile(join(__dirname, '../renderer/index.html'))
 }
 
 function registerIpc(): void {
@@ -50,6 +55,7 @@ function registerIpc(): void {
   ipcMain.handle('accounts:setOnline', (event, id: string, online: boolean) => { assertRenderer(event); return manager.setAccountOnline(id, online) })
   ipcMain.handle('runtime:states', (event) => { assertRenderer(event); return manager.runtimeStates() })
   ipcMain.handle('conversation:attention:set', (event, id: string, conversationId: string, state: 'pending' | 'opened' | 'resolved') => { assertRenderer(event); return manager.setConversationAttention(id, conversationId, state) })
+  ipcMain.handle('viewport:bounds', (event, bounds: { x: number; y: number; width: number; height: number }) => { assertRenderer(event); return manager.setPrimaryViewportBounds(bounds) })
   ipcMain.handle('platform:connect', (event, id: string, webContentsId: number) => { assertRenderer(event); return manager.connect(id, webContentsId) })
   ipcMain.handle('platform:disconnect', (event, id: string) => { assertRenderer(event); return manager.disconnect(id) })
   ipcMain.handle('platform:status', (event, id: string) => { assertRenderer(event); return manager.status(id) })
@@ -69,6 +75,8 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   await manager.init()
+  createWindow(false)
+  if (mainWindow) await manager.attachMainWindow(mainWindow)
   if (!manager.listAccounts().length) {
     await manager.addAccount({ platform: 'douyin-shop', label: '抖店主账号' })
   }
@@ -76,10 +84,15 @@ app.whenReady().then(async () => {
   manager.onEvent((event: PlatformEvent) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('platform:event', event)
   })
-  createWindow()
+  if (mainWindow) loadRenderer(mainWindow)
   const douyin = manager.listAccounts().find((account) => account.platform === 'douyin-shop')
   if (douyin) void manager.open(douyin.id).catch((error) => console.error('[platform-hub] 打开抖店页面失败', error))
-  app.on('activate', () => { if (!mainWindow) createWindow() })
+  app.on('activate', () => {
+    if (!mainWindow) {
+      const window = createWindow(false)
+      void manager.attachMainWindow(window).then(() => loadRenderer(window))
+    }
+  })
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

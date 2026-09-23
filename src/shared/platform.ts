@@ -161,6 +161,17 @@ export interface PlatformStatus {
   message: string
 }
 
+export interface PlatformRuntimeSnapshot {
+  accountId: string
+  online: boolean
+  runtimeState: PlatformAccount['runtimeState']
+  messageListening: boolean
+  lastIncomingAt?: number
+  lastReplyAt?: number
+  lastReplyType?: 'reply' | 'human_required' | 'ignore'
+  attention: Record<string, 'pending' | 'opened' | 'resolved'>
+}
+
 export interface HookPackageManifest {
   id: PlatformId
   label: string
@@ -216,6 +227,7 @@ export interface PlatformApi {
   sendFile(accountId: string, sessionId: string, dataUrl: string, fileName?: string): Promise<{ success: boolean; error?: string }>
   transferSession(accountId: string, sessionId: string, target: string): Promise<unknown>
   setConversationAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void>
-  runtimeStates(): Promise<Array<{ accountId: string; online: boolean; runtimeState: 'stopped' | 'starting' | 'running' | 'error'; messageListening: boolean; lastIncomingAt?: number; lastReplyAt?: number; lastReplyType?: 'reply' | 'human_required' | 'ignore'; attention: Record<string, 'pending' | 'opened' | 'resolved'> }>>
+  setPrimaryViewportBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<void>
+  runtimeStates(): Promise<PlatformRuntimeSnapshot[]>
   onEvent(callback: (event: PlatformEvent) => void): () => void
 }

@@ -29,6 +29,7 @@ const api: PlatformApi = {
   sendFile: (id, sessionId, dataUrl, fileName) => ipcRenderer.invoke('message:file', id, sessionId, dataUrl, fileName),
   transferSession: (id, sessionId, target) => ipcRenderer.invoke('session:transfer', id, sessionId, target),
   setConversationAttention: (id, conversationId, state) => ipcRenderer.invoke('conversation:attention:set', id, conversationId, state),
+  setPrimaryViewportBounds: (bounds) => ipcRenderer.invoke('viewport:bounds', bounds),
   runtimeStates: () => ipcRenderer.invoke('runtime:states'),
   onEvent: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, value: Parameters<typeof callback>[0]) => callback(value)

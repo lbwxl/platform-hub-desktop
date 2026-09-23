@@ -10,6 +10,7 @@ const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', imp
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
+const viewport = await readFile(new URL('../src/renderer/src/components/PlatformViewport.tsx', import.meta.url), 'utf8')
 const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/hook-sdk/package.json', import.meta.url), 'utf8'))
 const hookHostPackage = JSON.parse(await readFile(new URL('../packages/hook-host/package.json', import.meta.url), 'utf8'))
 const hookTransportPackage = JSON.parse(await readFile(new URL('../packages/hook-transport/package.json', import.meta.url), 'utf8'))
@@ -150,7 +151,7 @@ test('登录成功后自动进入 manifest 声明的消息接待页', () => {
 test('平台可通过 manifest 声明官方登录页并保持同一账号分区', () => {
   assert.match(session, /setWindowOpenHandler/)
   assert.match(session, /loginUrlFor/)
-  assert.match(session, /this\.window\.loadURL\(loginUrl\)/)
+  assert.match(session, /contents\?\.loadURL\(loginUrl\)/)
   assert.match(session, /waitForLogin\(timeoutMs = 15 \* 60_000, method\?: string\)/)
   assert.match(manager, /waitForLogin\(undefined, method\)/)
 })
@@ -172,6 +173,14 @@ test('多账号 CDP 心跳合并调用、阻止重叠并回收伴随页', () => 
   assert.match(session, /scheduleRuntimeWindowClose/)
   assert.match(session, /this\.stopRuntimePolling\(\)\s+this\.closeRuntimeWindows\(\)/)
   assert.match(main, /PLATFORM_HUB_ENABLE_GPU/)
+})
+
+test('主工作台只展示 Hook primary WebContentsView，不创建 Renderer webview', () => {
+  assert.match(session, /WebContentsView/)
+  assert.match(session, /contentView\.addChildView\(this\.primaryView\)/)
+  assert.match(main, /viewport:bounds/)
+  assert.doesNotMatch(viewport, /<webview/)
+  assert.doesNotMatch(viewport, /partition=\{props\.account\.partition\}/)
 })
 
 test('工作台认证完成后自动加载会话并接收未知会话消息', () => {

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Activity, Bell, RefreshCw, Settings2 } from 'lucide-react'
-import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../shared/platform'
+import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformRuntimeSnapshot, PlatformStatus, ProductRecord } from '../../shared/platform'
 import { upsertPlatformMessage } from '../../shared/messageMerge'
 import { PlatformViewport } from './components/PlatformViewport'
 import { StoreSidebar } from './components/StoreSidebar'
+import { RuntimeStatusPanel } from './components/RuntimeStatusPanel'
 
 export default function App() {
   const [platforms, setPlatforms] = useState<PlatformDefinition[]>([])
@@ -22,10 +23,13 @@ export default function App() {
   const [handoffTargetsByAccount, setHandoffTargetsByAccount] = useState<Record<string, HandoffTarget[]>>({})
   const [selectedHandoffByAccount, setSelectedHandoffByAccount] = useState<Record<string, string>>({})
   const [statusByAccount, setStatusByAccount] = useState<Record<string, PlatformStatus | null>>({})
-  const [runtimeStateByAccount, setRuntimeStateByAccount] = useState<Record<string, PlatformAccount['runtimeState']>>({})
+  const [runtimeSnapshotByAccount, setRuntimeSnapshotByAccount] = useState<Record<string, PlatformRuntimeSnapshot>>({})
   const [events, setEvents] = useState<PlatformEvent[]>([])
   const [busy, setBusy] = useState('')
   const [toast, setToast] = useState('')
+  const reportViewportBounds = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
+    void window.platformApi.setPrimaryViewportBounds(bounds)
+  }, [])
 
   const activeAccount = useMemo(() => accounts.find((item) => item.id === activeAccountId), [accounts, activeAccountId])
   const activePlatform = useMemo(() => platforms.find((item) => item.id === (activeAccount?.platform || selectedPlatform)), [platforms, activeAccount, selectedPlatform])
@@ -86,7 +90,7 @@ export default function App() {
     try {
       const [nextPlatforms, nextAccounts, runtimeStates] = await Promise.all([window.platformApi.platforms.list(), window.platformApi.accounts.list(), window.platformApi.runtimeStates()])
       setPlatforms(nextPlatforms); setAccounts(nextAccounts)
-      setRuntimeStateByAccount(Object.fromEntries(runtimeStates.map((runtime) => [runtime.accountId, runtime.runtimeState])))
+      setRuntimeSnapshotByAccount(Object.fromEntries(runtimeStates.map((runtime) => [runtime.accountId, runtime])))
       const accountId = activeAccountId && nextAccounts.some((item) => item.id === activeAccountId) ? activeAccountId : nextAccounts[0]?.id || ''
       setActiveAccountId(accountId)
       if (accountId) { await inspect(accountId); await refreshSessions(accountId) }
@@ -99,13 +103,13 @@ export default function App() {
       const account = await window.platformApi.accounts.add({ platform: selectedPlatform, label: label || activePlatform?.label || '平台店铺' })
       setLabel(''); setAccounts((current) => [...current, account]); setActiveAccountId(account.id)
       await window.platformApi.accounts.open(account.id); await inspect(account.id)
-      notify('店铺已打开，请在 Electron 平台窗口中完成登录')
+      notify('店铺已打开，请在当前工作台中完成登录')
     } catch (error) { notify(errorMessage(error)) } finally { setBusy('') }
   }, [activePlatform, inspect, label, notify, selectedPlatform])
 
   const openAccount = useCallback(async (account: PlatformAccount) => {
     setActiveAccountId(account.id); setBusy(`open:${account.id}`)
-    try { await window.platformApi.accounts.open(account.id); await inspect(account.id); notify('平台窗口已打开，Hook 正在等待登录') } catch (error) { notify(errorMessage(error)) } finally { setBusy('') }
+    try { await window.platformApi.accounts.open(account.id); await inspect(account.id); notify('当前店铺工作台已切换，Hook 正在等待登录') } catch (error) { notify(errorMessage(error)) } finally { setBusy('') }
   }, [inspect, notify])
 
   const removeAccount = useCallback(async (account: PlatformAccount) => {
@@ -203,7 +207,16 @@ export default function App() {
     try {
       const next = await window.platformApi.accounts.setOnline(account.id, online)
       setAccounts((current) => current.map((item) => item.id === next.id ? next : item))
-      updateMap(setRuntimeStateByAccount, account.id, next.runtimeState)
+      updateMap(setRuntimeSnapshotByAccount, account.id, (current) => ({
+        accountId: account.id,
+        online: next.online,
+        runtimeState: next.runtimeState,
+        messageListening: next.messageListening === true,
+        attention: current?.attention || {},
+        ...(current?.lastIncomingAt ? { lastIncomingAt: current.lastIncomingAt } : {}),
+        ...(current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt } : {}),
+        ...(current?.lastReplyType ? { lastReplyType: current.lastReplyType } : {}),
+      }))
       notify(`${account.label} 已${online ? '上线' : '下线'}`)
     } catch (error) { notify(errorMessage(error)) } finally { setBusy('') }
   }, [notify, updateMap])
@@ -241,17 +254,51 @@ export default function App() {
         }
       }
       if (event.type === 'log' && event.payload && typeof event.payload === 'object') {
-        const runtime = event.payload as { runtimeState?: PlatformAccount['runtimeState']; online?: boolean; messageListening?: boolean }
+        const payload = event.payload as Record<string, unknown>
+        const runtime = payload as { runtimeState?: PlatformAccount['runtimeState']; online?: boolean; messageListening?: boolean }
+        const decision = payload.decision && typeof payload.decision === 'object' ? payload.decision as { type?: unknown } : undefined
+        const replyType = decision?.type === 'reply' || decision?.type === 'human_required' || decision?.type === 'ignore'
+          ? decision.type as PlatformRuntimeSnapshot['lastReplyType']
+          : undefined
+        const attentionState = typeof payload.state === 'string' && ['pending', 'opened', 'resolved'].includes(payload.state)
+          ? payload.state as PlatformRuntimeSnapshot['attention'][string]
+          : undefined
+        const conversationId = typeof payload.conversationId === 'string' ? payload.conversationId : undefined
+        updateMap(setRuntimeSnapshotByAccount, event.accountId, (current) => {
+          const attention = { ...(current?.attention || {}) }
+          if (conversationId && attentionState) attention[conversationId] = attentionState
+          return {
+            accountId: event.accountId,
+            online: typeof runtime.online === 'boolean' ? runtime.online : current?.online || false,
+            runtimeState: runtime.runtimeState || current?.runtimeState || 'stopped',
+            messageListening: typeof runtime.messageListening === 'boolean' ? runtime.messageListening : current?.messageListening || false,
+            attention,
+            ...(replyType
+              ? { lastReplyAt: event.timestamp, lastReplyType: replyType }
+              : current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt, ...(current.lastReplyType ? { lastReplyType: current.lastReplyType } : {}) } : {}),
+            ...(current?.lastIncomingAt ? { lastIncomingAt: current.lastIncomingAt } : {}),
+          }
+        })
         if (runtime.runtimeState) {
-          updateMap(setRuntimeStateByAccount, event.accountId, runtime.runtimeState)
           setAccounts((current) => current.map((item) => item.id === event.accountId
             ? { ...item, runtimeState: runtime.runtimeState!, ...(typeof runtime.online === 'boolean' ? { online: runtime.online } : {}), ...(typeof runtime.messageListening === 'boolean' ? { messageListening: runtime.messageListening } : {}) }
             : item))
         }
+        if (typeof runtime.messageListening === 'boolean') updateMap(setMessageListeningByAccount, event.accountId, runtime.messageListening)
       }
       if (event.type === 'message') {
         const message = extractMessage(event.payload)
         if (!message) return
+        updateMap(setRuntimeSnapshotByAccount, event.accountId, (current) => ({
+          accountId: event.accountId,
+          online: current?.online || false,
+          runtimeState: current?.runtimeState || 'stopped',
+          messageListening: current?.messageListening || false,
+          attention: current?.attention || {},
+          ...(current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt } : {}),
+          ...(current?.lastReplyType ? { lastReplyType: current.lastReplyType } : {}),
+          lastIncomingAt: event.timestamp,
+        }))
         updateMap(setMessagesByAccount, event.accountId, (current) => upsertPlatformMessage(current || [], message))
         updateMap(setSessionsByAccount, event.accountId, (current) => (current || []).some((item) => item.id === message.sessionId) ? current || [] : [{ id: message.sessionId, title: message.senderName || '新会话', unread: 0 }, ...(current || [])])
       }
@@ -262,7 +309,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header className="app-topbar"><div className="topbar-title"><span className="topbar-mark"><Activity size={18} /></span><div><strong>平台工作台</strong><small>统一管理店铺、消息、商品与订单</small></div></div><div className="topbar-actions"><span className="topbar-live"><span className="live-dot" />{activeAccount ? `${activePlatform?.label || activeAccount.platform} · ${activeAccount.label}` : '未选择店铺'}</span><button className="topbar-button" onClick={() => void refresh()}><RefreshCw size={15} />刷新</button><button className="topbar-icon" title="通知"><Bell size={17} /></button><button className="topbar-icon" title="设置"><Settings2 size={17} /></button></div></header>
-    <main className="app-layout"><StoreSidebar platforms={platforms} accounts={accounts} activeAccountId={activeAccountId} selectedPlatform={selectedPlatform} label={label} busy={busy} onPlatformChange={setSelectedPlatform} onLabelChange={setLabel} onAdd={() => void addAccount()} onSelect={(account) => void openAccount(account)} onSetOnline={(account, online) => void setOnline(account, online)} onRemove={(account) => void removeAccount(account)} onImport={() => void importHook()} /><PlatformViewport account={activeAccount} platform={activePlatform} status={status} sessions={sessions} messages={messages} products={products} events={events.filter((item) => item.accountId === activeAccountId)} busy={busy} selectedSessionId={selectedSessionId} messageDraft={messageDraft} messageListening={messageListening} orderListening={orderListening} orderWatermark={orderWatermark} handoffTargets={handoffTargets} selectedHandoffTarget={selectedHandoffTarget} onRefreshSessions={() => void refreshSessions()} onCollectProducts={() => void collectProducts()} onSelectSession={selectSession} onMessageDraftChange={(value) => updateMap(setMessageDraftByAccount, activeAccountId, value)} onStartMessages={() => void startMessageListening()} onSendMessage={() => void sendTestMessage()} onStartOrders={() => void startOrderListening()} onLoadHandoffTargets={() => void loadHandoffTargets()} onSelectHandoffTarget={(value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value)} onTransfer={() => void transferSession()} eventSummary={eventSummary} /></main>
+    <main className="app-layout"><StoreSidebar platforms={platforms} accounts={accounts} activeAccountId={activeAccountId} selectedPlatform={selectedPlatform} label={label} busy={busy} onPlatformChange={setSelectedPlatform} onLabelChange={setLabel} onAdd={() => void addAccount()} onSelect={(account) => void openAccount(account)} onSetOnline={(account, online) => void setOnline(account, online)} onRemove={(account) => void removeAccount(account)} onImport={() => void importHook()} /><PlatformViewport account={activeAccount} platform={activePlatform} status={status} sessions={sessions} messages={messages} products={products} events={events.filter((item) => item.accountId === activeAccountId)} busy={busy} selectedSessionId={selectedSessionId} messageDraft={messageDraft} messageListening={messageListening} orderListening={orderListening} orderWatermark={orderWatermark} handoffTargets={handoffTargets} selectedHandoffTarget={selectedHandoffTarget} onRefreshSessions={() => void refreshSessions()} onCollectProducts={() => void collectProducts()} onSelectSession={selectSession} onMessageDraftChange={(value) => updateMap(setMessageDraftByAccount, activeAccountId, value)} onStartMessages={() => void startMessageListening()} onSendMessage={() => void sendTestMessage()} onStartOrders={() => void startOrderListening()} onLoadHandoffTargets={() => void loadHandoffTargets()} onSelectHandoffTarget={(value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value)} onTransfer={() => void transferSession()} eventSummary={eventSummary} onViewportBounds={reportViewportBounds} /><RuntimeStatusPanel account={activeAccount} platform={activePlatform} status={status} runtime={runtimeSnapshotByAccount[activeAccountId]} sessionCount={sessions.length} productCount={products.length} messageListening={messageListening} orderListening={orderListening} recentMessage={messages.slice().reverse().find((message) => message.direction === 'inbound' || !message.isMine)?.content} /></main>
     {toast && <div className="toast"><Activity size={15} />{toast}</div>}
   </div>
 }

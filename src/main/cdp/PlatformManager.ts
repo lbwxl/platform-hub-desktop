@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -12,11 +12,15 @@ type Persisted = { accounts: PlatformAccount[]; hooks: ImportedHookPackage[] }
 export class PlatformManager {
   private readonly sessions = new Map<string, CdpSession>()
   private readonly listeners = new Set<(event: PlatformEvent) => void>()
+  private readonly forwardedRuntimeEventIds = new Set<string>()
   private state: Persisted = { accounts: [], hooks: [] }
   private readonly statePath: string
   private readonly stateBackupPath: string
   private saveQueue: Promise<void> = Promise.resolve()
   private readonly shopRuntimes = new ShopRuntimeManager(new HttpShopReplyApi())
+  private hostWindow: BrowserWindow | null = null
+  private activeAccountId = ''
+  private primaryViewportBounds: { x: number; y: number; width: number; height: number } | null = null
 
   constructor() {
     this.statePath = join(app.getPath('userData'), 'platform-hub.json')
@@ -34,6 +38,10 @@ export class PlatformManager {
       runtimeState: account.runtimeState || 'stopped',
       messageListening: account.messageListening === true,
     }))
+  }
+
+  async attachMainWindow(window: BrowserWindow): Promise<void> {
+    this.hostWindow = window
     for (const account of this.state.accounts) this.ensureSession(account.id)
     for (const account of this.state.accounts.filter((item) => item.online)) {
       await this.setAccountOnline(account.id, true).catch((error) => {
@@ -80,7 +88,7 @@ export class PlatformManager {
       createdAt: new Date().toISOString(),
     }
     this.state.accounts.push(account)
-    this.ensureSession(account.id)
+    if (this.hostWindow) this.ensureSession(account.id)
     await this.save()
     return account
   }
@@ -90,8 +98,10 @@ export class PlatformManager {
   async open(accountId: string): Promise<PlatformAccount> {
     const account = this.requireAccount(accountId)
     const cdp = this.ensureSession(accountId)
+    this.activeAccountId = accountId
     for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage()
     await cdp.open(true)
+    if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
     account.connected = true
     account.webContentsId = cdp.getWebContentsId()
     account.lastSeenAt = new Date().toISOString()
@@ -110,8 +120,18 @@ export class PlatformManager {
   async disconnect(accountId: string): Promise<void> { await this.shopRuntimes.stop(accountId).catch(() => undefined); this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); const account = this.requireAccount(accountId); account.connected = false; account.webContentsId = undefined; account.online = false; account.runtimeState = 'stopped'; account.messageListening = false; await this.save() }
   async setAccountOnline(accountId: string, online: boolean): Promise<PlatformAccount> {
     const account = this.requireAccount(accountId)
-    if (online && (!this.sessions.has(accountId) || !this.sessions.get(accountId)?.getStatus().connected)) await this.open(accountId)
-    const cdp = this.sessions.get(accountId)
+    const active = this.activeAccountId === accountId
+    let cdp = this.sessions.get(accountId)
+    if (online && (!cdp || !cdp.getStatus().connected)) {
+      // Going online is a background lifecycle operation. It may create the
+      // account's primary WebContentsView, but must never change the UI's
+      // active account or reveal an inactive shop's page.
+      cdp = this.ensureSession(accountId)
+      await cdp.open(active)
+      account.connected = true
+      account.webContentsId = cdp.getWebContentsId()
+      if (active && this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
+    }
     if (!cdp) throw new Error('请先打开平台页面')
     if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
     account.online = online
@@ -131,6 +151,16 @@ export class PlatformManager {
   }
 
   runtimeStates() { return this.shopRuntimes.snapshots() }
+
+  setPrimaryViewportBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    this.primaryViewportBounds = {
+      x: Math.max(0, Math.round(bounds.x)),
+      y: Math.max(0, Math.round(bounds.y)),
+      width: Math.max(1, Math.round(bounds.width)),
+      height: Math.max(1, Math.round(bounds.height)),
+    }
+    if (this.activeAccountId) this.sessions.get(this.activeAccountId)?.setPrimaryBounds(this.primaryViewportBounds)
+  }
 
   async setConversationAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void> {
     await this.shopRuntimes.setAttention(accountId, conversationId, state)
@@ -185,9 +215,10 @@ export class PlatformManager {
     const existing = this.sessions.get(accountId)
     if (existing) return existing
     const account = this.requireAccount(accountId)
+    if (!this.hostWindow || this.hostWindow.isDestroyed()) throw new Error('主工作台窗口尚未就绪')
     const platform = this.listPlatforms().find((item) => item.id === account.platform)
     if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`)
-    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), emit: (event) => this.emit(event) })
+    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), hostWindow: this.hostWindow, emit: (event) => this.emit(event) })
     this.sessions.set(accountId, cdp)
     this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
     return cdp
@@ -238,7 +269,10 @@ export class PlatformManager {
     const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : undefined
     if (runtime && event.type === 'message') {
       const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {}
+      if (this.forwardedRuntimeEventIds.size >= 2_000) this.forwardedRuntimeEventIds.clear()
+      this.forwardedRuntimeEventIds.add(event.id)
       runtime.pushEvent(event.accountId, {
+        id: event.id,
         type: 'message.created',
         timestamp: event.timestamp,
         payload: { message: payload.message || payload },
@@ -248,6 +282,14 @@ export class PlatformManager {
   }
 
   private emitRuntimeEvent(event: ShopRuntimeEvent): void {
+    // CdpSession's original PlatformEvent is already emitted by emit(). Its
+    // corresponding ShopRuntimeManager hook event is needed for processing,
+    // but must not be sent to the renderer a second time. Hook events from a
+    // different transport do not carry one of these ids and remain visible.
+    if (event.type === 'hook' && event.payload.event && typeof event.payload.event === 'object') {
+      const sourceId = (event.payload.event as { id?: unknown }).id
+      if (typeof sourceId === 'string' && this.forwardedRuntimeEventIds.delete(sourceId)) return
+    }
     const account = this.state.accounts.find((item) => item.id === event.accountId)
     if (!account) return
     const payload = event.type === 'hook' && event.payload.event && typeof event.payload.event === 'object'
@@ -258,7 +300,7 @@ export class PlatformManager {
       id: `${event.accountId}:runtime:${event.timestamp}:${Math.random().toString(16).slice(2)}`,
       accountId: event.accountId,
       platform: account.platform,
-      type: sourceType === 'message.created' ? 'message' : sourceType.startsWith('order.') ? 'order' : 'log',
+      type: sourceType.startsWith('order.') ? 'order' : 'log',
       timestamp: event.timestamp,
       payload,
     }))

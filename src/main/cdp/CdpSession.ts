@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { BrowserWindow, session, type WebContents } from 'electron'
+import { BrowserWindow, WebContentsView, session, type WebContents } from 'electron'
 import type { HookPackageManifest, PlatformEvent, PlatformStatus } from '../../shared/platform'
 
 type RuntimePage = NonNullable<HookPackageManifest['runtimePages']>[number]
@@ -21,10 +21,12 @@ export interface CdpSessionOptions {
   partition: string
   hook: HookPackageManifest
   emit: (event: PlatformEvent) => void
+  hostWindow: BrowserWindow
 }
 
 export class CdpSession extends EventEmitter {
-  private window: BrowserWindow | null = null
+  private readonly window: BrowserWindow
+  private primaryView: WebContentsView | null = null
   private contents: WebContents | null = null
   private readonly runtimeWindows = new Map<string, BrowserWindow>()
   private readonly runtimeWindowIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -40,46 +42,39 @@ export class CdpSession extends EventEmitter {
 
   constructor(private readonly options: CdpSessionOptions) {
     super()
+    this.window = options.hostWindow
   }
 
   async open(show = true): Promise<void> {
     if (this.destroyed) throw new Error('CDP 会话已销毁')
-    if (this.window && !this.window.isDestroyed()) {
-      if (show) this.window.show()
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) {
+      this.primaryView.setVisible(show)
       if (this.opening) await this.opening
       return
     }
-    this.window = new BrowserWindow({
-      width: 1260,
-      height: 820,
-      show,
-      title: `${this.options.platform} · ${this.options.accountId}`,
+    if (this.window.isDestroyed()) throw new Error('主工作台窗口已销毁')
+    this.primaryView = new WebContentsView({
       webPreferences: {
         partition: this.options.partition,
         contextIsolation: false,
         nodeIntegration: false,
         webSecurity: true,
+        backgroundThrottling: false,
       },
     })
-    this.contents = this.window.webContents
+    this.primaryView.setVisible(show)
+    this.window.contentView.addChildView(this.primaryView)
+    this.contents = this.primaryView.webContents
     this.contents.setWindowOpenHandler(({ url }) => {
       if (this.isLoginUrl(url)) {
-        void this.window?.loadURL(url).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`))
+        void this.contents?.loadURL(url).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`))
       }
       return { action: 'deny' }
     })
     this.contents.on('did-finish-load', () => this.reinstallPrimaryHook(this.contents))
     this.contents.on('did-navigate', () => this.reinstallPrimaryHook(this.contents))
     this.contents.on('render-process-gone', (_event, details) => this.emitError(`页面进程退出: ${details.reason}`))
-    this.window.on('closed', () => {
-      this.stopRuntimePolling()
-      this.closeRuntimeWindows()
-      this.contents = null
-      this.window = null
-      this.connected = false
-      this.emitStatus('页面已关闭')
-    })
-    const opening = this.window.loadURL(this.options.url).then(() => this.installHook(this.contents, true))
+    const opening = this.contents.loadURL(this.options.url).then(() => this.installHook(this.contents, true))
     this.opening = opening
     try { await opening } finally { if (this.opening === opening) this.opening = null }
   }
@@ -133,11 +128,15 @@ export class CdpSession extends EventEmitter {
   }
 
   showPrimaryPage(): void {
-    if (this.window && !this.window.isDestroyed()) this.window.show()
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(true)
   }
 
   hidePrimaryPage(): void {
-    if (this.window && !this.window.isDestroyed()) this.window.hide()
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(false)
+  }
+
+  setPrimaryBounds(bounds: { x: number; y: number; width: number; height: number }): void {
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds)
   }
 
   async showRuntimePageFor(method: string): Promise<void> {
@@ -185,7 +184,12 @@ export class CdpSession extends EventEmitter {
     this.destroyed = true
     this.stopRuntimePolling()
     this.closeRuntimeWindows()
-    if (this.window && !this.window.isDestroyed()) this.window.close()
+    if (this.primaryView) {
+      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(this.primaryView)
+      if (!this.primaryView.webContents.isDestroyed()) this.primaryView.webContents.close()
+    }
+    this.primaryView = null
+    this.contents = null
     this.removeAllListeners()
   }
 
@@ -272,16 +276,16 @@ export class CdpSession extends EventEmitter {
   }
 
   private async ensurePrimaryRuntimePage(show: boolean): Promise<void> {
-    if (!this.window || this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
+    if (this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
       throw new Error('页面尚未连接，请先打开平台页面')
     }
-    if (show) this.window.show()
+    if (show) this.showPrimaryPage()
     if (this.sameRuntimePage(this.contents.getURL(), this.options.hook.url)) return
     if (this.primaryNavigation) return this.primaryNavigation
 
     const navigation = (async () => {
       this.emitStatus('登录成功，正在进入消息接待页')
-      await this.window!.loadURL(this.options.hook.url)
+      await this.contents!.loadURL(this.options.hook.url)
       if (!this.contents || this.contents.isDestroyed()) throw new Error('消息接待页加载后连接已失效')
       await this.installHook(this.contents, true)
       this.emitStatus('已进入消息接待页并开始监听')
@@ -307,9 +311,9 @@ export class CdpSession extends EventEmitter {
   private reinstallPrimaryHook(contents: WebContents | null): void {
     if (!contents || contents.isDestroyed()) return
     const loginUrl = this.loginUrlFor(contents.getURL())
-    if (loginUrl && this.window && !this.window.isDestroyed()) {
+    if (loginUrl && !this.window.isDestroyed()) {
       this.emitStatus('正在打开平台官方登录页')
-      void this.window.loadURL(loginUrl).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`))
+      void this.contents?.loadURL(loginUrl).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`))
       return
     }
     this.reinstallHook(contents, true)

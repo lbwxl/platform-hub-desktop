@@ -14420,7 +14420,7 @@ function createLucideIcon(iconDataOrName, iconNode = [], aliases = []) {
   }
   return Component;
 }
-const __iconData$l = {
+const __iconData$n = {
   name: "activity",
   size: 24,
   node: [
@@ -14433,9 +14433,9 @@ const __iconData$l = {
     ]
   ]
 };
-__iconData$l.node;
-const Activity = createLucideIcon(__iconData$l);
-const __iconData$k = {
+__iconData$n.node;
+const Activity = createLucideIcon(__iconData$n);
+const __iconData$m = {
   name: "bell",
   size: 24,
   node: [
@@ -14449,9 +14449,23 @@ const __iconData$k = {
     ]
   ]
 };
-__iconData$k.node;
-const Bell = createLucideIcon(__iconData$k);
-const __iconData$j = {
+__iconData$m.node;
+const Bell = createLucideIcon(__iconData$m);
+const __iconData$l = {
+  name: "bot",
+  size: 24,
+  node: [
+    ["path", { d: "M12 8V4H8", key: "hb8ula" }],
+    ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2", key: "enze0r" }],
+    ["path", { d: "M2 14h2", key: "vft8re" }],
+    ["path", { d: "M20 14h2", key: "4cs60a" }],
+    ["path", { d: "M15 13v2", key: "1xurst" }],
+    ["path", { d: "M9 13v2", key: "rq6x2g" }]
+  ]
+};
+__iconData$l.node;
+const Bot = createLucideIcon(__iconData$l);
+const __iconData$k = {
   name: "boxes",
   size: 24,
   node: [
@@ -14487,9 +14501,9 @@ const __iconData$j = {
     ["path", { d: "M12 13.5V8", key: "1io7kd" }]
   ]
 };
-__iconData$j.node;
-const Boxes = createLucideIcon(__iconData$j);
-const __iconData$i = {
+__iconData$k.node;
+const Boxes = createLucideIcon(__iconData$k);
+const __iconData$j = {
   name: "circle-alert",
   size: 24,
   node: [
@@ -14499,9 +14513,9 @@ const __iconData$i = {
   ],
   aliases: ["alert-circle"]
 };
-__iconData$i.node;
-const CircleAlert = createLucideIcon(__iconData$i);
-const __iconData$h = {
+__iconData$j.node;
+const CircleAlert = createLucideIcon(__iconData$j);
+const __iconData$i = {
   name: "circle-check",
   size: 24,
   node: [
@@ -14510,9 +14524,9 @@ const __iconData$h = {
   ],
   aliases: ["check-circle-2"]
 };
-__iconData$h.node;
-const CircleCheck = createLucideIcon(__iconData$h);
-const __iconData$g = {
+__iconData$i.node;
+const CircleCheck = createLucideIcon(__iconData$i);
+const __iconData$h = {
   name: "clipboard-check",
   size: 24,
   node: [
@@ -14527,9 +14541,9 @@ const __iconData$g = {
     ["path", { d: "m9 14 2 2 4-4", key: "df797q" }]
   ]
 };
-__iconData$g.node;
-const ClipboardCheck = createLucideIcon(__iconData$g);
-const __iconData$f = {
+__iconData$h.node;
+const ClipboardCheck = createLucideIcon(__iconData$h);
+const __iconData$g = {
   name: "clock-3",
   size: 24,
   node: [
@@ -14537,9 +14551,9 @@ const __iconData$f = {
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ]
 };
-__iconData$f.node;
-const Clock3 = createLucideIcon(__iconData$f);
-const __iconData$e = {
+__iconData$g.node;
+const Clock3 = createLucideIcon(__iconData$g);
+const __iconData$f = {
   name: "message-square",
   size: 24,
   node: [
@@ -14552,9 +14566,9 @@ const __iconData$e = {
     ]
   ]
 };
-__iconData$e.node;
-const MessageSquare = createLucideIcon(__iconData$e);
-const __iconData$d = {
+__iconData$f.node;
+const MessageSquare = createLucideIcon(__iconData$f);
+const __iconData$e = {
   name: "package-search",
   size: 24,
   node: [
@@ -14572,9 +14586,9 @@ const __iconData$d = {
     ["circle", { cx: "18.5", cy: "16.5", r: "2.5", key: "ke13xx" }]
   ]
 };
-__iconData$d.node;
-const PackageSearch = createLucideIcon(__iconData$d);
-const __iconData$c = {
+__iconData$e.node;
+const PackageSearch = createLucideIcon(__iconData$e);
+const __iconData$d = {
   name: "play",
   size: 24,
   node: [
@@ -14587,9 +14601,9 @@ const __iconData$c = {
     ]
   ]
 };
-__iconData$c.node;
-const Play = createLucideIcon(__iconData$c);
-const __iconData$b = {
+__iconData$d.node;
+const Play = createLucideIcon(__iconData$d);
+const __iconData$c = {
   name: "plus",
   size: 24,
   node: [
@@ -14597,9 +14611,9 @@ const __iconData$b = {
     ["path", { d: "M12 5v14", key: "s699le" }]
   ]
 };
-__iconData$b.node;
-const Plus = createLucideIcon(__iconData$b);
-const __iconData$a = {
+__iconData$c.node;
+const Plus = createLucideIcon(__iconData$c);
+const __iconData$b = {
   name: "power",
   size: 24,
   node: [
@@ -14607,9 +14621,9 @@ const __iconData$a = {
     ["path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04", key: "obofu9" }]
   ]
 };
-__iconData$a.node;
-const Power = createLucideIcon(__iconData$a);
-const __iconData$9 = {
+__iconData$b.node;
+const Power = createLucideIcon(__iconData$b);
+const __iconData$a = {
   name: "receipt-text",
   size: 24,
   node: [
@@ -14625,9 +14639,9 @@ const __iconData$9 = {
     ]
   ]
 };
-__iconData$9.node;
-const ReceiptText = createLucideIcon(__iconData$9);
-const __iconData$8 = {
+__iconData$a.node;
+const ReceiptText = createLucideIcon(__iconData$a);
+const __iconData$9 = {
   name: "refresh-cw",
   size: 24,
   node: [
@@ -14637,9 +14651,9 @@ const __iconData$8 = {
     ["path", { d: "M8 16H3v5", key: "1cv678" }]
   ]
 };
-__iconData$8.node;
-const RefreshCw = createLucideIcon(__iconData$8);
-const __iconData$7 = {
+__iconData$9.node;
+const RefreshCw = createLucideIcon(__iconData$9);
+const __iconData$8 = {
   name: "send",
   size: 24,
   node: [
@@ -14653,9 +14667,9 @@ const __iconData$7 = {
     ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
   ]
 };
-__iconData$7.node;
-const Send = createLucideIcon(__iconData$7);
-const __iconData$6 = {
+__iconData$8.node;
+const Send = createLucideIcon(__iconData$8);
+const __iconData$7 = {
   name: "settings-2",
   size: 24,
   node: [
@@ -14665,9 +14679,9 @@ const __iconData$6 = {
     ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
   ]
 };
-__iconData$6.node;
-const Settings2 = createLucideIcon(__iconData$6);
-const __iconData$5 = {
+__iconData$7.node;
+const Settings2 = createLucideIcon(__iconData$7);
+const __iconData$6 = {
   name: "sparkles",
   size: 24,
   node: [
@@ -14684,9 +14698,9 @@ const __iconData$5 = {
   ],
   aliases: ["stars"]
 };
-__iconData$5.node;
-const Sparkles = createLucideIcon(__iconData$5);
-const __iconData$4 = {
+__iconData$6.node;
+const Sparkles = createLucideIcon(__iconData$6);
+const __iconData$5 = {
   name: "store",
   size: 24,
   node: [
@@ -14701,9 +14715,9 @@ const __iconData$4 = {
     ["path", { d: "M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05", key: "wn3emo" }]
   ]
 };
-__iconData$4.node;
-const Store = createLucideIcon(__iconData$4);
-const __iconData$3 = {
+__iconData$5.node;
+const Store = createLucideIcon(__iconData$5);
+const __iconData$4 = {
   name: "trash",
   size: 24,
   node: [
@@ -14715,9 +14729,9 @@ const __iconData$3 = {
   ],
   aliases: ["trash-2"]
 };
-__iconData$3.node;
-const Trash = createLucideIcon(__iconData$3);
-const __iconData$2 = {
+__iconData$4.node;
+const Trash = createLucideIcon(__iconData$4);
+const __iconData$3 = {
   name: "upload",
   size: 24,
   node: [
@@ -14726,9 +14740,9 @@ const __iconData$2 = {
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }]
   ]
 };
-__iconData$2.node;
-const Upload = createLucideIcon(__iconData$2);
-const __iconData$1 = {
+__iconData$3.node;
+const Upload = createLucideIcon(__iconData$3);
+const __iconData$2 = {
   name: "user-round-check",
   size: 24,
   node: [
@@ -14738,8 +14752,19 @@ const __iconData$1 = {
   ],
   aliases: ["user-check-2"]
 };
+__iconData$2.node;
+const UserRoundCheck = createLucideIcon(__iconData$2);
+const __iconData$1 = {
+  name: "user-round",
+  size: 24,
+  node: [
+    ["circle", { cx: "12", cy: "8", r: "5", key: "1hypcn" }],
+    ["path", { d: "M20 21a8 8 0 0 0-16 0", key: "rfgkzh" }]
+  ],
+  aliases: ["user-2"]
+};
 __iconData$1.node;
-const UserRoundCheck = createLucideIcon(__iconData$1);
+const UserRound = createLucideIcon(__iconData$1);
 const __iconData = {
   name: "wifi",
   size: 24,
@@ -14954,6 +14979,23 @@ function normalizeOrderStatus(value) {
   return status;
 }
 function PlatformViewport(props) {
+  const viewportRef = reactExports.useRef(null);
+  reactExports.useLayoutEffect(() => {
+    const element = viewportRef.current;
+    if (!element || !props.account) return;
+    const report = () => {
+      const rect = element.getBoundingClientRect();
+      props.onViewportBounds({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    window.addEventListener("resize", report);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", report);
+    };
+  }, [props.onViewportBounds, props.account?.id]);
   if (!props.account) return /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "platform-viewport empty-viewport", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "viewport-placeholder", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "placeholder-icon", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Store, { size: 30 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "选择一个店铺开始工作" }),
@@ -14975,7 +15017,7 @@ function PlatformViewport(props) {
   ] }) });
   const ready = props.status?.authenticated === true;
   const supports = (capability) => props.platform?.capabilities.includes(capability) === true;
-  const executionHost = props.platform?.executionModel === "native" ? "Native Adapter" : props.platform?.executionModel === "service" ? "Service Adapter" : "Electron BrowserWindow";
+  const executionHost = props.platform?.executionModel === "native" ? "Native Adapter" : props.platform?.executionModel === "service" ? "Service Adapter" : "Electron WebContentsView";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "platform-viewport", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "viewport-header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -14988,7 +15030,7 @@ function PlatformViewport(props) {
           props.platform?.label || props.account.platform,
           " 工作台"
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: ready ? "Hook Runtime 已就绪，可调用消息、商品与订单能力。" : "请在弹出的平台窗口中完成真人登录，登录后能力会自动恢复。" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: ready ? "Hook Runtime 已就绪，可调用消息、商品与订单能力。" : "请直接在当前工作台完成真人登录，登录后能力会自动恢复。" })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `runtime-status ${ready ? "ready" : ""}`, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "status-light" }),
@@ -15009,14 +15051,14 @@ function PlatformViewport(props) {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "官方消息工作台" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "当前店铺的原生 WebContents 使用该店铺独立 Electron partition。" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "当前店铺的 primary WebContents 使用该店铺独立 Electron partition。" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "frame-pill", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
             ready ? "已连接" : "未登录"
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "platform-frame-body", children: /* @__PURE__ */ jsxRuntimeExports.jsx("webview", { className: "platform-workbench", src: props.account.url, partition: props.account.partition, "aria-label": `${props.account.label} 官方消息工作台` }) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: viewportRef, className: "platform-frame-body", "aria-label": `${props.account.label} 官方消息工作台` })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card event-card", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
@@ -15147,6 +15189,61 @@ function StoreSidebar(props) {
     ] })
   ] });
 }
+function RuntimeStatusPanel(props) {
+  if (!props.account) return /* @__PURE__ */ jsxRuntimeExports.jsx("aside", { className: "runtime-side-panel empty-runtime-panel" });
+  const ready = props.status?.authenticated === true;
+  const runtimeState = props.runtime?.runtimeState || props.account.runtimeState;
+  const listening = props.runtime?.messageListening || props.messageListening;
+  const attentionEntries = Object.entries(props.runtime?.attention || {}).filter(([, state]) => state !== "resolved");
+  const lastReply = props.runtime?.lastReplyType || "—";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "runtime-side-panel", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-side-heading", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "AICHAT STATUS" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.account.label })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `runtime-side-dot ${props.account.online ? "online" : ""}` })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-side-account", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "runtime-side-avatar", children: /* @__PURE__ */ jsxRuntimeExports.jsx(UserRound, { size: 18 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.platform?.label || props.account.platform }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: ready ? "已登录 · 当前店铺" : "等待登录" })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(StatusRow, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Power, { size: 15 }), label: "AI 在线", value: props.account.online ? "ON" : "OFF", tone: props.account.online ? "good" : "muted" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(StatusRow, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 15 }), label: "Runtime", value: runtimeState, tone: runtimeState === "running" ? "good" : "muted" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(StatusRow, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 15 }), label: "消息监听", value: listening ? "监听中" : "未启动", tone: listening ? "good" : "muted" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(StatusRow, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bot, { size: 15 }), label: "最近 Reply", value: lastReply, tone: props.runtime?.lastReplyType === "reply" ? "good" : "muted" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(StatusRow, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(UserRound, { size: 15 }), label: "Attention", value: attentionEntries.length ? `${attentionEntries.length} 个会话` : "无", tone: attentionEntries.length ? "good" : "muted" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-side-recent", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "最近入站消息" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: props.recentMessage || "等待客户消息…" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "runtime-side-divider" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-side-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "CAPABILITIES" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 14 }), label: "会话", value: String(props.sessionCount) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 14 }), label: "商品同步", value: String(props.productCount) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Metric, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 14 }), label: "订单监听", value: props.orderListening ? "ON" : "OFF" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "runtime-side-footer", children: props.runtime?.lastIncomingAt ? `最近入站 ${new Date(props.runtime.lastIncomingAt).toLocaleTimeString()}` : props.status?.message || "Runtime 状态由 Main Process 管理" })
+  ] });
+}
+function StatusRow(props) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-status-row", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `runtime-row-icon ${props.tone}`, children: props.icon }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: props.label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: props.tone, children: props.value })
+  ] });
+}
+function Metric(props) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "runtime-metric", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: props.icon }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: props.label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.value })
+  ] });
+}
 function App() {
   const [platforms, setPlatforms] = reactExports.useState([]);
   const [accounts, setAccounts] = reactExports.useState([]);
@@ -15164,10 +15261,13 @@ function App() {
   const [handoffTargetsByAccount, setHandoffTargetsByAccount] = reactExports.useState({});
   const [selectedHandoffByAccount, setSelectedHandoffByAccount] = reactExports.useState({});
   const [statusByAccount, setStatusByAccount] = reactExports.useState({});
-  const [runtimeStateByAccount, setRuntimeStateByAccount] = reactExports.useState({});
+  const [runtimeSnapshotByAccount, setRuntimeSnapshotByAccount] = reactExports.useState({});
   const [events, setEvents] = reactExports.useState([]);
   const [busy, setBusy] = reactExports.useState("");
   const [toast, setToast] = reactExports.useState("");
+  const reportViewportBounds = reactExports.useCallback((bounds) => {
+    void window.platformApi.setPrimaryViewportBounds(bounds);
+  }, []);
   const activeAccount = reactExports.useMemo(() => accounts.find((item) => item.id === activeAccountId), [accounts, activeAccountId]);
   const activePlatform = reactExports.useMemo(() => platforms.find((item) => item.id === (activeAccount?.platform || selectedPlatform)), [platforms, activeAccount, selectedPlatform]);
   const sessions = sessionsByAccount[activeAccountId] || [];
@@ -15230,7 +15330,7 @@ function App() {
       const [nextPlatforms, nextAccounts, runtimeStates] = await Promise.all([window.platformApi.platforms.list(), window.platformApi.accounts.list(), window.platformApi.runtimeStates()]);
       setPlatforms(nextPlatforms);
       setAccounts(nextAccounts);
-      setRuntimeStateByAccount(Object.fromEntries(runtimeStates.map((runtime) => [runtime.accountId, runtime.runtimeState])));
+      setRuntimeSnapshotByAccount(Object.fromEntries(runtimeStates.map((runtime) => [runtime.accountId, runtime])));
       const accountId = activeAccountId && nextAccounts.some((item) => item.id === activeAccountId) ? activeAccountId : nextAccounts[0]?.id || "";
       setActiveAccountId(accountId);
       if (accountId) {
@@ -15250,7 +15350,7 @@ function App() {
       setActiveAccountId(account.id);
       await window.platformApi.accounts.open(account.id);
       await inspect(account.id);
-      notify("店铺已打开，请在 Electron 平台窗口中完成登录");
+      notify("店铺已打开，请在当前工作台中完成登录");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
@@ -15263,7 +15363,7 @@ function App() {
     try {
       await window.platformApi.accounts.open(account.id);
       await inspect(account.id);
-      notify("平台窗口已打开，Hook 正在等待登录");
+      notify("当前店铺工作台已切换，Hook 正在等待登录");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
@@ -15393,7 +15493,16 @@ function App() {
     try {
       const next = await window.platformApi.accounts.setOnline(account.id, online);
       setAccounts((current) => current.map((item) => item.id === next.id ? next : item));
-      updateMap(setRuntimeStateByAccount, account.id, next.runtimeState);
+      updateMap(setRuntimeSnapshotByAccount, account.id, (current) => ({
+        accountId: account.id,
+        online: next.online,
+        runtimeState: next.runtimeState,
+        messageListening: next.messageListening === true,
+        attention: current?.attention || {},
+        ...current?.lastIncomingAt ? { lastIncomingAt: current.lastIncomingAt } : {},
+        ...current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt } : {},
+        ...current?.lastReplyType ? { lastReplyType: current.lastReplyType } : {}
+      }));
       notify(`${account.label} 已${online ? "上线" : "下线"}`);
     } catch (error) {
       notify(errorMessage(error));
@@ -15433,15 +15542,43 @@ function App() {
         }
       }
       if (event.type === "log" && event.payload && typeof event.payload === "object") {
-        const runtime = event.payload;
+        const payload = event.payload;
+        const runtime = payload;
+        const decision = payload.decision && typeof payload.decision === "object" ? payload.decision : void 0;
+        const replyType = decision?.type === "reply" || decision?.type === "human_required" || decision?.type === "ignore" ? decision.type : void 0;
+        const attentionState = typeof payload.state === "string" && ["pending", "opened", "resolved"].includes(payload.state) ? payload.state : void 0;
+        const conversationId = typeof payload.conversationId === "string" ? payload.conversationId : void 0;
+        updateMap(setRuntimeSnapshotByAccount, event.accountId, (current) => {
+          const attention = { ...current?.attention || {} };
+          if (conversationId && attentionState) attention[conversationId] = attentionState;
+          return {
+            accountId: event.accountId,
+            online: typeof runtime.online === "boolean" ? runtime.online : current?.online || false,
+            runtimeState: runtime.runtimeState || current?.runtimeState || "stopped",
+            messageListening: typeof runtime.messageListening === "boolean" ? runtime.messageListening : current?.messageListening || false,
+            attention,
+            ...replyType ? { lastReplyAt: event.timestamp, lastReplyType: replyType } : current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt, ...current.lastReplyType ? { lastReplyType: current.lastReplyType } : {} } : {},
+            ...current?.lastIncomingAt ? { lastIncomingAt: current.lastIncomingAt } : {}
+          };
+        });
         if (runtime.runtimeState) {
-          updateMap(setRuntimeStateByAccount, event.accountId, runtime.runtimeState);
           setAccounts((current) => current.map((item) => item.id === event.accountId ? { ...item, runtimeState: runtime.runtimeState, ...typeof runtime.online === "boolean" ? { online: runtime.online } : {}, ...typeof runtime.messageListening === "boolean" ? { messageListening: runtime.messageListening } : {} } : item));
         }
+        if (typeof runtime.messageListening === "boolean") updateMap(setMessageListeningByAccount, event.accountId, runtime.messageListening);
       }
       if (event.type === "message") {
         const message = extractMessage(event.payload);
         if (!message) return;
+        updateMap(setRuntimeSnapshotByAccount, event.accountId, (current) => ({
+          accountId: event.accountId,
+          online: current?.online || false,
+          runtimeState: current?.runtimeState || "stopped",
+          messageListening: current?.messageListening || false,
+          attention: current?.attention || {},
+          ...current?.lastReplyAt ? { lastReplyAt: current.lastReplyAt } : {},
+          ...current?.lastReplyType ? { lastReplyType: current.lastReplyType } : {},
+          lastIncomingAt: event.timestamp
+        }));
         updateMap(setMessagesByAccount, event.accountId, (current) => upsertPlatformMessage(current || [], message));
         updateMap(setSessionsByAccount, event.accountId, (current) => (current || []).some((item) => item.id === message.sessionId) ? current || [] : [{ id: message.sessionId, title: message.senderName || "新会话", unread: 0 }, ...current || []]);
       }
@@ -15473,7 +15610,8 @@ function App() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-layout", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(StoreSidebar, { platforms, accounts, activeAccountId, selectedPlatform, label, busy, onPlatformChange: setSelectedPlatform, onLabelChange: setLabel, onAdd: () => void addAccount(), onSelect: (account) => void openAccount(account), onSetOnline: (account, online) => void setOnline(account, online), onRemove: (account) => void removeAccount(account), onImport: () => void importHook() }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: (value) => updateMap(setMessageDraftByAccount, activeAccountId, value), onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: (value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value), onTransfer: () => void transferSession(), eventSummary })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: (value) => updateMap(setMessageDraftByAccount, activeAccountId, value), onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: (value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value), onTransfer: () => void transferSession(), eventSummary, onViewportBounds: reportViewportBounds }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(RuntimeStatusPanel, { account: activeAccount, platform: activePlatform, status, runtime: runtimeSnapshotByAccount[activeAccountId], sessionCount: sessions.length, productCount: products.length, messageListening, orderListening, recentMessage: messages.slice().reverse().find((message) => message.direction === "inbound" || !message.isMine)?.content })
     ] }),
     toast && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toast", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 15 }),

@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
+import { WebContentsView, BrowserWindow, app, dialog, shell, ipcMain } from "electron";
 import { join, dirname, resolve, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
@@ -17,9 +17,11 @@ class CdpSession extends EventEmitter {
   constructor(options) {
     super();
     this.options = options;
+    this.window = options.hostWindow;
   }
   options;
-  window = null;
+  window;
+  primaryView = null;
   contents = null;
   runtimeWindows = /* @__PURE__ */ new Map();
   runtimeWindowIdleTimers = /* @__PURE__ */ new Map();
@@ -34,42 +36,34 @@ class CdpSession extends EventEmitter {
   lastAuthPollAt = 0;
   async open(show = true) {
     if (this.destroyed) throw new Error("CDP 会话已销毁");
-    if (this.window && !this.window.isDestroyed()) {
-      if (show) this.window.show();
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) {
+      this.primaryView.setVisible(show);
       if (this.opening) await this.opening;
       return;
     }
-    this.window = new BrowserWindow({
-      width: 1260,
-      height: 820,
-      show,
-      title: `${this.options.platform} · ${this.options.accountId}`,
+    if (this.window.isDestroyed()) throw new Error("主工作台窗口已销毁");
+    this.primaryView = new WebContentsView({
       webPreferences: {
         partition: this.options.partition,
         contextIsolation: false,
         nodeIntegration: false,
-        webSecurity: true
+        webSecurity: true,
+        backgroundThrottling: false
       }
     });
-    this.contents = this.window.webContents;
+    this.primaryView.setVisible(show);
+    this.window.contentView.addChildView(this.primaryView);
+    this.contents = this.primaryView.webContents;
     this.contents.setWindowOpenHandler(({ url }) => {
       if (this.isLoginUrl(url)) {
-        void this.window?.loadURL(url).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`));
+        void this.contents?.loadURL(url).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`));
       }
       return { action: "deny" };
     });
     this.contents.on("did-finish-load", () => this.reinstallPrimaryHook(this.contents));
     this.contents.on("did-navigate", () => this.reinstallPrimaryHook(this.contents));
     this.contents.on("render-process-gone", (_event, details) => this.emitError(`页面进程退出: ${details.reason}`));
-    this.window.on("closed", () => {
-      this.stopRuntimePolling();
-      this.closeRuntimeWindows();
-      this.contents = null;
-      this.window = null;
-      this.connected = false;
-      this.emitStatus("页面已关闭");
-    });
-    const opening = this.window.loadURL(this.options.url).then(() => this.installHook(this.contents, true));
+    const opening = this.contents.loadURL(this.options.url).then(() => this.installHook(this.contents, true));
     this.opening = opening;
     try {
       await opening;
@@ -123,10 +117,13 @@ class CdpSession extends EventEmitter {
     }
   }
   showPrimaryPage() {
-    if (this.window && !this.window.isDestroyed()) this.window.show();
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(true);
   }
   hidePrimaryPage() {
-    if (this.window && !this.window.isDestroyed()) this.window.hide();
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(false);
+  }
+  setPrimaryBounds(bounds) {
+    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds);
   }
   async showRuntimePageFor(method) {
     const route = this.routeForMethod(method);
@@ -168,7 +165,12 @@ class CdpSession extends EventEmitter {
     this.destroyed = true;
     this.stopRuntimePolling();
     this.closeRuntimeWindows();
-    if (this.window && !this.window.isDestroyed()) this.window.close();
+    if (this.primaryView) {
+      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(this.primaryView);
+      if (!this.primaryView.webContents.isDestroyed()) this.primaryView.webContents.close();
+    }
+    this.primaryView = null;
+    this.contents = null;
     this.removeAllListeners();
   }
   startRuntimePolling() {
@@ -252,15 +254,15 @@ class CdpSession extends EventEmitter {
     return this.options.hook.runtimePages?.find((page) => page.methods.includes(method));
   }
   async ensurePrimaryRuntimePage(show) {
-    if (!this.window || this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
+    if (this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
       throw new Error("页面尚未连接，请先打开平台页面");
     }
-    if (show) this.window.show();
+    if (show) this.showPrimaryPage();
     if (this.sameRuntimePage(this.contents.getURL(), this.options.hook.url)) return;
     if (this.primaryNavigation) return this.primaryNavigation;
     const navigation = (async () => {
       this.emitStatus("登录成功，正在进入消息接待页");
-      await this.window.loadURL(this.options.hook.url);
+      await this.contents.loadURL(this.options.hook.url);
       if (!this.contents || this.contents.isDestroyed()) throw new Error("消息接待页加载后连接已失效");
       await this.installHook(this.contents, true);
       this.emitStatus("已进入消息接待页并开始监听");
@@ -287,9 +289,9 @@ class CdpSession extends EventEmitter {
   reinstallPrimaryHook(contents) {
     if (!contents || contents.isDestroyed()) return;
     const loginUrl = this.loginUrlFor(contents.getURL());
-    if (loginUrl && this.window && !this.window.isDestroyed()) {
+    if (loginUrl && !this.window.isDestroyed()) {
       this.emitStatus("正在打开平台官方登录页");
-      void this.window.loadURL(loginUrl).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`));
+      void this.contents?.loadURL(loginUrl).catch((error) => this.emitError(`打开登录页失败: ${String(error)}`));
       return;
     }
     this.reinstallHook(contents, true);
@@ -2268,11 +2270,15 @@ function stringValue(value) {
 class PlatformManager {
   sessions = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
+  forwardedRuntimeEventIds = /* @__PURE__ */ new Set();
   state = { accounts: [], hooks: [] };
   statePath;
   stateBackupPath;
   saveQueue = Promise.resolve();
   shopRuntimes = new ShopRuntimeManager(new HttpShopReplyApi());
+  hostWindow = null;
+  activeAccountId = "";
+  primaryViewportBounds = null;
   constructor() {
     this.statePath = join(app.getPath("userData"), "platform-hub.json");
     this.stateBackupPath = join(app.getPath("userData"), "platform-hub.json.bak");
@@ -2286,6 +2292,9 @@ class PlatformManager {
       runtimeState: account.runtimeState || "stopped",
       messageListening: account.messageListening === true
     }));
+  }
+  async attachMainWindow(window) {
+    this.hostWindow = window;
     for (const account of this.state.accounts) this.ensureSession(account.id);
     for (const account of this.state.accounts.filter((item) => item.online)) {
       await this.setAccountOnline(account.id, true).catch((error) => {
@@ -2336,7 +2345,7 @@ class PlatformManager {
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     this.state.accounts.push(account);
-    this.ensureSession(account.id);
+    if (this.hostWindow) this.ensureSession(account.id);
     await this.save();
     return account;
   }
@@ -2350,8 +2359,10 @@ class PlatformManager {
   async open(accountId) {
     const account = this.requireAccount(accountId);
     const cdp = this.ensureSession(accountId);
+    this.activeAccountId = accountId;
     for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage();
     await cdp.open(true);
+    if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
     account.connected = true;
     account.webContentsId = cdp.getWebContentsId();
     account.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -2382,8 +2393,15 @@ class PlatformManager {
   }
   async setAccountOnline(accountId, online) {
     const account = this.requireAccount(accountId);
-    if (online && (!this.sessions.has(accountId) || !this.sessions.get(accountId)?.getStatus().connected)) await this.open(accountId);
-    const cdp = this.sessions.get(accountId);
+    const active = this.activeAccountId === accountId;
+    let cdp = this.sessions.get(accountId);
+    if (online && (!cdp || !cdp.getStatus().connected)) {
+      cdp = this.ensureSession(accountId);
+      await cdp.open(active);
+      account.connected = true;
+      account.webContentsId = cdp.getWebContentsId();
+      if (active && this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
+    }
     if (!cdp) throw new Error("请先打开平台页面");
     if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
     account.online = online;
@@ -2403,6 +2421,15 @@ class PlatformManager {
   }
   runtimeStates() {
     return this.shopRuntimes.snapshots();
+  }
+  setPrimaryViewportBounds(bounds) {
+    this.primaryViewportBounds = {
+      x: Math.max(0, Math.round(bounds.x)),
+      y: Math.max(0, Math.round(bounds.y)),
+      width: Math.max(1, Math.round(bounds.width)),
+      height: Math.max(1, Math.round(bounds.height))
+    };
+    if (this.activeAccountId) this.sessions.get(this.activeAccountId)?.setPrimaryBounds(this.primaryViewportBounds);
   }
   async setConversationAttention(accountId, conversationId, state) {
     await this.shopRuntimes.setAttention(accountId, conversationId, state);
@@ -2485,9 +2512,10 @@ class PlatformManager {
     const existing = this.sessions.get(accountId);
     if (existing) return existing;
     const account = this.requireAccount(accountId);
+    if (!this.hostWindow || this.hostWindow.isDestroyed()) throw new Error("主工作台窗口尚未就绪");
     const platform = this.listPlatforms().find((item) => item.id === account.platform);
     if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`);
-    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), emit: (event) => this.emit(event) });
+    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), hostWindow: this.hostWindow, emit: (event) => this.emit(event) });
     this.sessions.set(accountId, cdp);
     this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
     return cdp;
@@ -2541,7 +2569,10 @@ class PlatformManager {
     const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : void 0;
     if (runtime && event.type === "message") {
       const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      if (this.forwardedRuntimeEventIds.size >= 2e3) this.forwardedRuntimeEventIds.clear();
+      this.forwardedRuntimeEventIds.add(event.id);
       runtime.pushEvent(event.accountId, {
+        id: event.id,
         type: "message.created",
         timestamp: event.timestamp,
         payload: { message: payload.message || payload }
@@ -2550,6 +2581,10 @@ class PlatformManager {
     this.listeners.forEach((listener) => listener(event));
   }
   emitRuntimeEvent(event) {
+    if (event.type === "hook" && event.payload.event && typeof event.payload.event === "object") {
+      const sourceId = event.payload.event.id;
+      if (typeof sourceId === "string" && this.forwardedRuntimeEventIds.delete(sourceId)) return;
+    }
     const account = this.state.accounts.find((item) => item.id === event.accountId);
     if (!account) return;
     const payload = event.type === "hook" && event.payload.event && typeof event.payload.event === "object" ? event.payload.event : event.payload;
@@ -2558,7 +2593,7 @@ class PlatformManager {
       id: `${event.accountId}:runtime:${event.timestamp}:${Math.random().toString(16).slice(2)}`,
       accountId: event.accountId,
       platform: account.platform,
-      type: sourceType === "message.created" ? "message" : sourceType.startsWith("order.") ? "order" : "log",
+      type: sourceType.startsWith("order.") ? "order" : "log",
       timestamp: event.timestamp,
       payload
     }));
@@ -2642,14 +2677,14 @@ const manager = new PlatformManager();
 function assertRenderer(event) {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("未经授权的 IPC 调用");
 }
-function createWindow() {
+function createWindow(load = true) {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1120,
     minHeight: 720,
     backgroundColor: "#f4f7fb",
-    webPreferences: { preload: join(__dirname, "../preload/index.mjs"), contextIsolation: true, sandbox: false, webviewTag: true }
+    webPreferences: { preload: join(__dirname, "../preload/index.mjs"), contextIsolation: true, sandbox: false }
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -2658,8 +2693,12 @@ function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
-  if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+  if (load) loadRenderer(mainWindow);
+  return mainWindow;
+}
+function loadRenderer(window) {
+  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
+  else void window.loadFile(join(__dirname, "../renderer/index.html"));
 }
 function registerIpc() {
   ipcMain.handle("platforms:list", (event) => {
@@ -2697,6 +2736,10 @@ function registerIpc() {
   ipcMain.handle("conversation:attention:set", (event, id, conversationId, state) => {
     assertRenderer(event);
     return manager.setConversationAttention(id, conversationId, state);
+  });
+  ipcMain.handle("viewport:bounds", (event, bounds) => {
+    assertRenderer(event);
+    return manager.setPrimaryViewportBounds(bounds);
   });
   ipcMain.handle("platform:connect", (event, id, webContentsId) => {
     assertRenderer(event);
@@ -2761,6 +2804,8 @@ function registerIpc() {
 }
 app.whenReady().then(async () => {
   await manager.init();
+  createWindow(false);
+  if (mainWindow) await manager.attachMainWindow(mainWindow);
   if (!manager.listAccounts().length) {
     await manager.addAccount({ platform: "douyin-shop", label: "抖店主账号" });
   }
@@ -2768,11 +2813,14 @@ app.whenReady().then(async () => {
   manager.onEvent((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("platform:event", event);
   });
-  createWindow();
+  if (mainWindow) loadRenderer(mainWindow);
   const douyin = manager.listAccounts().find((account) => account.platform === "douyin-shop");
   if (douyin) void manager.open(douyin.id).catch((error) => console.error("[platform-hub] 打开抖店页面失败", error));
   app.on("activate", () => {
-    if (!mainWindow) createWindow();
+    if (!mainWindow) {
+      const window = createWindow(false);
+      void manager.attachMainWindow(window).then(() => loadRenderer(window));
+    }
   });
 });
 app.on("window-all-closed", () => {
