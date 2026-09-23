@@ -1,6 +1,8 @@
 import { AlertCircle, Boxes, CheckCircle2, ClipboardCheck, MessageSquare, Play, ReceiptText, RefreshCw, Send, UserRoundCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../../shared/platform'
+import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus } from '../../../shared/platform'
+import { ProductAcceptancePanel } from './ProductAcceptancePanel'
+import type { ProductAcceptanceState } from '../productAcceptance'
 
 export interface AcceptanceCenterProps {
   account?: PlatformAccount
@@ -11,7 +13,8 @@ export interface AcceptanceCenterProps {
   messages: PlatformMessage[]
   messageDraft: string
   messageListening: boolean
-  products: ProductRecord[]
+  productAcceptance: ProductAcceptanceState
+  productSearchQuery: string
   orderListening: boolean
   orderWatermark?: number
   handoffTargets: HandoffTarget[]
@@ -24,6 +27,7 @@ export interface AcceptanceCenterProps {
   onRefreshSessions: () => void
   onSendMessage: () => void
   onCollectProducts: () => void
+  onProductSearchQueryChange: (value: string) => void
   onStartOrders: () => void
   onLoadHandoffTargets: () => void
   onSelectHandoffTarget: (target: string) => void
@@ -62,10 +66,8 @@ export function AcceptanceCenter(props: AcceptanceCenterProps) {
         {!supportsMessages ? <UnsupportedMessage /> : <><div className="message-check-list">{props.messages.slice(-4).map((message) => <div className="message-check-item" key={message.id}><span className={`message-check-type ${message.isMine ? 'mine' : ''}`}>{message.isMine ? '我' : message.senderName || '客户'}</span><span>{message.content || `[${message.type}]`}</span><time>{new Date(message.timestamp).toLocaleTimeString()}</time></div>)}{!props.messages.length && <span className="muted-line">监听启动后，最新消息会显示在这里…</span>}</div><div className="recognition-list">{productCards.slice(-3).map((message) => <div className="recognition-item" key={message.id}><span className={`recognition-tag ${message.type}`}>{message.type === 'product' ? '商品卡片' : '订单卡片'}</span><span>{message.content || '已识别结构化卡片'}</span></div>)}{!productCards.length && <span className="muted-line">等待客户发送商品/订单卡片…</span>}</div></>}
       </AcceptanceCard>
 
-      <AcceptanceCard number="02" icon={<Boxes size={18} />} title="店铺商品采集" tone="purple" done={props.products.length > 0} unsupported={!supportsProducts}>
-        <p className="acceptance-help">点击采集后，平台适配器会读取当前店铺商品、价格、库存和 SKU。</p>
-        <div className="acceptance-actions"><button className="action-button purple" onClick={props.onCollectProducts} disabled={!authenticated || props.busy === 'products' || !supportsProductCollect}><Boxes size={14} />{props.busy === 'products' ? '采集中…' : '开始采集商品'}</button><span className="result-hint">{props.products.length ? `已获得 ${props.products.length} 件商品` : '尚未采集'}</span></div>
-        {supportsProducts ? <div className="compact-results">{props.products.slice(0, 3).map((product) => <div className="compact-result" key={product.id}><span className="result-thumb">{product.images?.[0] ? <img src={product.images[0]} alt="" /> : <Boxes size={15} />}</span><span><strong>{product.name}</strong><small>¥{product.price.toFixed(2)} · 库存 {product.stockQuantity ?? '-'}</small></span></div>)}{!props.products.length && <span className="muted-line">采集结果会显示在这里…</span>}</div> : <UnsupportedMessage />}
+      <AcceptanceCard number="02" icon={<Boxes size={18} />} title="商品全量同步" tone="purple" done={props.productAcceptance.syncState === 'success'} unsupported={!supportsProducts}>
+        <ProductAcceptancePanel state={props.productAcceptance} authenticated={authenticated} supportsProducts={supportsProducts} supportsProductCollect={supportsProductCollect} busy={props.busy} searchQuery={props.productSearchQuery} onSearchQueryChange={props.onProductSearchQueryChange} onCollectProducts={props.onCollectProducts} />
       </AcceptanceCard>
 
       <AcceptanceCard number="03" icon={<ReceiptText size={18} />} title="订单变化监听" tone="orange" done={props.orderListening && orderStatuses.length > 0} unsupported={!supportsOrders}>

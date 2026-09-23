@@ -14420,7 +14420,7 @@ function createLucideIcon(iconDataOrName, iconNode = [], aliases = []) {
   }
   return Component;
 }
-const __iconData$n = {
+const __iconData$s = {
   name: "activity",
   size: 24,
   node: [
@@ -14433,9 +14433,9 @@ const __iconData$n = {
     ]
   ]
 };
-__iconData$n.node;
-const Activity = createLucideIcon(__iconData$n);
-const __iconData$m = {
+__iconData$s.node;
+const Activity = createLucideIcon(__iconData$s);
+const __iconData$r = {
   name: "bell",
   size: 24,
   node: [
@@ -14449,9 +14449,9 @@ const __iconData$m = {
     ]
   ]
 };
-__iconData$m.node;
-const Bell = createLucideIcon(__iconData$m);
-const __iconData$l = {
+__iconData$r.node;
+const Bell = createLucideIcon(__iconData$r);
+const __iconData$q = {
   name: "bot",
   size: 24,
   node: [
@@ -14463,9 +14463,9 @@ const __iconData$l = {
     ["path", { d: "M9 13v2", key: "rq6x2g" }]
   ]
 };
-__iconData$l.node;
-const Bot = createLucideIcon(__iconData$l);
-const __iconData$k = {
+__iconData$q.node;
+const Bot = createLucideIcon(__iconData$q);
+const __iconData$p = {
   name: "boxes",
   size: 24,
   node: [
@@ -14501,9 +14501,23 @@ const __iconData$k = {
     ["path", { d: "M12 13.5V8", key: "1io7kd" }]
   ]
 };
-__iconData$k.node;
-const Boxes = createLucideIcon(__iconData$k);
-const __iconData$j = {
+__iconData$p.node;
+const Boxes = createLucideIcon(__iconData$p);
+const __iconData$o = {
+  name: "chevron-down",
+  size: 24,
+  node: [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]]
+};
+__iconData$o.node;
+const ChevronDown = createLucideIcon(__iconData$o);
+const __iconData$n = {
+  name: "chevron-up",
+  size: 24,
+  node: [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]]
+};
+__iconData$n.node;
+const ChevronUp = createLucideIcon(__iconData$n);
+const __iconData$m = {
   name: "circle-alert",
   size: 24,
   node: [
@@ -14513,9 +14527,9 @@ const __iconData$j = {
   ],
   aliases: ["alert-circle"]
 };
-__iconData$j.node;
-const CircleAlert = createLucideIcon(__iconData$j);
-const __iconData$i = {
+__iconData$m.node;
+const CircleAlert = createLucideIcon(__iconData$m);
+const __iconData$l = {
   name: "circle-check",
   size: 24,
   node: [
@@ -14524,9 +14538,9 @@ const __iconData$i = {
   ],
   aliases: ["check-circle-2"]
 };
-__iconData$i.node;
-const CircleCheck = createLucideIcon(__iconData$i);
-const __iconData$h = {
+__iconData$l.node;
+const CircleCheck = createLucideIcon(__iconData$l);
+const __iconData$k = {
   name: "clipboard-check",
   size: 24,
   node: [
@@ -14541,9 +14555,9 @@ const __iconData$h = {
     ["path", { d: "m9 14 2 2 4-4", key: "df797q" }]
   ]
 };
-__iconData$h.node;
-const ClipboardCheck = createLucideIcon(__iconData$h);
-const __iconData$g = {
+__iconData$k.node;
+const ClipboardCheck = createLucideIcon(__iconData$k);
+const __iconData$j = {
   name: "clock-3",
   size: 24,
   node: [
@@ -14551,9 +14565,20 @@ const __iconData$g = {
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ]
 };
-__iconData$g.node;
-const Clock3 = createLucideIcon(__iconData$g);
-const __iconData$f = {
+__iconData$j.node;
+const Clock3 = createLucideIcon(__iconData$j);
+const __iconData$i = {
+  name: "external-link",
+  size: 24,
+  node: [
+    ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+    ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+    ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+  ]
+};
+__iconData$i.node;
+const ExternalLink = createLucideIcon(__iconData$i);
+const __iconData$h = {
   name: "message-square",
   size: 24,
   node: [
@@ -14566,9 +14591,9 @@ const __iconData$f = {
     ]
   ]
 };
-__iconData$f.node;
-const MessageSquare = createLucideIcon(__iconData$f);
-const __iconData$e = {
+__iconData$h.node;
+const MessageSquare = createLucideIcon(__iconData$h);
+const __iconData$g = {
   name: "package-search",
   size: 24,
   node: [
@@ -14586,9 +14611,9 @@ const __iconData$e = {
     ["circle", { cx: "18.5", cy: "16.5", r: "2.5", key: "ke13xx" }]
   ]
 };
-__iconData$e.node;
-const PackageSearch = createLucideIcon(__iconData$e);
-const __iconData$d = {
+__iconData$g.node;
+const PackageSearch = createLucideIcon(__iconData$g);
+const __iconData$f = {
   name: "play",
   size: 24,
   node: [
@@ -14601,9 +14626,9 @@ const __iconData$d = {
     ]
   ]
 };
-__iconData$d.node;
-const Play = createLucideIcon(__iconData$d);
-const __iconData$c = {
+__iconData$f.node;
+const Play = createLucideIcon(__iconData$f);
+const __iconData$e = {
   name: "plus",
   size: 24,
   node: [
@@ -14611,9 +14636,9 @@ const __iconData$c = {
     ["path", { d: "M12 5v14", key: "s699le" }]
   ]
 };
-__iconData$c.node;
-const Plus = createLucideIcon(__iconData$c);
-const __iconData$b = {
+__iconData$e.node;
+const Plus = createLucideIcon(__iconData$e);
+const __iconData$d = {
   name: "power",
   size: 24,
   node: [
@@ -14621,9 +14646,9 @@ const __iconData$b = {
     ["path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04", key: "obofu9" }]
   ]
 };
-__iconData$b.node;
-const Power = createLucideIcon(__iconData$b);
-const __iconData$a = {
+__iconData$d.node;
+const Power = createLucideIcon(__iconData$d);
+const __iconData$c = {
   name: "receipt-text",
   size: 24,
   node: [
@@ -14639,9 +14664,9 @@ const __iconData$a = {
     ]
   ]
 };
-__iconData$a.node;
-const ReceiptText = createLucideIcon(__iconData$a);
-const __iconData$9 = {
+__iconData$c.node;
+const ReceiptText = createLucideIcon(__iconData$c);
+const __iconData$b = {
   name: "refresh-cw",
   size: 24,
   node: [
@@ -14651,9 +14676,19 @@ const __iconData$9 = {
     ["path", { d: "M8 16H3v5", key: "1cv678" }]
   ]
 };
-__iconData$9.node;
-const RefreshCw = createLucideIcon(__iconData$9);
-const __iconData$8 = {
+__iconData$b.node;
+const RefreshCw = createLucideIcon(__iconData$b);
+const __iconData$a = {
+  name: "search",
+  size: 24,
+  node: [
+    ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
+    ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
+  ]
+};
+__iconData$a.node;
+const Search = createLucideIcon(__iconData$a);
+const __iconData$9 = {
   name: "send",
   size: 24,
   node: [
@@ -14667,9 +14702,9 @@ const __iconData$8 = {
     ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
   ]
 };
-__iconData$8.node;
-const Send = createLucideIcon(__iconData$8);
-const __iconData$7 = {
+__iconData$9.node;
+const Send = createLucideIcon(__iconData$9);
+const __iconData$8 = {
   name: "settings-2",
   size: 24,
   node: [
@@ -14679,9 +14714,9 @@ const __iconData$7 = {
     ["circle", { cx: "7", cy: "7", r: "3", key: "dfmy0x" }]
   ]
 };
-__iconData$7.node;
-const Settings2 = createLucideIcon(__iconData$7);
-const __iconData$6 = {
+__iconData$8.node;
+const Settings2 = createLucideIcon(__iconData$8);
+const __iconData$7 = {
   name: "sparkles",
   size: 24,
   node: [
@@ -14698,9 +14733,9 @@ const __iconData$6 = {
   ],
   aliases: ["stars"]
 };
-__iconData$6.node;
-const Sparkles = createLucideIcon(__iconData$6);
-const __iconData$5 = {
+__iconData$7.node;
+const Sparkles = createLucideIcon(__iconData$7);
+const __iconData$6 = {
   name: "store",
   size: 24,
   node: [
@@ -14715,9 +14750,9 @@ const __iconData$5 = {
     ["path", { d: "M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05", key: "wn3emo" }]
   ]
 };
-__iconData$5.node;
-const Store = createLucideIcon(__iconData$5);
-const __iconData$4 = {
+__iconData$6.node;
+const Store = createLucideIcon(__iconData$6);
+const __iconData$5 = {
   name: "trash",
   size: 24,
   node: [
@@ -14729,9 +14764,9 @@ const __iconData$4 = {
   ],
   aliases: ["trash-2"]
 };
-__iconData$4.node;
-const Trash = createLucideIcon(__iconData$4);
-const __iconData$3 = {
+__iconData$5.node;
+const Trash = createLucideIcon(__iconData$5);
+const __iconData$4 = {
   name: "upload",
   size: 24,
   node: [
@@ -14740,9 +14775,9 @@ const __iconData$3 = {
     ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }]
   ]
 };
-__iconData$3.node;
-const Upload = createLucideIcon(__iconData$3);
-const __iconData$2 = {
+__iconData$4.node;
+const Upload = createLucideIcon(__iconData$4);
+const __iconData$3 = {
   name: "user-round-check",
   size: 24,
   node: [
@@ -14752,9 +14787,9 @@ const __iconData$2 = {
   ],
   aliases: ["user-check-2"]
 };
-__iconData$2.node;
-const UserRoundCheck = createLucideIcon(__iconData$2);
-const __iconData$1 = {
+__iconData$3.node;
+const UserRoundCheck = createLucideIcon(__iconData$3);
+const __iconData$2 = {
   name: "user-round",
   size: 24,
   node: [
@@ -14763,9 +14798,9 @@ const __iconData$1 = {
   ],
   aliases: ["user-2"]
 };
-__iconData$1.node;
-const UserRound = createLucideIcon(__iconData$1);
-const __iconData = {
+__iconData$2.node;
+const UserRound = createLucideIcon(__iconData$2);
+const __iconData$1 = {
   name: "wifi",
   size: 24,
   node: [
@@ -14775,8 +14810,18 @@ const __iconData = {
     ["path", { d: "M8.5 16.429a5 5 0 0 1 7 0", key: "1bycff" }]
   ]
 };
+__iconData$1.node;
+const Wifi = createLucideIcon(__iconData$1);
+const __iconData = {
+  name: "x",
+  size: 24,
+  node: [
+    ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
+    ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
+  ]
+};
 __iconData.node;
-const Wifi = createLucideIcon(__iconData);
+const X = createLucideIcon(__iconData);
 function mergePlatformMessage(current, incoming) {
   return {
     ...current,
@@ -14795,6 +14840,281 @@ function upsertPlatformMessage(messages, incoming) {
   const index = messages.findIndex((message) => message.id === incoming.id);
   const next = index < 0 ? [...messages, incoming] : messages.map((message, currentIndex) => currentIndex === index ? mergePlatformMessage(message, incoming) : message);
   return next.sort((left, right) => left.timestamp - right.timestamp);
+}
+const PRODUCT_CHANGED_FIELDS = ["name", "price", "stockQuantity", "status", "updatedAt"];
+function emptyProductDiff() {
+  return { added: [], removed: [], changed: [], unchangedCount: 0 };
+}
+function createProductAcceptanceState() {
+  return {
+    currentProducts: [],
+    previousProducts: [],
+    syncState: "idle",
+    diff: emptyProductDiff()
+  };
+}
+function beginProductSync(state, startedAt = Date.now()) {
+  return {
+    ...state,
+    syncState: "syncing",
+    lastAttemptAt: startedAt,
+    durationMs: void 0,
+    error: void 0
+  };
+}
+function applyProductSyncSuccess(state, products, startedAt, finishedAt = Date.now()) {
+  const nextProducts = [...products];
+  return {
+    ...state,
+    currentProducts: nextProducts,
+    previousProducts: [...state.currentProducts],
+    syncState: "success",
+    lastSyncAt: finishedAt,
+    lastAttemptAt: finishedAt,
+    durationMs: Math.max(0, finishedAt - startedAt),
+    error: void 0,
+    diff: calculateProductDiff(state.currentProducts, nextProducts)
+  };
+}
+function applyProductSyncFailure(state, error, startedAt, finishedAt = Date.now()) {
+  return {
+    ...state,
+    syncState: "failed",
+    lastAttemptAt: finishedAt,
+    durationMs: Math.max(0, finishedAt - startedAt),
+    error
+  };
+}
+function productKey(product) {
+  return String(product.goodsId || product.id || "").trim();
+}
+function productStats(products) {
+  const keys = products.map(productKey);
+  const uniqueKeys = new Set(keys);
+  return {
+    count: products.length,
+    uniqueCount: uniqueKeys.size,
+    duplicateCount: Math.max(0, products.length - uniqueKeys.size),
+    allOnSale: products.every((product) => {
+      const scope = product.raw && typeof product.raw === "object" ? product.raw.authoritativeScope : void 0;
+      return product.status === "on_sale" || scope === "is_online=1";
+    })
+  };
+}
+function calculateProductDiff(previous, current) {
+  const previousByKey = new Map(previous.map((product) => [productKey(product), product]));
+  const currentByKey = new Map(current.map((product) => [productKey(product), product]));
+  const added = [];
+  const changed = [];
+  let unchangedCount = 0;
+  for (const product of current) {
+    const key = productKey(product);
+    const before = previousByKey.get(key);
+    if (!before) {
+      added.push(product);
+      continue;
+    }
+    const changedFields = PRODUCT_CHANGED_FIELDS.filter((field) => !sameProductField(before, product, field));
+    if (changedFields.length) changed.push({ before, after: product, changedFields: [...changedFields] });
+    else unchangedCount += 1;
+  }
+  const removed = previous.filter((product) => !currentByKey.has(productKey(product)));
+  return { added, removed, changed, unchangedCount };
+}
+function filterProducts(products, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return products;
+  return products.filter((product) => [product.goodsId, product.id, product.name, product.status].some((value) => String(value || "").toLowerCase().includes(needle)));
+}
+function sameProductField(before, after, field) {
+  return Object.is(before[field], after[field]);
+}
+function ProductAcceptancePanel(props) {
+  const [detailsOpen, setDetailsOpen] = reactExports.useState(false);
+  const stats = productStats(props.state.currentProducts);
+  const filteredProducts = reactExports.useMemo(
+    () => filterProducts(props.state.currentProducts, props.searchQuery),
+    [props.searchQuery, props.state.currentProducts]
+  );
+  const syncing = props.state.syncState === "syncing" || props.busy === "products";
+  const statusLabel = props.state.syncState === "syncing" ? "syncing" : props.state.syncState;
+  const completeness = props.state.syncState === "success" && stats.duplicateCount === 0 && stats.allOnSale;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-panel", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "通过正式 products.list 获取当前店铺全部在售商品；失败时保留上一次成功结果，避免把失败误判为“商品为 0”。" }),
+    !props.supportsProducts ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-unavailable", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 14 }),
+      "当前平台未声明商品能力。"
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-toolbar", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button purple", onClick: props.onCollectProducts, disabled: !props.authenticated || syncing || !props.supportsProductCollect, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Clock3, { size: 14 }),
+          syncing ? "全量同步中…" : "开始全量同步"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `product-sync-state ${statusLabel}`, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}),
+          statusLabel
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "mini-button product-detail-toggle", onClick: () => setDetailsOpen((value) => !value), disabled: !props.state.currentProducts.length && props.state.syncState === "idle", children: [
+          detailsOpen ? /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronUp, { size: 13 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 13 }),
+          detailsOpen ? "收起详情" : "查看详情"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-summary", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "官方在售商品", value: String(stats.count) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "唯一 externalId", value: String(stats.uniqueCount) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "重复", value: String(stats.duplicateCount), tone: stats.duplicateCount ? "fail" : "pass" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "完整性", value: completeness ? "PASS" : "FAIL", tone: completeness ? "pass" : "fail" })
+      ] }),
+      stats.duplicateCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-duplicate-error", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 13 }),
+        "FAIL · 商品 ID 存在重复（",
+        stats.duplicateCount,
+        " 条）"
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-meta", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "最近同步：",
+          props.state.lastSyncAt ? formatDate(props.state.lastSyncAt) : "—"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "耗时：",
+          props.state.durationMs === void 0 ? "—" : `${props.state.durationMs}ms`
+        ] })
+      ] }),
+      props.state.syncState === "failed" && props.state.error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-error", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 14 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
+            "FAILED",
+            props.state.error.code ? ` · ${props.state.error.code}` : ""
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: props.state.error.code === "CHALLENGE_REQUIRED" ? "需要完成平台安全验证。" : props.state.error.message })
+        ] })
+      ] }),
+      props.state.syncState === "success" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-success", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 14 }),
+        "本次同步成功，当前结果已替换为官方响应。"
+      ] }),
+      detailsOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-details", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-search", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 14 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: props.searchQuery, onChange: (event) => props.onSearchQueryChange(event.target.value), placeholder: "搜索商品 ID / externalId / 标题" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: props.searchQuery.trim() ? `找到 ${filteredProducts.length} 条` : `${filteredProducts.length} 条` }),
+          props.searchQuery && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { title: "清除搜索", onClick: () => props.onSearchQueryChange(""), children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 13 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-human-check", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "真人验收：" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "①先同步基线　②官方后台下架商品再同步看“移除”　③重新上架看“新增”　④修改标题/价格看“变化”" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductDiffSummary, { state: props.state }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-list-heading", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "当前在售商品" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: props.searchQuery.trim() && filteredProducts.length === 0 ? "当前在售商品中未找到" : `显示 ${filteredProducts.length} / ${stats.count}` })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-list", children: [
+          filteredProducts.map((product) => /* @__PURE__ */ jsxRuntimeExports.jsx(ProductRow, { product }, `${productKeyForRow(product)}:${product.id}`)),
+          !filteredProducts.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "尚未同步商品，或搜索条件没有匹配项。" })
+        ] })
+      ] })
+    ] })
+  ] });
+}
+function ProductDiffSummary({ state }) {
+  const diff = state.diff;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-section", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-counts", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "added", children: [
+        "新增 ",
+        diff.added.length
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "removed", children: [
+        "移除 ",
+        diff.removed.length
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "changed", children: [
+        "变化 ",
+        diff.changed.length
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+        "未变化 ",
+        diff.unchangedCount
+      ] })
+    ] }),
+    (diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-list", children: [
+      diff.added.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(DiffGroup, { title: "新增", tone: "added", children: diff.added.map((product) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-item", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "+" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: product.name }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: product.goodsId })
+      ] }, `added-${product.id}`)) }),
+      diff.removed.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(DiffGroup, { title: "移除", tone: "removed", children: diff.removed.map((product) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-item", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "−" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: product.name }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: product.goodsId })
+      ] }, `removed-${product.id}`)) }),
+      diff.changed.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(DiffGroup, { title: "变化", tone: "changed", children: diff.changed.map((change) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-diff-item product-diff-change", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: "~" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: change.after.name }),
+          change.changedFields.map((field) => /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
+            fieldLabel(field),
+            "：",
+            formatField(change.before, field),
+            " → ",
+            formatField(change.after, field)
+          ] }, field))
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: change.after.goodsId })
+      ] }, `changed-${change.after.id}`)) })
+    ] })
+  ] });
+}
+function DiffGroup({ title, tone, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: `product-diff-group ${tone}`, open: true, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("summary", { children: title }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children })
+  ] });
+}
+function ProductRow({ product }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-row", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "product-acceptance-thumb", children: product.images?.[0] ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: product.images[0], alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "—" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-main", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: product.name }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: product.goodsId })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "product-cell price", children: [
+      "¥",
+      Number(product.price || 0).toFixed(2)
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "product-cell", children: [
+      "库存 ",
+      product.stockQuantity ?? "—"
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `product-status ${product.status || "unknown"}`, children: product.status || "unknown" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "product-updated", children: product.updatedAt ? formatDate(product.updatedAt) : "—" }),
+    product.goodsUrl && /* @__PURE__ */ jsxRuntimeExports.jsx("a", { className: "product-external-link", href: product.goodsUrl, target: "_blank", rel: "noreferrer", title: "打开商品", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 12 }) })
+  ] });
+}
+function ProductMetric({ label, value, tone }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-metric", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: tone || "", children: value })
+  ] });
+}
+function productKeyForRow(product) {
+  return product.goodsId || product.id;
+}
+function formatDate(value) {
+  return new Date(value).toLocaleString();
+}
+function fieldLabel(field) {
+  return { name: "标题", price: "价格", stockQuantity: "库存", status: "状态", updatedAt: "更新时间" }[field];
+}
+function formatField(product, field) {
+  const value = product[field];
+  if (value === void 0 || value === null || value === "") return "—";
+  if (field === "price") return `¥${Number(value).toFixed(2)}`;
+  if (field === "updatedAt") return formatDate(Number(value));
+  return String(value);
 }
 function AcceptanceCenter(props) {
   const authenticated = props.status?.authenticated === true;
@@ -14877,31 +15197,7 @@ function AcceptanceCenter(props) {
           ] })
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "02", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 18 }), title: "店铺商品采集", tone: "purple", done: props.products.length > 0, unsupported: !supportsProducts, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "点击采集后，平台适配器会读取当前店铺商品、价格、库存和 SKU。" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "action-button purple", onClick: props.onCollectProducts, disabled: !authenticated || props.busy === "products" || !supportsProductCollect, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 14 }),
-            props.busy === "products" ? "采集中…" : "开始采集商品"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-hint", children: props.products.length ? `已获得 ${props.products.length} 件商品` : "尚未采集" })
-        ] }),
-        supportsProducts ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "compact-results", children: [
-          props.products.slice(0, 3).map((product) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "compact-result", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-thumb", children: product.images?.[0] ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: product.images[0], alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 15 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: product.name }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
-                "¥",
-                product.price.toFixed(2),
-                " · 库存 ",
-                product.stockQuantity ?? "-"
-              ] })
-            ] })
-          ] }, product.id)),
-          !props.products.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "采集结果会显示在这里…" })
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UnsupportedMessage, {})
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCard, { number: "02", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 18 }), title: "商品全量同步", tone: "purple", done: props.productAcceptance.syncState === "success", unsupported: !supportsProducts, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ProductAcceptancePanel, { state: props.productAcceptance, authenticated, supportsProducts, supportsProductCollect, busy: props.busy, searchQuery: props.productSearchQuery, onSearchQueryChange: props.onProductSearchQueryChange, onCollectProducts: props.onCollectProducts }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(AcceptanceCard, { number: "03", icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 18 }), title: "订单变化监听", tone: "orange", done: props.orderListening && orderStatuses.length > 0, unsupported: !supportsOrders, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "先点击启动监听，再按提示在真实店铺完成下单、支付、退款。不要把历史快照当作新订单。" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-actions", children: [
@@ -15087,7 +15383,7 @@ function PlatformViewport(props) {
             ] })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCenter, { account: props.account, platform: props.platform, status: props.status, sessions: props.sessions, selectedSessionId: props.selectedSessionId, messages: props.messages, messageDraft: props.messageDraft, messageListening: props.messageListening, products: props.products, orderListening: props.orderListening, orderWatermark: props.orderWatermark, handoffTargets: props.handoffTargets, selectedHandoffTarget: props.selectedHandoffTarget, events: props.events, busy: props.busy, onSelectSession: props.onSelectSession, onMessageDraftChange: props.onMessageDraftChange, onStartMessages: props.onStartMessages, onRefreshSessions: props.onRefreshSessions, onSendMessage: props.onSendMessage, onCollectProducts: props.onCollectProducts, onStartOrders: props.onStartOrders, onLoadHandoffTargets: props.onLoadHandoffTargets, onSelectHandoffTarget: props.onSelectHandoffTarget, onTransfer: props.onTransfer }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCenter, { account: props.account, platform: props.platform, status: props.status, sessions: props.sessions, selectedSessionId: props.selectedSessionId, messages: props.messages, messageDraft: props.messageDraft, messageListening: props.messageListening, productAcceptance: props.productAcceptance, productSearchQuery: props.productSearchQuery, orderListening: props.orderListening, orderWatermark: props.orderWatermark, handoffTargets: props.handoffTargets, selectedHandoffTarget: props.selectedHandoffTarget, events: props.events, busy: props.busy, onSelectSession: props.onSelectSession, onMessageDraftChange: props.onMessageDraftChange, onStartMessages: props.onStartMessages, onRefreshSessions: props.onRefreshSessions, onSendMessage: props.onSendMessage, onCollectProducts: props.onCollectProducts, onProductSearchQueryChange: props.onProductSearchQueryChange, onStartOrders: props.onStartOrders, onLoadHandoffTargets: props.onLoadHandoffTargets, onSelectHandoffTarget: props.onSelectHandoffTarget, onTransfer: props.onTransfer }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card hook-card", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -15256,7 +15552,8 @@ function App() {
   const [activeAccountId, setActiveAccountId] = reactExports.useState("");
   const [selectedPlatform, setSelectedPlatform] = reactExports.useState("douyin-shop");
   const [label, setLabel] = reactExports.useState("");
-  const [productsByAccount, setProductsByAccount] = reactExports.useState({});
+  const [productAcceptanceByAccount, setProductAcceptanceByAccount] = reactExports.useState({});
+  const [productSearchByAccount, setProductSearchByAccount] = reactExports.useState({});
   const [sessionsByAccount, setSessionsByAccount] = reactExports.useState({});
   const [selectedSessionByAccount, setSelectedSessionByAccount] = reactExports.useState({});
   const [messagesByAccount, setMessagesByAccount] = reactExports.useState({});
@@ -15278,7 +15575,9 @@ function App() {
   const activePlatform = reactExports.useMemo(() => platforms.find((item) => item.id === (activeAccount?.platform || selectedPlatform)), [platforms, activeAccount, selectedPlatform]);
   const sessions = sessionsByAccount[activeAccountId] || [];
   const messages = messagesByAccount[activeAccountId] || [];
-  const products = productsByAccount[activeAccountId] || [];
+  const productAcceptance = productAcceptanceByAccount[activeAccountId] || createProductAcceptanceState();
+  const products = productAcceptance.currentProducts;
+  const productSearchQuery = productSearchByAccount[activeAccountId] || "";
   const selectedSessionId = selectedSessionByAccount[activeAccountId] || "";
   const messageDraft = messageDraftByAccount[activeAccountId] || "";
   const messageListening = messageListeningByAccount[activeAccountId] || false;
@@ -15400,18 +15699,32 @@ function App() {
   }, [notify, refresh]);
   const collectProducts = reactExports.useCallback(async () => {
     if (!activeAccountId) return;
+    const startedAt = Date.now();
+    updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => beginProductSync(current || createProductAcceptanceState(), startedAt));
     setBusy("products");
     try {
       const result = await window.platformApi.collectProducts(activeAccountId);
-      if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回商品列表");
-      updateMap(setProductsByAccount, activeAccountId, result);
-      notify("商品采集完成");
+      if (!Array.isArray(result)) {
+        const failure = operationErrorDetails(result);
+        const error = new Error(failure?.message || "平台未返回商品列表");
+        error.code = failure?.code;
+        throw error;
+      }
+      const finishedAt = Date.now();
+      updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => applyProductSyncSuccess(current || createProductAcceptanceState(), result, startedAt, finishedAt));
+      notify(`商品全量同步完成：${result.length} 件`);
     } catch (error) {
-      notify(errorMessage(error));
+      const details = operationErrorDetails(error) || { message: errorMessage(error) };
+      updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => applyProductSyncFailure(current || createProductAcceptanceState(), details, startedAt, Date.now()));
+      notify(`商品同步失败${details.code ? ` · ${details.code}` : ""}：${details.message}`);
     } finally {
       setBusy("");
     }
   }, [activeAccountId, notify, updateMap]);
+  const setProductSearchQuery = reactExports.useCallback((value) => {
+    if (!activeAccountId) return;
+    updateMap(setProductSearchByAccount, activeAccountId, value);
+  }, [activeAccountId, updateMap]);
   const selectSession = reactExports.useCallback((sessionId) => {
     updateMap(setSelectedSessionByAccount, activeAccountId, sessionId);
     if (activeAccountId && sessionId) void loadMessages(activeAccountId, sessionId);
@@ -15616,7 +15929,7 @@ function App() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-layout", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(StoreSidebar, { platforms, accounts, activeAccountId, selectedPlatform, label, busy, onPlatformChange: setSelectedPlatform, onLabelChange: setLabel, onAdd: () => void addAccount(), onSelect: (account) => void openAccount(account), onSetOnline: (account, online) => void setOnline(account, online), onRemove: (account) => void removeAccount(account), onImport: () => void importHook() }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: (value) => updateMap(setMessageDraftByAccount, activeAccountId, value), onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: (value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value), onTransfer: () => void transferSession(), eventSummary, onViewportBounds: reportViewportBounds }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, productAcceptance, productSearchQuery, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onProductSearchQueryChange: setProductSearchQuery, onSelectSession: selectSession, onMessageDraftChange: (value) => updateMap(setMessageDraftByAccount, activeAccountId, value), onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: (value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value), onTransfer: () => void transferSession(), eventSummary, onViewportBounds: reportViewportBounds }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(RuntimeStatusPanel, { account: activeAccount, platform: activePlatform, status, runtime: runtimeSnapshotByAccount[activeAccountId], sessionCount: sessions.length, productCount: products.length, messageListening, orderListening, recentMessage: messages.slice().reverse().find((message) => message.direction === "inbound" || !message.isMine)?.content })
     ] }),
     toast && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toast", children: [
@@ -15633,6 +15946,16 @@ function operationError(value) {
   const record = value;
   if (record.errorCode || record.success === false) return String(record.error || record.errorCode || "平台操作失败");
   return void 0;
+}
+function operationErrorDetails(value) {
+  if (!value || typeof value !== "object") return void 0;
+  const record = value;
+  if (!record.errorCode && !record.code && record.success !== false && !record.error && !record.message) return void 0;
+  const code = record.errorCode || record.code;
+  return {
+    ...code ? { code: String(code) } : {},
+    message: String(record.error || record.message || code || "平台操作失败")
+  };
 }
 function extractMessage(value) {
   if (!value || typeof value !== "object") return null;

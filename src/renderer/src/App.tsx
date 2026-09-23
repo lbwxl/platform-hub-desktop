@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Activity, Bell, RefreshCw, Settings2 } from 'lucide-react'
-import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformRuntimeSnapshot, PlatformStatus, ProductRecord } from '../../shared/platform'
+import type { ChatSession, HandoffTarget, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformRuntimeSnapshot, PlatformStatus } from '../../shared/platform'
 import { upsertPlatformMessage } from '../../shared/messageMerge'
+import { applyProductSyncFailure, applyProductSyncSuccess, beginProductSync, createProductAcceptanceState, type ProductAcceptanceState } from './productAcceptance'
 import { PlatformViewport } from './components/PlatformViewport'
 import { StoreSidebar } from './components/StoreSidebar'
 import { RuntimeStatusPanel } from './components/RuntimeStatusPanel'
@@ -12,7 +13,8 @@ export default function App() {
   const [activeAccountId, setActiveAccountId] = useState('')
   const [selectedPlatform, setSelectedPlatform] = useState('douyin-shop')
   const [label, setLabel] = useState('')
-  const [productsByAccount, setProductsByAccount] = useState<Record<string, ProductRecord[]>>({})
+  const [productAcceptanceByAccount, setProductAcceptanceByAccount] = useState<Record<string, ProductAcceptanceState>>({})
+  const [productSearchByAccount, setProductSearchByAccount] = useState<Record<string, string>>({})
   const [sessionsByAccount, setSessionsByAccount] = useState<Record<string, ChatSession[]>>({})
   const [selectedSessionByAccount, setSelectedSessionByAccount] = useState<Record<string, string>>({})
   const [messagesByAccount, setMessagesByAccount] = useState<Record<string, PlatformMessage[]>>({})
@@ -35,7 +37,9 @@ export default function App() {
   const activePlatform = useMemo(() => platforms.find((item) => item.id === (activeAccount?.platform || selectedPlatform)), [platforms, activeAccount, selectedPlatform])
   const sessions = sessionsByAccount[activeAccountId] || []
   const messages = messagesByAccount[activeAccountId] || []
-  const products = productsByAccount[activeAccountId] || []
+  const productAcceptance = productAcceptanceByAccount[activeAccountId] || createProductAcceptanceState()
+  const products = productAcceptance.currentProducts
+  const productSearchQuery = productSearchByAccount[activeAccountId] || ''
   const selectedSessionId = selectedSessionByAccount[activeAccountId] || ''
   const messageDraft = messageDraftByAccount[activeAccountId] || ''
   const messageListening = messageListeningByAccount[activeAccountId] || false
@@ -123,14 +127,31 @@ export default function App() {
 
   const collectProducts = useCallback(async () => {
     if (!activeAccountId) return
+    const startedAt = Date.now()
+    updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => beginProductSync(current || createProductAcceptanceState(), startedAt))
     setBusy('products')
     try {
       const result = await window.platformApi.collectProducts(activeAccountId)
-      if (!Array.isArray(result)) throw new Error(operationError(result) || '平台未返回商品列表')
-      updateMap(setProductsByAccount, activeAccountId, result)
-      notify('商品采集完成')
-    } catch (error) { notify(errorMessage(error)) } finally { setBusy('') }
+      if (!Array.isArray(result)) {
+        const failure = operationErrorDetails(result)
+        const error = new Error(failure?.message || '平台未返回商品列表') as Error & { code?: string }
+        error.code = failure?.code
+        throw error
+      }
+      const finishedAt = Date.now()
+      updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => applyProductSyncSuccess(current || createProductAcceptanceState(), result, startedAt, finishedAt))
+      notify(`商品全量同步完成：${result.length} 件`)
+    } catch (error) {
+      const details = operationErrorDetails(error) || { message: errorMessage(error) }
+      updateMap(setProductAcceptanceByAccount, activeAccountId, (current) => applyProductSyncFailure(current || createProductAcceptanceState(), details, startedAt, Date.now()))
+      notify(`商品同步失败${details.code ? ` · ${details.code}` : ''}：${details.message}`)
+    } finally { setBusy('') }
   }, [activeAccountId, notify, updateMap])
+
+  const setProductSearchQuery = useCallback((value: string) => {
+    if (!activeAccountId) return
+    updateMap(setProductSearchByAccount, activeAccountId, value)
+  }, [activeAccountId, updateMap])
 
   const selectSession = useCallback((sessionId: string) => {
     updateMap(setSelectedSessionByAccount, activeAccountId, sessionId)
@@ -309,7 +330,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header className="app-topbar"><div className="topbar-title"><span className="topbar-mark"><Activity size={18} /></span><div><strong>平台工作台</strong><small>统一管理店铺、消息、商品与订单</small></div></div><div className="topbar-actions"><span className="topbar-live"><span className="live-dot" />{activeAccount ? `${activePlatform?.label || activeAccount.platform} · ${activeAccount.label}` : '未选择店铺'}</span><button className="topbar-button" onClick={() => void refresh()}><RefreshCw size={15} />刷新</button><button className="topbar-icon" title="通知"><Bell size={17} /></button><button className="topbar-icon" title="设置"><Settings2 size={17} /></button></div></header>
-    <main className="app-layout"><StoreSidebar platforms={platforms} accounts={accounts} activeAccountId={activeAccountId} selectedPlatform={selectedPlatform} label={label} busy={busy} onPlatformChange={setSelectedPlatform} onLabelChange={setLabel} onAdd={() => void addAccount()} onSelect={(account) => void openAccount(account)} onSetOnline={(account, online) => void setOnline(account, online)} onRemove={(account) => void removeAccount(account)} onImport={() => void importHook()} /><PlatformViewport account={activeAccount} platform={activePlatform} status={status} sessions={sessions} messages={messages} products={products} events={events.filter((item) => item.accountId === activeAccountId)} busy={busy} selectedSessionId={selectedSessionId} messageDraft={messageDraft} messageListening={messageListening} orderListening={orderListening} orderWatermark={orderWatermark} handoffTargets={handoffTargets} selectedHandoffTarget={selectedHandoffTarget} onRefreshSessions={() => void refreshSessions()} onCollectProducts={() => void collectProducts()} onSelectSession={selectSession} onMessageDraftChange={(value) => updateMap(setMessageDraftByAccount, activeAccountId, value)} onStartMessages={() => void startMessageListening()} onSendMessage={() => void sendTestMessage()} onStartOrders={() => void startOrderListening()} onLoadHandoffTargets={() => void loadHandoffTargets()} onSelectHandoffTarget={(value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value)} onTransfer={() => void transferSession()} eventSummary={eventSummary} onViewportBounds={reportViewportBounds} /><RuntimeStatusPanel account={activeAccount} platform={activePlatform} status={status} runtime={runtimeSnapshotByAccount[activeAccountId]} sessionCount={sessions.length} productCount={products.length} messageListening={messageListening} orderListening={orderListening} recentMessage={messages.slice().reverse().find((message) => message.direction === 'inbound' || !message.isMine)?.content} /></main>
+    <main className="app-layout"><StoreSidebar platforms={platforms} accounts={accounts} activeAccountId={activeAccountId} selectedPlatform={selectedPlatform} label={label} busy={busy} onPlatformChange={setSelectedPlatform} onLabelChange={setLabel} onAdd={() => void addAccount()} onSelect={(account) => void openAccount(account)} onSetOnline={(account, online) => void setOnline(account, online)} onRemove={(account) => void removeAccount(account)} onImport={() => void importHook()} /><PlatformViewport account={activeAccount} platform={activePlatform} status={status} sessions={sessions} messages={messages} products={products} productAcceptance={productAcceptance} productSearchQuery={productSearchQuery} events={events.filter((item) => item.accountId === activeAccountId)} busy={busy} selectedSessionId={selectedSessionId} messageDraft={messageDraft} messageListening={messageListening} orderListening={orderListening} orderWatermark={orderWatermark} handoffTargets={handoffTargets} selectedHandoffTarget={selectedHandoffTarget} onRefreshSessions={() => void refreshSessions()} onCollectProducts={() => void collectProducts()} onProductSearchQueryChange={setProductSearchQuery} onSelectSession={selectSession} onMessageDraftChange={(value) => updateMap(setMessageDraftByAccount, activeAccountId, value)} onStartMessages={() => void startMessageListening()} onSendMessage={() => void sendTestMessage()} onStartOrders={() => void startOrderListening()} onLoadHandoffTargets={() => void loadHandoffTargets()} onSelectHandoffTarget={(value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value)} onTransfer={() => void transferSession()} eventSummary={eventSummary} onViewportBounds={reportViewportBounds} /><RuntimeStatusPanel account={activeAccount} platform={activePlatform} status={status} runtime={runtimeSnapshotByAccount[activeAccountId]} sessionCount={sessions.length} productCount={products.length} messageListening={messageListening} orderListening={orderListening} recentMessage={messages.slice().reverse().find((message) => message.direction === 'inbound' || !message.isMine)?.content} /></main>
     {toast && <div className="toast"><Activity size={15} />{toast}</div>}
   </div>
 }
@@ -321,6 +342,17 @@ function operationError(value: unknown): string | undefined {
   const record = value as { errorCode?: unknown; error?: unknown; success?: unknown }
   if (record.errorCode || record.success === false) return String(record.error || record.errorCode || '平台操作失败')
   return undefined
+}
+
+function operationErrorDetails(value: unknown): { code?: string; message: string } | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as { errorCode?: unknown; code?: unknown; error?: unknown; message?: unknown; success?: unknown }
+  if (!record.errorCode && !record.code && record.success !== false && !record.error && !record.message) return undefined
+  const code = record.errorCode || record.code
+  return {
+    ...(code ? { code: String(code) } : {}),
+    message: String(record.error || record.message || code || '平台操作失败'),
+  }
 }
 
 function extractMessage(value: unknown): PlatformMessage | null {

@@ -55,6 +55,8 @@ export interface ProductRecord {
   shopId?: string
   platform: PlatformId
   createTime?: string
+  /** Authoritative timestamp returned by the platform product list response. */
+  updatedAt?: number
   description?: string
   skuList?: Array<{ skuId: string; skuName: string; skuPrice: number }>
   raw?: Record<string, unknown>

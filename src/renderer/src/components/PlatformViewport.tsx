@@ -2,6 +2,7 @@ import { Activity, Boxes, CheckCircle2, Clock3, MessageSquare, PackageSearch, Re
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import type { ChatSession, HandoffTarget, PlatformAccount, PlatformCapability, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../../shared/platform'
 import { AcceptanceCenter } from './AcceptanceCenter'
+import type { ProductAcceptanceState } from '../productAcceptance'
 
 export interface PlatformViewportProps {
   account?: PlatformAccount
@@ -17,6 +18,8 @@ export interface PlatformViewportProps {
   messageListening: boolean
   orderListening: boolean
   orderWatermark?: number
+  productAcceptance: ProductAcceptanceState
+  productSearchQuery: string
   handoffTargets: HandoffTarget[]
   selectedHandoffTarget: string
   onRefreshSessions: () => void
@@ -26,6 +29,7 @@ export interface PlatformViewportProps {
   onStartMessages: () => void
   onSendMessage: () => void
   onStartOrders: () => void
+  onProductSearchQueryChange: (value: string) => void
   onLoadHandoffTargets: () => void
   onSelectHandoffTarget: (target: string) => void
   onTransfer: () => void
@@ -64,7 +68,7 @@ export function PlatformViewport(props: PlatformViewportProps) {
       <div className="developer-drawer-content">
         <div className="capability-strip"><Capability icon={<MessageSquare size={17} />} label="消息" value={`${props.sessions.length} 个会话`} ready={ready} /><Capability icon={<Boxes size={17} />} label="商品" value={`${props.products.length} 件已采集`} ready={ready} /><Capability icon={<ReceiptText size={17} />} label="订单" value="实时监听" ready={ready} /><Capability icon={<PackageSearch size={17} />} label="执行模型" value={executionHost} ready={Boolean(props.account.connected)} /></div>
         <section className="workspace-card event-card"><div className="card-title"><div><strong>实时事件</strong><span>来自当前店铺的 Hook 事件流</span></div><span className="event-count">{props.events.length}</span></div><div className="event-stream">{props.events.slice(0, 8).map((event) => <div className="event-item" key={event.id}><span className={`event-badge ${event.type}`}>{event.type}</span><div><strong>{props.eventSummary(event)}</strong><small>{new Date(event.timestamp).toLocaleTimeString()}</small></div></div>)}{!props.events.length && <div className="event-empty"><Clock3 size={22} /><span>等待平台事件…</span></div>}</div></section>
-        <AcceptanceCenter account={props.account} platform={props.platform} status={props.status} sessions={props.sessions} selectedSessionId={props.selectedSessionId} messages={props.messages} messageDraft={props.messageDraft} messageListening={props.messageListening} products={props.products} orderListening={props.orderListening} orderWatermark={props.orderWatermark} handoffTargets={props.handoffTargets} selectedHandoffTarget={props.selectedHandoffTarget} events={props.events} busy={props.busy} onSelectSession={props.onSelectSession} onMessageDraftChange={props.onMessageDraftChange} onStartMessages={props.onStartMessages} onRefreshSessions={props.onRefreshSessions} onSendMessage={props.onSendMessage} onCollectProducts={props.onCollectProducts} onStartOrders={props.onStartOrders} onLoadHandoffTargets={props.onLoadHandoffTargets} onSelectHandoffTarget={props.onSelectHandoffTarget} onTransfer={props.onTransfer} />
+        <AcceptanceCenter account={props.account} platform={props.platform} status={props.status} sessions={props.sessions} selectedSessionId={props.selectedSessionId} messages={props.messages} messageDraft={props.messageDraft} messageListening={props.messageListening} productAcceptance={props.productAcceptance} productSearchQuery={props.productSearchQuery} orderListening={props.orderListening} orderWatermark={props.orderWatermark} handoffTargets={props.handoffTargets} selectedHandoffTarget={props.selectedHandoffTarget} events={props.events} busy={props.busy} onSelectSession={props.onSelectSession} onMessageDraftChange={props.onMessageDraftChange} onStartMessages={props.onStartMessages} onRefreshSessions={props.onRefreshSessions} onSendMessage={props.onSendMessage} onCollectProducts={props.onCollectProducts} onProductSearchQueryChange={props.onProductSearchQueryChange} onStartOrders={props.onStartOrders} onLoadHandoffTargets={props.onLoadHandoffTargets} onSelectHandoffTarget={props.onSelectHandoffTarget} onTransfer={props.onTransfer} />
         <section className="workspace-card hook-card"><div className="card-title"><div><strong>平台能力</strong><span>{props.platform?.label || props.account.platform} 适配器按 manifest 声明能力，网页 / 原生 / 服务执行模型均可复用</span></div><button className="outline-button" onClick={props.onRefreshSessions} disabled={props.busy === 'sessions'}><RefreshCw size={14} />刷新会话</button></div><div className="hook-grid"><HookItem icon={<CheckCircle2 size={17} />} label="auth.state" enabled={ready} /><HookItem icon={<MessageSquare size={17} />} label="messages.listen" enabled={ready && supports('messages.listen')} /><HookItem icon={<Boxes size={17} />} label="products.list" enabled={ready && supports('products.collect')} /><HookItem icon={<ReceiptText size={17} />} label="orders.listen" enabled={ready && supports('orders.listen')} /><HookItem icon={<Settings2 size={17} />} label="handoff.transfer" enabled={ready && supports('session.transfer')} /><HookItem icon={<Sparkles size={17} />} label="runtime.events" enabled={Boolean(props.account.connected)} /></div></section>
       </div>
     </details>

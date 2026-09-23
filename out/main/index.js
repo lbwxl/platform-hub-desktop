@@ -2096,6 +2096,7 @@ ${douyinHookRuntimeScript}
       status: item.status,
       images: item.images || [],
       goodsUrl: item.url,
+      updatedAt: item.updatedAt,
       platform: 'douyin-shop',
       raw: item.raw,
     }
