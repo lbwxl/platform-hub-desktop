@@ -4,6 +4,10 @@ interface FakeShopState {
     authenticated: boolean;
     messages: HookMessage[];
     products: HookProduct[];
+    productPageSize: number;
+    productPageFailures: Set<number>;
+    productPageChallenges: Set<number>;
+    productPageDuplicates: Set<number>;
     orders: Map<string, HookOrder>;
     pageEvents: Map<string, HookEvent[]>;
     pageListeners: Map<string, Set<(event: HookEvent) => void>>;
@@ -61,6 +65,12 @@ export declare class FakeHookPageFactory implements HookPageFactory {
     requireChallenge(shopId: string, pageId: string, operation: HookOperation): void;
     solveChallenge(shopId: string, pageId: string, operation: HookOperation): void;
     failNext(shopId: string, pageId: string, operation: HookOperation): void;
+    setProducts(shopId: string, products: HookProduct[]): void;
+    setProductPageSize(shopId: string, pageSize: number): void;
+    failProductPage(shopId: string, page: number): void;
+    challengeProductPage(shopId: string, page: number): void;
+    completeProductPageChallenge(shopId: string, page: number): void;
+    duplicateProductPage(shopId: string, page: number): void;
     setOperationDelay(shopId: string, pageId: string, operation: HookOperation, delayMs: number): void;
     setRuntimeDescriptionOverride(shopId: string, pageId: string, override: FakeRuntimeDescriptionOverride): void;
     failNextStart(shopId: string): void;
@@ -104,6 +114,12 @@ export declare class FakeHook {
     requireChallenge(operation: HookOperation, pageId?: string): void;
     completeChallenge(operation: HookOperation, pageId?: string): void;
     failNext(operation: HookOperation, pageId?: string): void;
+    setProducts(products: HookProduct[]): void;
+    setProductPageSize(pageSize: number): void;
+    failProductPage(page: number): void;
+    challengeProductPage(page: number): void;
+    completeProductPageChallenge(page: number): void;
+    duplicateProductPage(page: number): void;
     setOperationDelay(operation: HookOperation, delayMs: number, pageId?: string): void;
     setRuntimeDescriptionOverride(pageId: string, override: FakeRuntimeDescriptionOverride): void;
     failNextStart(): void;

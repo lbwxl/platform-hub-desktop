@@ -88,6 +88,6 @@ pnpm build
 - `_message$`、`_messageUpsert$`、`_batchUpsert$` 负责消息监听，并按消息 ID 与内容指纹去重。
 - `im.sendText` 发送文本。
 - `customRequestUpload` 上传图片，随后由 `im.sendImage` 发送；其他文件类型返回 `UNSUPPORTED_FILE_TYPE`。
-- `GOODS_SWR_CACHE_V1` 提供官方商品页公开在 `window.localStorage` 中的商品状态。
+- 商品同步使用当前 Electron 商品 WebContents 的官方 `/product/tproduct/list` 请求，按明确的在售条件完整分页，并按本次响应的官方 `tab/status` 排除非在售行后作为权威结果；`GOODS_SWR_CACHE_V1` 仅保留为诊断/启动探索信息，不参与 `products.list`。
 
 平台页面升级后若方法名称改变，只需更新抖店 Hook 的别名和数据归一化，不需要修改 Electron、IPC 或工作台 UI。

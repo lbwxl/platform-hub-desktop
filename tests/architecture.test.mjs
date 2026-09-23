@@ -62,7 +62,9 @@ test('PageHookTransport is a thin session adapter without host ownership or plat
 })
 
 test('正式 Douyin Hook 仅将 DOM 投影限制在会话原生 attention，且不依赖 Legacy', () => {
-  assert.doesNotMatch(douyinRuntime, /\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+  assert.doesNotMatch(douyinRuntime, /\.click\(|dispatchEvent|XMLHttpRequest|WebSocket/)
+  assert.match(douyinRuntime, /PRODUCT_LIST_PATH\s*=\s*['"]\/product\/tproduct\/list/)
+  assert.match(douyinRuntime, /credentials:\s*['"]include['"]/)
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(douyinPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
   assert.match(douyinRuntime, /__PLATFORM_HOOK__/)

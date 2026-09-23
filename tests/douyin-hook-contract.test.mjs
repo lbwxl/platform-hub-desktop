@@ -28,7 +28,9 @@ test('Douyin package is independent from Legacy and limits DOM work to native co
   const packageJson = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
   assert.equal(packageJson.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
   assert.equal(packageJson.dependencies['@platform-hub/hook-host'], 'workspace:*')
-  assert.doesNotMatch(douyinHookRuntimeScript, /\.click\(|dispatchEvent|fetch\(|XMLHttpRequest|WebSocket/)
+  assert.doesNotMatch(douyinHookRuntimeScript, /\.click\(|dispatchEvent|XMLHttpRequest|WebSocket/)
+  assert.match(douyinHookRuntimeScript, /PRODUCT_LIST_PATH\s*=\s*['"]\/product\/tproduct\/list/)
+  assert.match(douyinHookRuntimeScript, /credentials:\s*['"]include['"]/)
   assert.match(douyinHookRuntimeScript, /conversation\.attention\.set/)
   assert.match(douyinHookRuntimeScript, /MutationObserver/)
   assert.equal((douyinHookRuntimeScript.match(/querySelectorAll/g) || []).length, 1)
@@ -812,22 +814,29 @@ test('Douyin host wrapper correlates automation echoes and removes failed sends'
   await runtime.dispose()
 })
 
-test('Douyin products worker runs from official loaded cache without primary store', async () => {
-  const cache = {
-    'goods-list-query': {
-      __value__: {
-        data: {
-          list: [{ product_id: 'goods-1', product_name: '缓存商品', discount_price: 1990, product_status: '在售' }],
-        },
-      },
-    },
-  }
+test('Douyin products worker runs from the authoritative official list without primary store', async () => {
   const context = vm.createContext({
     location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
     window: {
       location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '?tab=all' },
-      localStorage: { getItem(key) { return key === 'GOODS_SWR_CACHE_V1' ? JSON.stringify(cache) : null } },
+      localStorage: { getItem() { return JSON.stringify({ stale: [{ product_id: 'stale-cache-item' }] }) } },
+      ss: { _frontStore: { shopInfo: { id: 'shop-1' } } },
     },
+    fetch: async (input) => {
+      const url = new URL(String(input), 'https://fxg.jinritemai.com')
+      return {
+        ok: true,
+        status: 200,
+        url: url.href,
+        async json() {
+          return { code: 0, page: 0, size: 20, total: 1, data: [{ product_id: 'goods-1', product_name: '官方商品', discount_price: 1990, status: 0, tab: '售卖中' }] }
+        },
+      }
+    },
+    AbortController,
+    URL,
+    URLSearchParams,
+    Promise,
     setInterval,
     clearInterval,
     setTimeout,
@@ -842,6 +851,7 @@ test('Douyin products worker runs from official loaded cache without primary sto
   const listed = await runtime.invoke('products.list', {})
   assert.equal(listed.ok, true)
   assert.equal(listed.data[0].externalId, 'goods-1')
+  assert.equal(listed.data[0].title, '官方商品')
   assert.deepEqual({ ...listed.data[0].price }, { amount: 19.9, currency: 'CNY' })
   await runtime.dispose()
 })

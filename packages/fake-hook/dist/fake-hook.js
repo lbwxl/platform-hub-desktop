@@ -97,6 +97,32 @@ export class FakeHookPageFactory {
     failNext(shopId, pageId, operation) {
         this.stateFor(shopId).failNextOperations.add(`${pageId}:${operation}`);
     }
+    setProducts(shopId, products) {
+        this.stateFor(shopId).products = [...products];
+    }
+    setProductPageSize(shopId, pageSize) {
+        this.stateFor(shopId).productPageSize = Math.max(1, Math.floor(pageSize));
+    }
+    failProductPage(shopId, page) {
+        this.stateFor(shopId).productPageFailures.add(Math.max(0, Math.floor(page)));
+    }
+    challengeProductPage(shopId, page) {
+        const state = this.stateFor(shopId);
+        state.productPageChallenges.add(Math.max(0, Math.floor(page)));
+        state.challengeOperations.add('products:products.list');
+    }
+    completeProductPageChallenge(shopId, page) {
+        const state = this.stateFor(shopId);
+        state.productPageChallenges.delete(Math.max(0, Math.floor(page)));
+        if (!state.productPageChallenges.size)
+            state.challengeOperations.delete('products:products.list');
+        for (const wake of [...state.challengeWaiters])
+            wake();
+        state.challengeWaiters.clear();
+    }
+    duplicateProductPage(shopId, page) {
+        this.stateFor(shopId).productPageDuplicates.add(Math.max(0, Math.floor(page)));
+    }
     setOperationDelay(shopId, pageId, operation, delayMs) {
         this.stateFor(shopId).operationDelays.set(`${pageId}:${operation}`, Math.max(0, delayMs));
     }
@@ -112,6 +138,10 @@ export class FakeHookPageFactory {
                 authenticated: true,
                 messages: [],
                 products: defaultProducts(),
+                productPageSize: 100,
+                productPageFailures: new Set(),
+                productPageChallenges: new Set(),
+                productPageDuplicates: new Set(),
                 orders: new Map(),
                 pageEvents: new Map(),
                 pageListeners: new Map(),
@@ -225,6 +255,12 @@ export class FakeHook {
     requireChallenge(operation, pageId = pageForOperation(operation)) { this.factory.requireChallenge(this.shopId, pageId, operation); }
     completeChallenge(operation, pageId = pageForOperation(operation)) { this.factory.solveChallenge(this.shopId, pageId, operation); }
     failNext(operation, pageId = pageForOperation(operation)) { this.factory.failNext(this.shopId, pageId, operation); }
+    setProducts(products) { this.factory.setProducts(this.shopId, products); }
+    setProductPageSize(pageSize) { this.factory.setProductPageSize(this.shopId, pageSize); }
+    failProductPage(page) { this.factory.failProductPage(this.shopId, page); }
+    challengeProductPage(page) { this.factory.challengeProductPage(this.shopId, page); }
+    completeProductPageChallenge(page) { this.factory.completeProductPageChallenge(this.shopId, page); }
+    duplicateProductPage(page) { this.factory.duplicateProductPage(this.shopId, page); }
     setOperationDelay(operation, delayMs, pageId = pageForOperation(operation)) { this.factory.setOperationDelay(this.shopId, pageId, operation, delayMs); }
     setRuntimeDescriptionOverride(pageId, override) { this.factory.setRuntimeDescriptionOverride(this.shopId, pageId, override); }
     failNextStart() { this.factory.failNextStart(this.shopId); }
@@ -333,7 +369,7 @@ class FakePageRuntime {
             case 'messages.history': return ok(this.state.messages.filter((message) => message.conversationId === String(input?.conversationId || 'conversation-1')));
             case 'messages.send.text': return this.sendText(input);
             case 'messages.send.file': return this.sendFile(input);
-            case 'products.list': return ok(this.state.products);
+            case 'products.list': return this.listProducts();
             case 'products.detail': return this.productDetail(input);
             case 'orders.list': return ok([...this.state.orders.values()]);
             case 'orders.listen': {
@@ -419,6 +455,26 @@ class FakePageRuntime {
         const id = String(input?.id || '');
         const product = this.state.products.find((item) => item.id === id);
         return product ? ok(product) : fail(hookError('INVALID_INPUT', `商品不存在: ${id}`));
+    }
+    listProducts() {
+        const pageSize = Math.max(1, this.state.productPageSize);
+        const onSale = this.state.products.filter((product) => product.status === 'on_sale');
+        const pages = Math.max(1, Math.ceil(onSale.length / pageSize));
+        const byExternalId = new Map();
+        for (let page = 0; page < pages; page += 1) {
+            if (this.state.productPageChallenges.has(page)) {
+                return fail(hookError('CHALLENGE_REQUIRED', `商品分页 ${page} 需要验证`, { page }, true));
+            }
+            if (this.state.productPageFailures.has(page)) {
+                this.state.productPageFailures.delete(page);
+                return fail(hookError('PLATFORM_ERROR', `商品分页 ${page} 失败`, { page }, true));
+            }
+            const rows = onSale.slice(page * pageSize, (page + 1) * pageSize);
+            const responseRows = this.state.productPageDuplicates.has(page) && rows[0] ? [...rows, rows[0]] : rows;
+            for (const product of responseRows)
+                byExternalId.set(product.externalId, product);
+        }
+        return ok([...byExternalId.values()]);
     }
     transfer(input) {
         const value = input;

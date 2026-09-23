@@ -31,7 +31,7 @@ export function createDouyinElectronPageFactory(options: DouyinElectronPageFacto
           if (context.definition.id === 'primary') return authenticated
           if (!/fxg\.jinritemai\.com/i.test(String(location.hostname || ''))) return false
           if (context.definition.id === 'products') {
-            return Boolean(window.localStorage?.getItem('GOODS_SWR_CACHE_V1'))
+            return /^\/ffa\/g\/list(?:\/|$)/i.test(String(location.pathname || ''))
           }
           if (context.definition.id === 'orders') {
             if (!authenticated || !/^\/ffa\/(?:arrival-pages\/home|g\/list|morder\/order\/list)(?:\/|$)/i.test(String(location.pathname || ''))) return false

@@ -666,10 +666,11 @@ const douyinHookRuntimeScript = String.raw`(() => {
         data: { authenticated: true, shopId: getterShopId || undefined, userId: getterUserId || undefined, checkedAt: Date.now() },
       }
     } catch (_) {}
-    if (PAGE === 'products') {
-      try {
-        if (window.localStorage?.getItem('GOODS_SWR_CACHE_V1') != null) return { ok: true, data: { authenticated: true, checkedAt: Date.now() } }
-      } catch (_) {}
+    // Product workers do not reliably expose the primary page store.  Their
+    // authenticated state is established by the same-origin official product
+    // request below, never by the GOODS_SWR_CACHE_V1 page cache.
+    if (PAGE === 'products' && /fxg\.jinritemai\.com/i.test(String(location?.hostname || '')) && /^\/ffa\/g\/list(?:\/|$)/i.test(String(location?.pathname || ''))) {
+      return { ok: true, data: { authenticated: true, checkedAt: Date.now() } }
     }
     if (/^\/login(?:\/|$)/i.test(String(location?.pathname || ''))) return { ok: true, data: { authenticated: false, checkedAt: Date.now() } }
     return error('RUNTIME_NOT_READY', '抖店账号状态 Runtime 尚未准备好', true)
@@ -968,9 +969,9 @@ const douyinHookRuntimeScript = String.raw`(() => {
   }
   const product = (raw) => {
     const item = raw && typeof raw === 'object' ? raw : {}
-    const externalId = text(item.goodsId || item.goods_id || item.productId || item.product_id || item.id)
+    const externalId = text(item.goodsId ?? item.goods_id ?? item.productId ?? item.product_id ?? item.id)
     if (!externalId) return undefined
-    const shopId = text(item.shopId || item.shop_id || item.sellerId || store()?.shopInfo?.id)
+    const shopId = text(item.shopId ?? item.shop_id ?? item.sellerId ?? store()?.shopInfo?.id)
     const cents = item.discount_price !== undefined ? item.discount_price : item.discountPrice
     const rawPrice = cents !== undefined ? number(cents) / 100 : number(item.price)
     const imageValues = Array.isArray(item.images || item.pics || item.image_list) ? (item.images || item.pics || item.image_list) : (item.img ? [item.img] : [])
@@ -984,45 +985,147 @@ const douyinHookRuntimeScript = String.raw`(() => {
         ...(number(sku.stockQuantity ?? sku.stock_num ?? sku.stock) !== undefined ? { stockQuantity: number(sku.stockQuantity ?? sku.stock_num ?? sku.stock) } : {}),
       }
     })
-    const status = text(item.status || item.product_status).toLowerCase()
+    const status = text(item.status ?? item.product_status).toLowerCase()
+    const statusText = text(item.tab || item.status_text || item.status_desc || item.put_status_text).toLowerCase()
+    const statusSource = status + ' ' + statusText
+    // /product/tproduct/list is requested with is_online=1. Prefer an
+    // explicit status marker from this response; the current API returns
+    // status=0 for saleable rows, so tab/is_online are also accepted markers.
+    const normalizedStatus = /off[_ -]?sale|off.?line|下架|停售|已下架|审核驳回/.test(statusSource)
+      ? (/草稿|draft/.test(statusSource) ? 'draft' : 'off_sale')
+      : /on[_ -]?sale|selling|online|在售|售卖中|上架/.test(statusSource)
+        ? 'on_sale'
+        : ['1', '2'].includes(status) || item.is_online === 1 || item.is_online === true
+          ? 'on_sale'
+          : /草稿|draft/.test(statusSource) ? 'draft' : 'unknown'
     return {
       id: 'douyin:' + (shopId || 'unknown') + ':' + externalId,
       externalId,
       title: text(item.name || item.title || item.product_name) || '未命名商品',
       ...(text(item.description || item.desc) ? { description: text(item.description || item.desc) } : {}),
-      status: /on[_ -]?sale|selling|在售|上架/.test(status) || ['1', '2'].includes(status) ? 'on_sale' : /off[_ -]?sale|下架|停售/.test(status) || ['3', '4'].includes(status) ? 'off_sale' : /draft|草稿/.test(status) ? 'draft' : 'unknown',
+      status: normalizedStatus,
       ...(rawPrice !== undefined ? { price: { amount: rawPrice, currency: 'CNY' } } : {}),
       ...(number(item.stockQuantity ?? item.stock_num ?? item.stock) !== undefined ? { stockQuantity: number(item.stockQuantity ?? item.stock_num ?? item.stock) } : {}),
       images: imageValues.map((image) => typeof image === 'string' ? image : text(image?.url)).filter(Boolean),
       skus,
       ...(text(item.goodsUrl || item.product_url || item.detail_url) ? { url: text(item.goodsUrl || item.product_url || item.detail_url) } : {}),
       ...(time(item.updatedAt || item.update_time || item.modify_time) ? { updatedAt: time(item.updatedAt || item.update_time || item.modify_time) } : {}),
-      raw: { platformStatus: item.status || item.product_status },
+      raw: {
+        platformStatus: item.status ?? item.product_status,
+        platformTab: item.tab,
+        platformIsShow: item.is_show,
+        platformPutStatus: item.put_status,
+        authoritativeScope: 'is_online=1',
+      },
     }
   }
-  const cachedProducts = () => {
-    let cache
-    try { cache = JSON.parse(window.localStorage?.getItem('GOODS_SWR_CACHE_V1') || '{}') } catch (_) { return [] }
-    const result = []
-    const seen = new Set()
-    for (const [key, entry] of Object.entries(cache || {})) {
-      if (!/(?:product|goods).*?(?:list|search)|(?:list|search).*?(?:product|goods)/i.test(String(key))) continue
-      for (const raw of array(entry?.__value__?.data || entry?.value?.data || entry?.data)) {
-        const item = product(raw)
-        if (!item || seen.has(item.externalId)) continue
-        seen.add(item.externalId); result.push(item)
+  const PRODUCT_LIST_PATH = '/product/tproduct/list'
+  const PRODUCT_PAGE_SIZE = 100
+  const PRODUCT_QUERY = {
+    check_status: '',
+    group_id: '',
+    sku_type: '',
+    tab: 'all',
+    business_type: '4',
+    is_online: '1',
+    not_for_sale_search_type: '1',
+    from_mng: '1',
+    supply_status: '',
+    need_auto_rectify_info: 'true',
+    need_pay_no_stock_skus: 'false',
+    appid: '1',
+  }
+  const PRODUCT_HEADERS = {
+    accept: 'application/json, text/plain, */*',
+    'x-tt-from-appid': 'ffa-goods',
+    'x-tt-from-end': 'PC',
+    'x-tt-from-page': 'https://fxg.jinritemai.com/ffa/g/list',
+    'x-tt-from-version': '1.0.1.8537',
+  }
+  const productRows = (value) => {
+    if (Array.isArray(value)) return value
+    if (value && typeof value === 'object') return Object.values(value)
+    return []
+  }
+  const authoritativeOnSale = (raw) => {
+    const item = raw && typeof raw === 'object' ? raw : {}
+    const status = text(item.status ?? item.product_status).toLowerCase()
+    const statusText = text(item.tab || item.status_text || item.status_desc || item.put_status_text).toLowerCase()
+    if (/off[_ -]?sale|off.?line|下架|停售|已下架|审核驳回|草稿|draft/.test(status + ' ' + statusText)) return false
+    if (/on[_ -]?sale|selling|online|在售|售卖中|上架/.test(status + ' ' + statusText)) return true
+    return ['1', '2'].includes(status) || item.is_online === 1 || item.is_online === true
+  }
+  const productFailureCode = (response, payload) => {
+    const raw = text(payload?.code || payload?.status_code || payload?.statusCode || payload?.error_code)
+    const message = text(payload?.msg || payload?.message || payload?.status_msg || payload?.error)
+    const combined = raw + ' ' + message + ' ' + (response?.url || '')
+    return /captcha|challenge|verify|risk|验证码|滑块|安全验证/i.test(combined) ? 'CHALLENGE_REQUIRED' : ''
+  }
+  const fetchAuthoritativeProductPage = async (page, signal) => {
+    const query = new URLSearchParams({ ...PRODUCT_QUERY, page: String(page), pageSize: String(PRODUCT_PAGE_SIZE) })
+    const response = await fetch(PRODUCT_LIST_PATH + '?' + query.toString(), {
+      credentials: 'include',
+      headers: PRODUCT_HEADERS,
+      signal,
+    })
+    let payload
+    try { payload = await response.json() } catch (_) { throw new Error('商品官方接口返回了无效 JSON (page=' + page + ')') }
+    const challenge = productFailureCode(response, payload)
+    if (challenge) { const failure = new Error(text(payload?.msg || '抖店要求完成官方商品验证')); failure.code = challenge; throw failure }
+    if (!response.ok) throw new Error('商品官方接口请求失败 (HTTP ' + response.status + ', page=' + page + ')')
+    const code = payload?.code
+    if (code !== undefined && ![0, '0'].includes(code)) {
+      const failure = new Error(text(payload?.msg || payload?.message || ('商品官方接口返回 code=' + code)))
+      failure.code = /login|unauth|登录/i.test(failure.message) ? 'LOGIN_REQUIRED' : 'PLATFORM_ERROR'
+      throw failure
+    }
+    const rows = productRows(payload?.data)
+    const reportedTotal = number(payload?.total ?? payload?.data?.total)
+    const reportedSize = number(payload?.size ?? payload?.data?.size) || rows.length || PRODUCT_PAGE_SIZE
+    return { rows, total: reportedTotal, size: reportedSize, page: number(payload?.page) ?? page }
+  }
+  const authoritativeProducts = async () => {
+    if (typeof fetch !== 'function') return error('RUNTIME_NOT_READY', '商品官方请求能力不可用', true)
+    const controller = typeof AbortController === 'function' ? new AbortController() : undefined
+    const byId = new Map()
+    let page = 0
+    let expectedTotal
+    let effectivePageSize
+    try {
+      while (page < 1000) {
+        const result = await fetchAuthoritativeProductPage(page, controller?.signal)
+        if (expectedTotal === undefined && result.total !== undefined) expectedTotal = Math.max(0, result.total)
+        // A backend may cap pageSize without updating the echoed size. Infer
+        // that cap from a short non-final page so total-based pagination does
+        // not stop early or skip pages.
+        if (!effectivePageSize && result.rows.length > 0 && result.rows.length < result.size && expectedTotal !== undefined && expectedTotal > result.rows.length) effectivePageSize = result.rows.length
+        effectivePageSize ||= result.size
+        for (const raw of result.rows) {
+          if (!authoritativeOnSale(raw)) continue
+          const item = product(raw)
+          if (item) byId.set(item.externalId, item)
+        }
+        const fetched = (page + 1) * effectivePageSize
+        const reachedTotal = expectedTotal !== undefined && (fetched >= expectedTotal || byId.size >= expectedTotal)
+        if (result.rows.length === 0 && expectedTotal !== undefined && fetched < expectedTotal) throw new Error('商品官方接口分页提前结束 (page=' + page + ')')
+        // When total is provided it is authoritative. Some deployments cap
+        // pageSize silently while still echoing the requested size, so a
+        // short non-empty page must not be mistaken for the final page.
+        const reachedEnd = result.rows.length === 0 || (expectedTotal === undefined && result.rows.length < result.size)
+        if (reachedTotal || reachedEnd) break
+        page += 1
       }
+      if (page >= 1000) throw new Error('商品官方接口分页超过安全上限')
+      // The endpoint is scoped with is_online=1; every returned row is an
+      // authoritative current in-sale row. Never fall back to localStorage.
+      return { ok: true, data: [...byId.values()] }
+    } catch (caught) {
+      controller?.abort?.()
+      const code = caught?.code || ''
+      if (code === 'CHALLENGE_REQUIRED') return error('CHALLENGE_REQUIRED', String(caught?.message || '抖店要求完成官方商品验证'), true)
+      if (code === 'LOGIN_REQUIRED') return loginError()
+      return error('PLATFORM_ERROR', String(caught?.message || caught), true)
     }
-    return result
-  }
-  const waitForProducts = async (timeoutMs = 10000) => {
-    const deadline = Date.now() + timeoutMs
-    let result = cachedProducts()
-    while (!result.length && PAGE === 'products' && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 250))
-      result = cachedProducts()
-    }
-    return result
   }
   const message = (raw, context = {}) => {
     const item = raw?.message || raw?.data || raw?.payload || raw
@@ -1825,8 +1928,15 @@ const douyinHookRuntimeScript = String.raw`(() => {
           } finally { bitmap.close?.(); URL.revokeObjectURL(uri) }
         }
         case 'conversation.attention.set': return setConversationAttention(input)
-        case 'products.list': return { ok: true, data: await waitForProducts() }
-        case 'products.detail': { const id = text(input.id || input.externalId); if (!id) return error('INVALID_INPUT', '商品 id 必填'); const found = (await waitForProducts()).find((item) => item.externalId === id || item.id === id); return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到商品: ' + id) }
+        case 'products.list': return authoritativeProducts()
+        case 'products.detail': {
+          const id = text(input.id || input.externalId)
+          if (!id) return error('INVALID_INPUT', '商品 id 必填')
+          const listed = await authoritativeProducts()
+          if (!listed.ok) return listed
+          const found = listed.data.find((item) => item.externalId === id || item.id === id)
+          return found ? { ok: true, data: found } : error('INVALID_INPUT', '未找到当前在售商品: ' + id)
+        }
         case 'orders.list': { const result = await orders(text(input.conversationId), text(input.orderId || input.externalId)); return { ok: true, data: result } }
         case 'orders.listen': {
           const conversationId = text(input.conversationId)

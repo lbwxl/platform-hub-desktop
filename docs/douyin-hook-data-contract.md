@@ -321,7 +321,7 @@ await runtime.invoke('products.detail', { id: 'product-external-id' })
 // HookResult<HookProduct>
 ```
 
-商品列表语义是当前店铺在售商品；数据来自官方商品页已加载的 `GOODS_SWR_CACHE_V1` 状态。商品 worker 按需创建，不应由业务方长期为每个店铺保持多个页面。详情不存在时返回 `INVALID_INPUT`。
+商品列表语义是当前店铺在售商品；每次调用都在同一个 Electron 商品 WebContents 的认证上下文中请求官方 `/product/tproduct/list`，使用明确的在售条件 `tab=all`、`business_type=4`、`is_online=1`、`not_for_sale_search_type=1`、`from_mng=1`，并按官方响应的 `tab/status` 排除 `审核驳回`、下架、草稿等非在售行，再按 `page` / `pageSize` 读取到 `total` 完成。响应中的商品按 `externalId` 去重，状态、标题、价格等字段均来自本次官方响应。`GOODS_SWR_CACHE_V1` 不是 products.list 数据源，只能用于诊断或启动探索。任一分页失败或触发 `CHALLENGE_REQUIRED` 时，整个操作失败，不返回 partial list；详情也基于本次权威列表查询，不能回退到旧缓存。商品 worker 按需创建，不应由业务方长期为每个店铺保持多个页面。详情不存在时返回 `INVALID_INPUT`。
 
 ## 8. 订单
 

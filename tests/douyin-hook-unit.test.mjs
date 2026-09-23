@@ -83,6 +83,8 @@ test('Douyin products normalize price, inventory, images and SKUs', () => {
   assert.equal(product.id, 'douyin:shop-1:goods-1')
   assert.equal(product.externalId, 'goods-1')
   assert.equal(product.status, 'on_sale')
+  assert.equal(normalizeDouyinProduct({ product_id: 'goods-2', name: '售罄商品', status: 0, tab: '售卖中 (已售罄)' }).status, 'on_sale')
+  assert.equal(normalizeDouyinProduct({ product_id: 'goods-3', name: '驳回商品', status: 0, tab: '审核驳回' }).status, 'off_sale')
   assert.deepEqual(product.price, { amount: 19.9, currency: 'CNY' })
   assert.equal(product.stockQuantity, 8)
   assert.deepEqual(product.images, ['https://example.test/goods.png'])

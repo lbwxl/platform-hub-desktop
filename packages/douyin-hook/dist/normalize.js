@@ -95,7 +95,7 @@ export function normalizeDouyinProduct(value, fallbackShopId = '') {
         externalId,
         title: text(item.name ?? item.title ?? item.product_name) || '未命名商品',
         ...(text(item.description ?? item.desc) ? { description: text(item.description ?? item.desc) } : {}),
-        status: normalizeDouyinProductStatus(item.status ?? item.product_status),
+        status: normalizeDouyinProductStatus(item),
         ...(price !== undefined ? { price: { amount: price, currency: 'CNY' } } : {}),
         ...(finiteNumber(item.stockQuantity ?? item.stock_num ?? item.stock) !== undefined ? { stockQuantity: finiteNumber(item.stockQuantity ?? item.stock_num ?? item.stock) } : {}),
         images,
@@ -106,14 +106,17 @@ export function normalizeDouyinProduct(value, fallbackShopId = '') {
     };
 }
 export function normalizeDouyinProductStatus(value) {
-    const status = text(value).toLowerCase();
-    if (!status)
+    const raw = asRecord(value);
+    const status = text(raw.status ?? raw.product_status ?? value).toLowerCase();
+    const statusText = text(raw.tab ?? raw.status_text ?? raw.status_desc ?? raw.put_status_text).toLowerCase();
+    const source = `${status} ${statusText}`;
+    if (!status && !statusText)
         return 'unknown';
-    if (/on[_ -]?sale|selling|在售|售卖中|上架/.test(status) || ['1', '2'].includes(status))
-        return 'on_sale';
-    if (/off[_ -]?sale|下架|已下架|停售/.test(status) || ['3', '4'].includes(status))
+    if (/off[_ -]?sale|off.?line|下架|已下架|停售|审核驳回/.test(source) || ['3', '4'].includes(status))
         return 'off_sale';
-    if (/draft|草稿/.test(status))
+    if (/on[_ -]?sale|selling|online|在售|售卖中|上架/.test(source) || ['1', '2'].includes(status) || raw.is_online === 1 || raw.is_online === true)
+        return 'on_sale';
+    if (/draft|草稿/.test(source))
         return 'draft';
     return 'unknown';
 }
