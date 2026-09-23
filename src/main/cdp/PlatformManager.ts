@@ -42,12 +42,24 @@ export class PlatformManager {
 
   async attachMainWindow(window: BrowserWindow): Promise<void> {
     this.hostWindow = window
-    for (const account of this.state.accounts) this.ensureSession(account.id)
+    for (const account of this.state.accounts) {
+      const existing = this.sessions.get(account.id)
+      if (existing) existing.bindHostWindow(window)
+      else this.ensureSession(account.id)
+    }
     for (const account of this.state.accounts.filter((item) => item.online)) {
       await this.setAccountOnline(account.id, true).catch((error) => {
         account.runtimeState = 'error'
         console.error(`[platform-hub] 恢复店铺 Runtime 失败: ${account.id}`, error)
       })
+    }
+    if (this.activeAccountId) {
+      this.detachPrimaryViewsExcept(this.activeAccountId)
+      const active = this.sessions.get(this.activeAccountId)
+      if (active?.hasPrimaryView()) {
+        active.attachPrimaryView()
+        if (this.primaryViewportBounds) active.setPrimaryBounds(this.primaryViewportBounds)
+      }
     }
   }
 
@@ -97,10 +109,13 @@ export class PlatformManager {
 
   async open(accountId: string): Promise<PlatformAccount> {
     const account = this.requireAccount(accountId)
+    const previousAccountId = this.activeAccountId
+    if (previousAccountId && previousAccountId !== accountId) this.sessions.get(previousAccountId)?.detachPrimaryView()
     const cdp = this.ensureSession(accountId)
     this.activeAccountId = accountId
-    for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage()
-    await cdp.open(true)
+    this.detachPrimaryViewsExcept(accountId)
+    await cdp.open(false)
+    cdp.attachPrimaryView()
     if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
     account.connected = true
     account.webContentsId = cdp.getWebContentsId()
@@ -120,19 +135,21 @@ export class PlatformManager {
   async disconnect(accountId: string): Promise<void> { await this.shopRuntimes.stop(accountId).catch(() => undefined); this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); const account = this.requireAccount(accountId); account.connected = false; account.webContentsId = undefined; account.online = false; account.runtimeState = 'stopped'; account.messageListening = false; await this.save() }
   async setAccountOnline(accountId: string, online: boolean): Promise<PlatformAccount> {
     const account = this.requireAccount(accountId)
-    const active = this.activeAccountId === accountId
     let cdp = this.sessions.get(accountId)
     if (online && (!cdp || !cdp.getStatus().connected)) {
       // Going online is a background lifecycle operation. It may create the
       // account's primary WebContentsView, but must never change the UI's
       // active account or reveal an inactive shop's page.
       cdp = this.ensureSession(accountId)
-      await cdp.open(active)
+      await cdp.open(false)
       account.connected = true
       account.webContentsId = cdp.getWebContentsId()
-      if (active && this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
     }
     if (!cdp) throw new Error('请先打开平台页面')
+    if (this.activeAccountId === accountId) {
+      cdp.attachPrimaryView()
+      if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
+    }
     if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
     account.online = online
     try {
@@ -222,6 +239,11 @@ export class PlatformManager {
     this.sessions.set(accountId, cdp)
     this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
     return cdp
+  }
+  private detachPrimaryViewsExcept(accountId: string): void {
+    for (const [id, session] of this.sessions) {
+      if (id !== accountId && session.isPrimaryViewAttached()) session.detachPrimaryView()
+    }
   }
   private async invoke<T>(accountId: string, method: string, ...args: unknown[]): Promise<T> { const cdp = this.sessions.get(accountId); if (!cdp) throw new Error('请先打开平台页面'); return cdp.invoke<T>(method, ...args) }
   private async withLogin<T>(accountId: string, method: string, ...args: unknown[]): Promise<T> {

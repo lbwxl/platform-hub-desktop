@@ -15040,71 +15040,77 @@ function PlatformViewport(props) {
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "capability-strip", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "消息", value: `${props.sessions.length} 个会话`, ready }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "商品", value: `${props.products.length} 件已采集`, ready }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "订单", value: "实时监听", ready }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 17 }), label: "执行模型", value: executionHost, ready: Boolean(props.account.connected) })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "workspace-panels", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card platform-frame", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "官方消息工作台" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "当前店铺的 primary WebContents 使用该店铺独立 Electron partition。" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "frame-pill", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
-            ready ? "已连接" : "未登录"
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: viewportRef, className: "platform-frame-body", "aria-label": `${props.account.label} 官方消息工作台` })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card event-card", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "实时事件" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "来自当前店铺的 Hook 事件流" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "event-count", children: props.events.length })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-stream", children: [
-          props.events.slice(0, 8).map((event) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-item", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `event-badge ${event.type}`, children: event.type }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.eventSummary(event) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: new Date(event.timestamp).toLocaleTimeString() })
-            ] })
-          ] }, event.id)),
-          !props.events.length && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-empty", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Clock3, { size: 22 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "等待平台事件…" })
-          ] })
-        ] })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCenter, { account: props.account, platform: props.platform, status: props.status, sessions: props.sessions, selectedSessionId: props.selectedSessionId, messages: props.messages, messageDraft: props.messageDraft, messageListening: props.messageListening, products: props.products, orderListening: props.orderListening, orderWatermark: props.orderWatermark, handoffTargets: props.handoffTargets, selectedHandoffTarget: props.selectedHandoffTarget, events: props.events, busy: props.busy, onSelectSession: props.onSelectSession, onMessageDraftChange: props.onMessageDraftChange, onStartMessages: props.onStartMessages, onRefreshSessions: props.onRefreshSessions, onSendMessage: props.onSendMessage, onCollectProducts: props.onCollectProducts, onStartOrders: props.onStartOrders, onLoadHandoffTargets: props.onLoadHandoffTargets, onSelectHandoffTarget: props.onSelectHandoffTarget, onTransfer: props.onTransfer }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card hook-card", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "official-workspace", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card platform-frame", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "平台能力" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-            props.platform?.label || props.account.platform,
-            " 适配器按 manifest 声明能力，网页 / 原生 / 服务执行模型均可复用"
-          ] })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "官方消息工作台" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "当前店铺的 primary WebContents 使用该店铺独立 Electron partition。" })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "outline-button", onClick: props.onRefreshSessions, disabled: props.busy === "sessions", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14 }),
-          "刷新会话"
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "frame-pill", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
+          ready ? "已连接" : "未登录"
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "hook-grid", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 17 }), label: "auth.state", enabled: ready }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "messages.listen", enabled: ready && supports("messages.listen") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "products.list", enabled: ready && supports("products.collect") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "orders.listen", enabled: ready && supports("orders.listen") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings2, { size: 17 }), label: "handoff.transfer", enabled: ready && supports("session.transfer") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 17 }), label: "runtime.events", enabled: Boolean(props.account.connected) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: viewportRef, className: "platform-frame-body", "aria-label": `${props.account.label} 官方消息工作台` })
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("details", { className: "developer-drawer", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("summary", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "开发者 / 真人验收工具" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "默认不占用官方客服工作台空间" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "developer-drawer-content", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "capability-strip", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "消息", value: `${props.sessions.length} 个会话`, ready }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "商品", value: `${props.products.length} 件已采集`, ready }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "订单", value: "实时监听", ready }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Capability, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 17 }), label: "执行模型", value: executionHost, ready: Boolean(props.account.connected) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card event-card", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "实时事件" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "来自当前店铺的 Hook 事件流" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "event-count", children: props.events.length })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-stream", children: [
+            props.events.slice(0, 8).map((event) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-item", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `event-badge ${event.type}`, children: event.type }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.eventSummary(event) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: new Date(event.timestamp).toLocaleTimeString() })
+              ] })
+            ] }, event.id)),
+            !props.events.length && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "event-empty", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Clock3, { size: 22 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "等待平台事件…" })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AcceptanceCenter, { account: props.account, platform: props.platform, status: props.status, sessions: props.sessions, selectedSessionId: props.selectedSessionId, messages: props.messages, messageDraft: props.messageDraft, messageListening: props.messageListening, products: props.products, orderListening: props.orderListening, orderWatermark: props.orderWatermark, handoffTargets: props.handoffTargets, selectedHandoffTarget: props.selectedHandoffTarget, events: props.events, busy: props.busy, onSelectSession: props.onSelectSession, onMessageDraftChange: props.onMessageDraftChange, onStartMessages: props.onStartMessages, onRefreshSessions: props.onRefreshSessions, onSendMessage: props.onSendMessage, onCollectProducts: props.onCollectProducts, onStartOrders: props.onStartOrders, onLoadHandoffTargets: props.onLoadHandoffTargets, onSelectHandoffTarget: props.onSelectHandoffTarget, onTransfer: props.onTransfer }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card hook-card", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "平台能力" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                props.platform?.label || props.account.platform,
+                " 适配器按 manifest 声明能力，网页 / 原生 / 服务执行模型均可复用"
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "outline-button", onClick: props.onRefreshSessions, disabled: props.busy === "sessions", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14 }),
+              "刷新会话"
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "hook-grid", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 17 }), label: "auth.state", enabled: ready }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), label: "messages.listen", enabled: ready && supports("messages.listen") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Boxes, { size: 17 }), label: "products.list", enabled: ready && supports("products.collect") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), label: "orders.listen", enabled: ready && supports("orders.listen") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings2, { size: 17 }), label: "handoff.transfer", enabled: ready && supports("session.transfer") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HookItem, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 17 }), label: "runtime.events", enabled: Boolean(props.account.connected) })
+          ] })
+        ] })
       ] })
     ] })
   ] });

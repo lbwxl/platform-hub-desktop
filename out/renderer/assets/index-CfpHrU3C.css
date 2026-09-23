@@ -6,7 +6,8 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1100px; }
+html, body, #root { height: 100%; }
+body { margin: 0; min-width: 1100px; overflow: hidden; }
 button, input, textarea, select { font: inherit; }
 button { border: 0; cursor: pointer; color: inherit; }
 .app-shell { min-height: 100vh; }
@@ -227,8 +228,8 @@ button { border: 0; cursor: pointer; color: inherit; }
    without changing the store navigation model. */
 :root { color: #26344d; background: #f5f7fb; }
 body { min-width: 980px; background: #f5f7fb; }
-.app-shell { min-height: 100vh; background: #f5f7fb; }
-.app-topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; background: rgba(255,255,255,.95); border-bottom: 1px solid #e7ebf2; }
+.app-shell { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: #f5f7fb; }
+.app-topbar { height: 72px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; background: rgba(255,255,255,.95); border-bottom: 1px solid #e7ebf2; }
 .topbar-title, .topbar-actions, .sidebar-brand, .sidebar-heading, .breadcrumb, .runtime-status, .capability, .card-title, .frame-hero, .frame-stat, .hook-item, .sidebar-footer { display: flex; align-items: center; }
 .topbar-title { gap: 11px; }
 .topbar-mark { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; color: #fff; background: linear-gradient(145deg, #4f7cff, #3159d7); box-shadow: 0 7px 16px #4c70e63d; }
@@ -243,8 +244,8 @@ body { min-width: 980px; background: #f5f7fb; }
 .topbar-button { padding: 8px 12px; font-size: 12px; }
 .topbar-icon { width: 34px; height: 34px; justify-content: center; padding: 0; }
 .topbar-button:hover, .topbar-icon:hover, .outline-button:hover { background: #f7f9fd; }
-.app-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr) 225px; min-height: calc(100vh - 72px); }
-.store-sidebar { display: flex; flex-direction: column; gap: 0; padding: 28px 18px 20px; background: #fff; border-right: 1px solid #e4e9f1; }
+.app-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr) 250px; flex: 1; min-height: 0; overflow: hidden; }
+.store-sidebar { display: flex; flex-direction: column; gap: 0; min-height: 0; overflow: hidden; padding: 28px 18px 20px; background: #fff; border-right: 1px solid #e4e9f1; }
 .sidebar-brand { gap: 10px; padding: 0 9px 28px; }
 .sidebar-brand-mark { width: 33px; height: 33px; display: grid; place-items: center; color: #3d68e3; border-radius: 9px; background: #edf2ff; }
 .sidebar-brand strong, .sidebar-brand small { display: block; }
@@ -276,8 +277,8 @@ body { min-width: 980px; background: #f5f7fb; }
 .store-empty span { max-width: 180px; font-size: 10px; line-height: 1.6; }
 .import-button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; margin-top: 16px; color: #63718a; border: 1px dashed #d9e0eb; border-radius: 8px; background: #fff; font-size: 11px; }
 .sidebar-footer { gap: 6px; padding: 18px 8px 0; color: #abb4c1; font-size: 10px; }
-.platform-viewport { min-width: 0; padding: 31px 38px 42px; }
-.runtime-side-panel { padding: 22px 16px; border-left: 1px solid #e7ebf2; background: #fff; }
+.platform-viewport { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 24px 28px 20px; }
+.runtime-side-panel { min-height: 0; overflow: auto; padding: 22px 16px; border-left: 1px solid #e7ebf2; background: #fff; }
 .empty-runtime-panel { background: transparent; }
 .runtime-side-heading, .runtime-side-account, .runtime-status-row, .runtime-metric { display: flex; align-items: center; }
 .runtime-side-heading { justify-content: space-between; margin-bottom: 22px; }
@@ -333,14 +334,16 @@ body { min-width: 980px; background: #f5f7fb; }
 .capability small, .capability strong { display: block; }
 .capability small { color: #a0aaba; font-size: 10px; }
 .capability strong { margin-top: 4px; color: #4c5b73; font-size: 12px; font-weight: 600; }
-.workspace-panels { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(290px, .65fr); gap: 16px; margin-top: 17px; }
+.official-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; margin-top: 16px; }
+.workspace-panels { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 16px; margin-top: 17px; }
 .workspace-card { border: 1px solid #e4e9f1; border-radius: 11px; background: #fff; box-shadow: 0 8px 24px #243c6709; }
 .card-title { justify-content: space-between; gap: 12px; padding: 15px 18px; border-bottom: 1px solid #eef1f5; }
 .card-title strong, .card-title span { display: block; }
 .card-title strong { color: #43516a; font-size: 13px; }
 .card-title span { margin-top: 4px; color: #a0aaba; font-size: 10px; }
 .frame-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; color: #4a8e72; border-radius: 20px; background: #effaf4; font-size: 10px !important; }
-.platform-frame-body { height: clamp(380px, 58vh, 640px); min-height: 380px; padding: 0; background: #fff; }
+.platform-frame { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.platform-frame-body { width: 100%; flex: 1; min-height: 0; height: auto; padding: 0; overflow: hidden; background: #fff; }
 .platform-workbench { display: inline-flex; width: 100%; height: 430px; border: 0; background: #fff; }
 .frame-hero { gap: 14px; max-width: 600px; padding: 19px; border: 1px solid #e6ebf5; border-radius: 10px; background: #fff; }
 .frame-logo { width: 46px; height: 46px; display: grid; place-items: center; color: #fff; border-radius: 12px; background: linear-gradient(145deg, #557ff1, #385fd2); font-size: 20px; font-weight: 700; }
@@ -361,6 +364,17 @@ body { min-width: 980px; background: #f5f7fb; }
 .event-item strong { overflow: hidden; color: #68758a; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 500; }
 .event-item small { margin-top: 4px; color: #adb5c0; font-size: 9px; }
 .event-empty { min-height: 245px; display: grid; place-items: center; align-content: center; gap: 8px; color: #adb6c3; font-size: 11px; }
+.developer-drawer { flex: none; min-width: 0; margin-top: 12px; border: 1px solid #e4e9f1; border-radius: 9px; background: #fff; box-shadow: 0 5px 16px #243c6708; }
+.developer-drawer > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 13px; color: #5f6f89; cursor: pointer; list-style: none; font-size: 11px; }
+.developer-drawer > summary::-webkit-details-marker { display: none; }
+.developer-drawer > summary::before { content: '⌄'; width: 14px; color: #6c83c8; font-size: 14px; }
+.developer-drawer[open] > summary::before { content: '⌃'; }
+.developer-drawer > summary small { margin-left: auto; color: #a4afbd; font-size: 9px; }
+.developer-drawer-content { max-height: 40vh; overflow: auto; padding: 0 12px 12px; border-top: 1px solid #eef1f5; }
+.developer-drawer-content .capability-strip { margin-top: 12px; }
+.developer-drawer-content .event-card { margin-top: 12px; }
+.developer-drawer-content .acceptance-center { margin-top: 12px; }
+.developer-drawer-content .hook-card { margin-top: 12px; }
 .hook-card { margin-top: 16px; }
 .outline-button { padding: 7px 10px; color: #5d729e; font-size: 10px; }
 .hook-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 15px 18px 18px; }
@@ -439,4 +453,4 @@ body { min-width: 980px; background: #f5f7fb; }
 .acceptance-blocked { display: flex; align-items: center; gap: 7px; padding: 12px 18px 15px; color: #a37a43; border-top: 1px solid #eef1f5; background: #fffaf0; font-size: 10px; }
 .toast { z-index: 10; }
 @media (max-width: 1280px) { .acceptance-grid { grid-template-columns: 1fr; } }
-@media (max-width: 1280px) { .app-layout { grid-template-columns: 250px minmax(0, 1fr) 205px; } .platform-viewport { padding: 26px 25px; } .capability-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hook-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1280px) { .app-layout { grid-template-columns: 250px minmax(0, 1fr) 220px; } .platform-viewport { padding: 20px 22px 16px; } .capability-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hook-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -25,8 +25,9 @@ export interface CdpSessionOptions {
 }
 
 export class CdpSession extends EventEmitter {
-  private readonly window: BrowserWindow
+  private window: BrowserWindow
   private primaryView: WebContentsView | null = null
+  private primaryAttached = false
   private contents: WebContents | null = null
   private readonly runtimeWindows = new Map<string, BrowserWindow>()
   private readonly runtimeWindowIdleTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -45,10 +46,18 @@ export class CdpSession extends EventEmitter {
     this.window = options.hostWindow
   }
 
-  async open(show = true): Promise<void> {
+  async open(_show = true): Promise<void> {
     if (this.destroyed) throw new Error('CDP 会话已销毁')
+    if (this.primaryView?.webContents.isDestroyed()) {
+      // A renderer crash can destroy WebContents while leaving the wrapper
+      // object around. Do not reuse the stale View or its polling generation.
+      this.detachPrimaryView()
+      this.primaryView = null
+      this.contents = null
+      this.connected = false
+      this.stopRuntimePolling()
+    }
     if (this.primaryView && !this.primaryView.webContents.isDestroyed()) {
-      this.primaryView.setVisible(show)
       if (this.opening) await this.opening
       return
     }
@@ -62,8 +71,8 @@ export class CdpSession extends EventEmitter {
         backgroundThrottling: false,
       },
     })
-    this.primaryView.setVisible(show)
-    this.window.contentView.addChildView(this.primaryView)
+    this.primaryAttached = false
+    this.primaryView.setVisible(false)
     this.contents = this.primaryView.webContents
     this.contents.setWindowOpenHandler(({ url }) => {
       if (this.isLoginUrl(url)) {
@@ -106,7 +115,7 @@ export class CdpSession extends EventEmitter {
       const authenticated = result?.authenticated === true || result?.isLogin === true || result?.loggedIn === true || Boolean(result?.shopId || result?.userId)
       if (!route) this.markAuthenticated(authenticated)
       if (authenticated) {
-        if (!route) await this.ensurePrimaryRuntimePage(true)
+        if (!route) await this.ensurePrimaryRuntimePage()
         return
       }
       await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -127,22 +136,50 @@ export class CdpSession extends EventEmitter {
     }
   }
 
-  showPrimaryPage(): void {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(true)
+  bindHostWindow(window: BrowserWindow): void {
+    if (this.window === window) return
+    this.detachPrimaryView()
+    this.window = window
   }
 
-  hidePrimaryPage(): void {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(false)
+  hasPrimaryView(): boolean {
+    return Boolean(this.primaryView && !this.primaryView.webContents.isDestroyed())
+  }
+
+  isPrimaryViewAttached(): boolean {
+    return this.primaryAttached && this.hasPrimaryView()
+  }
+
+  attachPrimaryView(): void {
+    if (this.destroyed) throw new Error('CDP 会话已销毁')
+    const view = this.primaryView
+    if (!view || view.webContents.isDestroyed()) throw new Error('主页面尚未创建，请先打开平台页面')
+    if (this.window.isDestroyed()) throw new Error('主工作台窗口已销毁')
+    if (this.primaryAttached) return
+    this.window.contentView.addChildView(view)
+    this.primaryAttached = true
+    view.setVisible(true)
+  }
+
+  detachPrimaryView(): void {
+    const view = this.primaryView
+    if (!view) {
+      this.primaryAttached = false
+      return
+    }
+    if (this.primaryAttached && !this.window.isDestroyed()) this.window.contentView.removeChildView(view)
+    this.primaryAttached = false
+    if (!view.webContents.isDestroyed()) view.setVisible(false)
   }
 
   setPrimaryBounds(bounds: { x: number; y: number; width: number; height: number }): void {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds)
+    if (this.primaryAttached && this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds)
   }
 
   async showRuntimePageFor(method: string): Promise<void> {
     const route = this.routeForMethod(method)
     if (!route) {
-      await this.ensurePrimaryRuntimePage(true)
+      await this.ensurePrimaryRuntimePage()
       return
     }
     await this.openRuntimePage(route)
@@ -170,7 +207,7 @@ export class CdpSession extends EventEmitter {
     const state = await this.invoke<Record<string, unknown>>('getAuthState').catch(() => null)
     const authenticated = state?.authenticated === true || state?.isLogin === true || state?.loggedIn === true || Boolean(state?.shopId || state?.userId)
     this.markAuthenticated(authenticated)
-    if (authenticated) await this.ensurePrimaryRuntimePage(false)
+    if (authenticated) await this.ensurePrimaryRuntimePage()
     return this.getStatus()
   }
 
@@ -185,9 +222,10 @@ export class CdpSession extends EventEmitter {
     this.stopRuntimePolling()
     this.closeRuntimeWindows()
     if (this.primaryView) {
-      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(this.primaryView)
+      this.detachPrimaryView()
       if (!this.primaryView.webContents.isDestroyed()) this.primaryView.webContents.close()
     }
+    this.primaryAttached = false
     this.primaryView = null
     this.contents = null
     this.removeAllListeners()
@@ -257,7 +295,7 @@ export class CdpSession extends EventEmitter {
     const authenticated = record.authenticated === true || record.isLogin === true || record.loggedIn === true || Boolean(record.shopId || record.userId)
     if (authenticated === this.authenticated) return
     this.markAuthenticated(authenticated)
-    if (authenticated) void this.ensurePrimaryRuntimePage(true).catch((error) => this.emitError(`进入消息接待页失败: ${String(error)}`))
+    if (authenticated) void this.ensurePrimaryRuntimePage().catch((error) => this.emitError(`进入消息接待页失败: ${String(error)}`))
   }
 
   private emitRuntimeEvent(item: { type: string; payload: unknown; timestamp?: number }): void {
@@ -275,11 +313,10 @@ export class CdpSession extends EventEmitter {
     return this.options.hook.runtimePages?.find((page) => page.methods.includes(method))
   }
 
-  private async ensurePrimaryRuntimePage(show: boolean): Promise<void> {
+  private async ensurePrimaryRuntimePage(): Promise<void> {
     if (this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
       throw new Error('页面尚未连接，请先打开平台页面')
     }
-    if (show) this.showPrimaryPage()
     if (this.sameRuntimePage(this.contents.getURL(), this.options.hook.url)) return
     if (this.primaryNavigation) return this.primaryNavigation
 

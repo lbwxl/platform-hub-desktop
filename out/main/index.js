@@ -22,6 +22,7 @@ class CdpSession extends EventEmitter {
   options;
   window;
   primaryView = null;
+  primaryAttached = false;
   contents = null;
   runtimeWindows = /* @__PURE__ */ new Map();
   runtimeWindowIdleTimers = /* @__PURE__ */ new Map();
@@ -34,10 +35,16 @@ class CdpSession extends EventEmitter {
   pollInFlight = false;
   pollGeneration = 0;
   lastAuthPollAt = 0;
-  async open(show = true) {
+  async open(_show = true) {
     if (this.destroyed) throw new Error("CDP 会话已销毁");
+    if (this.primaryView?.webContents.isDestroyed()) {
+      this.detachPrimaryView();
+      this.primaryView = null;
+      this.contents = null;
+      this.connected = false;
+      this.stopRuntimePolling();
+    }
     if (this.primaryView && !this.primaryView.webContents.isDestroyed()) {
-      this.primaryView.setVisible(show);
       if (this.opening) await this.opening;
       return;
     }
@@ -51,8 +58,8 @@ class CdpSession extends EventEmitter {
         backgroundThrottling: false
       }
     });
-    this.primaryView.setVisible(show);
-    this.window.contentView.addChildView(this.primaryView);
+    this.primaryAttached = false;
+    this.primaryView.setVisible(false);
     this.contents = this.primaryView.webContents;
     this.contents.setWindowOpenHandler(({ url }) => {
       if (this.isLoginUrl(url)) {
@@ -97,7 +104,7 @@ class CdpSession extends EventEmitter {
       const authenticated = result?.authenticated === true || result?.isLogin === true || result?.loggedIn === true || Boolean(result?.shopId || result?.userId);
       if (!route) this.markAuthenticated(authenticated);
       if (authenticated) {
-        if (!route) await this.ensurePrimaryRuntimePage(true);
+        if (!route) await this.ensurePrimaryRuntimePage();
         return;
       }
       await new Promise((resolve2) => setTimeout(resolve2, 1e3));
@@ -116,19 +123,44 @@ class CdpSession extends EventEmitter {
       if (route && !route.persistent) this.scheduleRuntimeWindowClose(route.id);
     }
   }
-  showPrimaryPage() {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(true);
+  bindHostWindow(window) {
+    if (this.window === window) return;
+    this.detachPrimaryView();
+    this.window = window;
   }
-  hidePrimaryPage() {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setVisible(false);
+  hasPrimaryView() {
+    return Boolean(this.primaryView && !this.primaryView.webContents.isDestroyed());
+  }
+  isPrimaryViewAttached() {
+    return this.primaryAttached && this.hasPrimaryView();
+  }
+  attachPrimaryView() {
+    if (this.destroyed) throw new Error("CDP 会话已销毁");
+    const view = this.primaryView;
+    if (!view || view.webContents.isDestroyed()) throw new Error("主页面尚未创建，请先打开平台页面");
+    if (this.window.isDestroyed()) throw new Error("主工作台窗口已销毁");
+    if (this.primaryAttached) return;
+    this.window.contentView.addChildView(view);
+    this.primaryAttached = true;
+    view.setVisible(true);
+  }
+  detachPrimaryView() {
+    const view = this.primaryView;
+    if (!view) {
+      this.primaryAttached = false;
+      return;
+    }
+    if (this.primaryAttached && !this.window.isDestroyed()) this.window.contentView.removeChildView(view);
+    this.primaryAttached = false;
+    if (!view.webContents.isDestroyed()) view.setVisible(false);
   }
   setPrimaryBounds(bounds) {
-    if (this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds);
+    if (this.primaryAttached && this.primaryView && !this.primaryView.webContents.isDestroyed()) this.primaryView.setBounds(bounds);
   }
   async showRuntimePageFor(method) {
     const route = this.routeForMethod(method);
     if (!route) {
-      await this.ensurePrimaryRuntimePage(true);
+      await this.ensurePrimaryRuntimePage();
       return;
     }
     await this.openRuntimePage(route);
@@ -153,7 +185,7 @@ class CdpSession extends EventEmitter {
     const state = await this.invoke("getAuthState").catch(() => null);
     const authenticated = state?.authenticated === true || state?.isLogin === true || state?.loggedIn === true || Boolean(state?.shopId || state?.userId);
     this.markAuthenticated(authenticated);
-    if (authenticated) await this.ensurePrimaryRuntimePage(false);
+    if (authenticated) await this.ensurePrimaryRuntimePage();
     return this.getStatus();
   }
   markAuthenticated(value) {
@@ -166,9 +198,10 @@ class CdpSession extends EventEmitter {
     this.stopRuntimePolling();
     this.closeRuntimeWindows();
     if (this.primaryView) {
-      if (!this.window.isDestroyed()) this.window.contentView.removeChildView(this.primaryView);
+      this.detachPrimaryView();
       if (!this.primaryView.webContents.isDestroyed()) this.primaryView.webContents.close();
     }
+    this.primaryAttached = false;
     this.primaryView = null;
     this.contents = null;
     this.removeAllListeners();
@@ -238,7 +271,7 @@ class CdpSession extends EventEmitter {
     const authenticated = record.authenticated === true || record.isLogin === true || record.loggedIn === true || Boolean(record.shopId || record.userId);
     if (authenticated === this.authenticated) return;
     this.markAuthenticated(authenticated);
-    if (authenticated) void this.ensurePrimaryRuntimePage(true).catch((error) => this.emitError(`进入消息接待页失败: ${String(error)}`));
+    if (authenticated) void this.ensurePrimaryRuntimePage().catch((error) => this.emitError(`进入消息接待页失败: ${String(error)}`));
   }
   emitRuntimeEvent(item) {
     this.options.emit({
@@ -253,11 +286,10 @@ class CdpSession extends EventEmitter {
   routeForMethod(method) {
     return this.options.hook.runtimePages?.find((page) => page.methods.includes(method));
   }
-  async ensurePrimaryRuntimePage(show) {
+  async ensurePrimaryRuntimePage() {
     if (this.window.isDestroyed() || !this.contents || this.contents.isDestroyed()) {
       throw new Error("页面尚未连接，请先打开平台页面");
     }
-    if (show) this.showPrimaryPage();
     if (this.sameRuntimePage(this.contents.getURL(), this.options.hook.url)) return;
     if (this.primaryNavigation) return this.primaryNavigation;
     const navigation = (async () => {
@@ -2295,12 +2327,24 @@ class PlatformManager {
   }
   async attachMainWindow(window) {
     this.hostWindow = window;
-    for (const account of this.state.accounts) this.ensureSession(account.id);
+    for (const account of this.state.accounts) {
+      const existing = this.sessions.get(account.id);
+      if (existing) existing.bindHostWindow(window);
+      else this.ensureSession(account.id);
+    }
     for (const account of this.state.accounts.filter((item) => item.online)) {
       await this.setAccountOnline(account.id, true).catch((error) => {
         account.runtimeState = "error";
         console.error(`[platform-hub] 恢复店铺 Runtime 失败: ${account.id}`, error);
       });
+    }
+    if (this.activeAccountId) {
+      this.detachPrimaryViewsExcept(this.activeAccountId);
+      const active = this.sessions.get(this.activeAccountId);
+      if (active?.hasPrimaryView()) {
+        active.attachPrimaryView();
+        if (this.primaryViewportBounds) active.setPrimaryBounds(this.primaryViewportBounds);
+      }
     }
   }
   listPlatforms() {
@@ -2358,10 +2402,13 @@ class PlatformManager {
   }
   async open(accountId) {
     const account = this.requireAccount(accountId);
+    const previousAccountId = this.activeAccountId;
+    if (previousAccountId && previousAccountId !== accountId) this.sessions.get(previousAccountId)?.detachPrimaryView();
     const cdp = this.ensureSession(accountId);
     this.activeAccountId = accountId;
-    for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage();
-    await cdp.open(true);
+    this.detachPrimaryViewsExcept(accountId);
+    await cdp.open(false);
+    cdp.attachPrimaryView();
     if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
     account.connected = true;
     account.webContentsId = cdp.getWebContentsId();
@@ -2393,16 +2440,18 @@ class PlatformManager {
   }
   async setAccountOnline(accountId, online) {
     const account = this.requireAccount(accountId);
-    const active = this.activeAccountId === accountId;
     let cdp = this.sessions.get(accountId);
     if (online && (!cdp || !cdp.getStatus().connected)) {
       cdp = this.ensureSession(accountId);
-      await cdp.open(active);
+      await cdp.open(false);
       account.connected = true;
       account.webContentsId = cdp.getWebContentsId();
-      if (active && this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
     }
     if (!cdp) throw new Error("请先打开平台页面");
+    if (this.activeAccountId === accountId) {
+      cdp.attachPrimaryView();
+      if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
+    }
     if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
     account.online = online;
     try {
@@ -2519,6 +2568,11 @@ class PlatformManager {
     this.sessions.set(accountId, cdp);
     this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
     return cdp;
+  }
+  detachPrimaryViewsExcept(accountId) {
+    for (const [id, session] of this.sessions) {
+      if (id !== accountId && session.isPrimaryViewAttached()) session.detachPrimaryView();
+    }
   }
   async invoke(accountId, method, ...args) {
     const cdp = this.sessions.get(accountId);
@@ -2662,7 +2716,7 @@ class CdpShopTransport {
 if (process.env.PLATFORM_HUB_USER_DATA) {
   app.setPath("userData", process.env.PLATFORM_HUB_USER_DATA);
 }
-if (process.env.PLATFORM_HUB_ENABLE_GPU !== "1") {
+if (process.env.PLATFORM_HUB_DISABLE_GPU === "1") {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch("disable-gpu");
   app.commandLine.appendSwitch("disable-gpu-compositing");

@@ -10,7 +10,10 @@ if (process.env.PLATFORM_HUB_USER_DATA) {
   app.setPath('userData', process.env.PLATFORM_HUB_USER_DATA)
 }
 
-if (process.env.PLATFORM_HUB_ENABLE_GPU !== '1') {
+// WebContentsView relies on Chromium's compositor for stable native view
+// embedding. Keep GPU/compositing enabled by default; opt out only for a
+// machine with a confirmed driver/runtime problem.
+if (process.env.PLATFORM_HUB_DISABLE_GPU === '1') {
   app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('disable-gpu')
   app.commandLine.appendSwitch('disable-gpu-compositing')

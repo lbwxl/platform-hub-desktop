@@ -172,15 +172,45 @@ test('多账号 CDP 心跳合并调用、阻止重叠并回收伴随页', () => 
   assert.match(session, /RUNTIME_PAGE_IDLE_MS = 2 \* 60_000/)
   assert.match(session, /scheduleRuntimeWindowClose/)
   assert.match(session, /this\.stopRuntimePolling\(\)\s+this\.closeRuntimeWindows\(\)/)
-  assert.match(main, /PLATFORM_HUB_ENABLE_GPU/)
+  assert.match(main, /PLATFORM_HUB_DISABLE_GPU/)
+  assert.doesNotMatch(main, /disableHardwareAcceleration\(\)\s*\n\s*}\s*\nif \(!app\.isPackaged\)/)
 })
 
 test('主工作台只展示 Hook primary WebContentsView，不创建 Renderer webview', () => {
   assert.match(session, /WebContentsView/)
-  assert.match(session, /contentView\.addChildView\(this\.primaryView\)/)
+  assert.match(session, /attachPrimaryView\(\)/)
+  assert.match(session, /detachPrimaryView\(\)/)
+  assert.match(session, /primaryAttached/)
+  assert.match(session, /contentView\.addChildView\(view\)/)
+  assert.match(session, /contentView\.removeChildView\(view\)/)
+  assert.match(manager, /detachPrimaryView\(\)/)
+  assert.match(manager, /attachPrimaryView\(\)/)
+  assert.match(manager, /setPrimaryBounds\(this\.primaryViewportBounds\)/)
+  assert.match(session, /if \(this\.primaryAttached && this\.primaryView/)
   assert.match(main, /viewport:bounds/)
   assert.doesNotMatch(viewport, /<webview/)
   assert.doesNotMatch(viewport, /partition=\{props\.account\.partition\}/)
+})
+
+test('主工作台切换只移动 active View，不 reload 或销毁后台店铺 WebContents', () => {
+  assert.match(manager, /previousAccountId.*detachPrimaryView/s)
+  assert.match(manager, /detachPrimaryViewsExcept\(accountId\)/)
+  assert.match(manager, /cdp\.open\(false\)/)
+  assert.doesNotMatch(manager, /open\(accountId\)[\s\S]*?loadURL\(/)
+  const detachBody = session.match(/detachPrimaryView\(\): void \{([\s\S]*?)\n  \}\n\n  setPrimaryBounds/)?.[1] || ''
+  assert.match(detachBody, /removeChildView\(view\)/)
+  assert.doesNotMatch(detachBody, /webContents\.close\(\)/)
+})
+
+test('官方工作台占据主区域，调试信息默认折叠且页面不随 document 滚动', async () => {
+  const styles = await readFile(new URL('../src/renderer/src/styles.css', import.meta.url), 'utf8')
+  assert.match(styles, /html, body, #root\s*\{[^}]*height:\s*100%/s)
+  assert.match(styles, /body\s*\{[^}]*overflow:\s*hidden/s)
+  assert.match(styles, /grid-template-columns:\s*260px\s+minmax\(0,\s*1fr\)\s+250px/)
+  assert.match(styles, /\.platform-viewport\s*\{[^}]*min-height:\s*0[^}]*overflow:\s*hidden/s)
+  assert.match(styles, /\.platform-frame-body\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0/s)
+  assert.doesNotMatch(styles, /height:\s*clamp\(380px,\s*58vh,\s*640px\)/)
+  assert.match(viewport, /<details className="developer-drawer">/)
 })
 
 test('工作台认证完成后自动加载会话并接收未知会话消息', () => {
