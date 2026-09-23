@@ -184,7 +184,11 @@ export class CdpSession extends EventEmitter {
     }
     await this.openRuntimePage(route)
     const target = this.runtimeWindows.get(route.id)
-    if (target && !target.isDestroyed()) target.show()
+    if (target && !target.isDestroyed()) {
+      this.clearRuntimeWindowTimer(route.id)
+      target.show()
+      target.focus()
+    }
   }
 
   getWebContentsId(): number | undefined {

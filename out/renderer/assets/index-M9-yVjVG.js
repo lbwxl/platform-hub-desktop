@@ -14938,7 +14938,8 @@ function ProductAcceptancePanel(props) {
   );
   const syncing = props.state.syncState === "syncing" || props.busy === "products";
   const statusLabel = props.state.syncState === "syncing" ? "syncing" : props.state.syncState;
-  const completeness = props.state.syncState === "success" && stats.duplicateCount === 0 && stats.allOnSale;
+  const hasSuccessfulSnapshot = props.state.lastSyncAt !== void 0;
+  const completeness = hasSuccessfulSnapshot && stats.duplicateCount === 0 && stats.allOnSale;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-acceptance-panel", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "acceptance-help", children: "通过正式 products.list 获取当前店铺全部在售商品；失败时保留上一次成功结果，避免把失败误判为“商品为 0”。" }),
     !props.supportsProducts ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "acceptance-unavailable", children: [
@@ -14960,10 +14961,10 @@ function ProductAcceptancePanel(props) {
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-summary", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "官方在售商品", value: String(stats.count) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "唯一 externalId", value: String(stats.uniqueCount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "重复", value: String(stats.duplicateCount), tone: stats.duplicateCount ? "fail" : "pass" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "完整性", value: completeness ? "PASS" : "FAIL", tone: completeness ? "pass" : "fail" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "官方在售商品", value: hasSuccessfulSnapshot ? String(stats.count) : "—" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "唯一 externalId", value: hasSuccessfulSnapshot ? String(stats.uniqueCount) : "—" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "重复", value: hasSuccessfulSnapshot ? String(stats.duplicateCount) : "—", tone: hasSuccessfulSnapshot ? stats.duplicateCount ? "fail" : "pass" : void 0 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ProductMetric, { label: "完整性", value: hasSuccessfulSnapshot ? completeness ? "PASS" : "FAIL" : "—", tone: hasSuccessfulSnapshot ? completeness ? "pass" : "fail" : void 0 })
       ] }),
       stats.duplicateCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-duplicate-error", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 13 }),
@@ -14984,11 +14985,8 @@ function ProductAcceptancePanel(props) {
       props.state.syncState === "failed" && props.state.error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-error", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 14 }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
-            "FAILED",
-            props.state.error.code ? ` · ${props.state.error.code}` : ""
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: props.state.error.code === "CHALLENGE_REQUIRED" ? "需要完成平台安全验证。" : props.state.error.message })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: props.state.error.code === "CHALLENGE_REQUIRED" ? "需要平台安全验证" : `FAILED${props.state.error.code ? ` · ${props.state.error.code}` : ""}` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: props.state.error.code === "CHALLENGE_REQUIRED" ? "已打开当前店铺的官方商品页面。请在该页面完成验证，再返回这里重新同步。" : props.state.error.message })
         ] })
       ] }),
       props.state.syncState === "success" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "product-sync-success", children: [
@@ -15948,6 +15946,10 @@ function operationError(value) {
   return void 0;
 }
 function operationErrorDetails(value) {
+  if (value instanceof Error) {
+    const message = value.message || "平台操作失败";
+    return /CHALLENGE_REQUIRED|安全验证|验证码|滑块/i.test(message) ? { code: "CHALLENGE_REQUIRED", message } : { message };
+  }
   if (!value || typeof value !== "object") return void 0;
   const record = value;
   if (!record.errorCode && !record.code && record.success !== false && !record.error && !record.message) return void 0;

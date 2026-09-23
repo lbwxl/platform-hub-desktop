@@ -165,7 +165,11 @@ class CdpSession extends EventEmitter {
     }
     await this.openRuntimePage(route);
     const target = this.runtimeWindows.get(route.id);
-    if (target && !target.isDestroyed()) target.show();
+    if (target && !target.isDestroyed()) {
+      this.clearRuntimeWindowTimer(route.id);
+      target.show();
+      target.focus();
+    }
   }
   getWebContentsId() {
     return this.contents && !this.contents.isDestroyed() ? this.contents.id : void 0;
@@ -1058,7 +1062,14 @@ const douyinHookRuntimeScript = String.raw`(() => {
   const productFailureCode = (response, payload) => {
     const raw = text(payload?.code || payload?.status_code || payload?.statusCode || payload?.error_code)
     const message = text(payload?.msg || payload?.message || payload?.status_msg || payload?.error)
-    const combined = raw + ' ' + message + ' ' + (response?.url || '')
+    // The official gateway appends verifyFp and fp query parameters to
+    // every authenticated product request.  Those values contain the word
+    // "verify" but are not a challenge response.  Inspect only the response
+    // pathname (and payload markers), never the full URL/query string, so a
+    // healthy request cannot be misclassified as CHALLENGE_REQUIRED.
+    let responsePath = ''
+    try { responsePath = new URL(response?.url || '', location?.href || '').pathname } catch (_) {}
+    const combined = raw + ' ' + message + ' ' + responsePath
     return /captcha|challenge|verify|risk|验证码|滑块|安全验证/i.test(combined) ? 'CHALLENGE_REQUIRED' : ''
   }
   const fetchAuthoritativeProductPage = async (page, signal) => {
@@ -2695,6 +2706,15 @@ class PlatformManager {
     if (!cdp) throw new Error("请先打开平台页面");
     let result = await cdp.invoke(method, ...args);
     let errorCode = this.runtimeErrorCode(result);
+    if (errorCode === "CHALLENGE_REQUIRED") {
+      await cdp.showRuntimePageFor(method);
+      const detail = result && typeof result === "object" ? result.error : void 0;
+      const challengeError = new Error(
+        `抖店要求完成安全验证，已打开该店铺的官方页面。完成验证后请返回工作台重新同步。${detail ? `（${detail}）` : ""}`
+      );
+      challengeError.code = errorCode;
+      throw challengeError;
+    }
     if (errorCode === "LOGIN_REQUIRED" || errorCode === "RUNTIME_NOT_READY" && !cdp.getStatus().authenticated) {
       await cdp.showRuntimePageFor(method);
       await cdp.waitForLogin(void 0, method);

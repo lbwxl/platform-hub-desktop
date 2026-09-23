@@ -164,6 +164,42 @@ test('Douyin runtime products.list uses the official paginated endpoint, not GOO
   }
 })
 
+test('Douyin runtime does not misclassify official verifyFp query parameters as a challenge', async () => {
+  const fetch = async (input) => {
+    const requestUrl = new URL(String(input), 'https://fxg.jinritemai.com')
+    const responseUrl = new URL(requestUrl)
+    responseUrl.searchParams.set('verifyFp', 'verify_test_fingerprint')
+    responseUrl.searchParams.set('fp', 'verify_test_fingerprint')
+    return {
+      ok: true,
+      status: 200,
+      url: responseUrl.href,
+      async json() {
+        return {
+          code: 0,
+          page: 0,
+          size: 100,
+          total: 1,
+          data: [{ product_id: 'goods-1', name: '真实在售商品', status: 0, tab: '售卖中 (已售罄)' }],
+        }
+      },
+    }
+  }
+  const context = vm.createContext({
+    AbortController, Date, JSON, Map, Promise, Set, URL, URLSearchParams, clearInterval, clearTimeout, fetch,
+    location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '', href: 'https://fxg.jinritemai.com/ffa/g/list?tab=all' },
+    setInterval, setTimeout,
+    window: {
+      __PLATFORM_HOOK_PAGE_ID__: 'products',
+      location: { hostname: 'fxg.jinritemai.com', pathname: '/ffa/g/list', search: '', href: 'https://fxg.jinritemai.com/ffa/g/list?tab=all' },
+    },
+  })
+  vm.runInContext(douyinHookRuntimeScript, context)
+  const result = await context.window.__PLATFORM_HOOK__.invoke('products.list', {})
+  assert.equal(result.ok, true)
+  assert.deepEqual(Array.from(result.data, (item) => item.externalId), ['goods-1'])
+})
+
 test('Douyin runtime products.list does not return partial data after a page challenge', async () => {
   const requests = []
   const fetch = async (input) => {

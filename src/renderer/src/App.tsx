@@ -345,6 +345,12 @@ function operationError(value: unknown): string | undefined {
 }
 
 function operationErrorDetails(value: unknown): { code?: string; message: string } | undefined {
+  if (value instanceof Error) {
+    const message = value.message || '平台操作失败'
+    return /CHALLENGE_REQUIRED|安全验证|验证码|滑块/i.test(message)
+      ? { code: 'CHALLENGE_REQUIRED', message }
+      : { message }
+  }
   if (!value || typeof value !== 'object') return undefined
   const record = value as { errorCode?: unknown; code?: unknown; error?: unknown; message?: unknown; success?: unknown }
   if (!record.errorCode && !record.code && record.success !== false && !record.error && !record.message) return undefined

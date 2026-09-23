@@ -139,6 +139,13 @@ test('平台操作遇到登录状态时会等待并重试', () => {
   assert.match(manager, /return cdp\.invoke<T>\(method/)
 })
 
+test('商品官方验证会显示并聚焦当前店铺的商品页', () => {
+  assert.match(manager, /errorCode === 'CHALLENGE_REQUIRED'/)
+  assert.match(manager, /showRuntimePageFor\(method\)/)
+  assert.match(session, /clearRuntimeWindowTimer\(route\.id\)/)
+  assert.match(session, /target\.focus\(\)/)
+})
+
 test('已登录但未暴露能力时不会误进入登录等待', () => {
   assert.match(manager, /await cdp\.showRuntimePageFor\(method\)/)
   assert.doesNotMatch(manager, /RUNTIME_NOT_READY' && cdp\.getStatus\(\)\.authenticated\) return result/)

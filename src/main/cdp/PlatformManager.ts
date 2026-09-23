@@ -252,6 +252,15 @@ export class PlatformManager {
     type RuntimeResult = T & { ok?: boolean; errorCode?: string; error?: string }
     let result = await cdp.invoke<RuntimeResult>(method, ...args)
     let errorCode = this.runtimeErrorCode(result)
+    if (errorCode === 'CHALLENGE_REQUIRED') {
+      await cdp.showRuntimePageFor(method)
+      const detail = result && typeof result === 'object' ? result.error : undefined
+      const challengeError = new Error(
+        `抖店要求完成安全验证，已打开该店铺的官方页面。完成验证后请返回工作台重新同步。${detail ? `（${detail}）` : ''}`,
+      ) as Error & { code?: string }
+      challengeError.code = errorCode
+      throw challengeError
+    }
     if (errorCode === 'LOGIN_REQUIRED' || (errorCode === 'RUNTIME_NOT_READY' && !cdp.getStatus().authenticated)) {
       await cdp.showRuntimePageFor(method)
       await cdp.waitForLogin(undefined, method)

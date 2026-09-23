@@ -25,7 +25,8 @@ export function ProductAcceptancePanel(props: ProductAcceptancePanelProps) {
   const statusLabel = props.state.syncState === 'syncing'
     ? 'syncing'
     : props.state.syncState
-  const completeness = props.state.syncState === 'success' && stats.duplicateCount === 0 && stats.allOnSale
+  const hasSuccessfulSnapshot = props.state.lastSyncAt !== undefined
+  const completeness = hasSuccessfulSnapshot && stats.duplicateCount === 0 && stats.allOnSale
 
   return <div className="product-acceptance-panel">
     <p className="acceptance-help">通过正式 products.list 获取当前店铺全部在售商品；失败时保留上一次成功结果，避免把失败误判为“商品为 0”。</p>
@@ -40,10 +41,10 @@ export function ProductAcceptancePanel(props: ProductAcceptancePanelProps) {
         </button>
       </div>
       <div className="product-sync-summary">
-        <ProductMetric label="官方在售商品" value={String(stats.count)} />
-        <ProductMetric label="唯一 externalId" value={String(stats.uniqueCount)} />
-        <ProductMetric label="重复" value={String(stats.duplicateCount)} tone={stats.duplicateCount ? 'fail' : 'pass'} />
-        <ProductMetric label="完整性" value={completeness ? 'PASS' : 'FAIL'} tone={completeness ? 'pass' : 'fail'} />
+        <ProductMetric label="官方在售商品" value={hasSuccessfulSnapshot ? String(stats.count) : '—'} />
+        <ProductMetric label="唯一 externalId" value={hasSuccessfulSnapshot ? String(stats.uniqueCount) : '—'} />
+        <ProductMetric label="重复" value={hasSuccessfulSnapshot ? String(stats.duplicateCount) : '—'} tone={hasSuccessfulSnapshot ? (stats.duplicateCount ? 'fail' : 'pass') : undefined} />
+        <ProductMetric label="完整性" value={hasSuccessfulSnapshot ? (completeness ? 'PASS' : 'FAIL') : '—'} tone={hasSuccessfulSnapshot ? (completeness ? 'pass' : 'fail') : undefined} />
       </div>
       {stats.duplicateCount > 0 && <div className="product-duplicate-error"><AlertCircle size={13} />FAIL · 商品 ID 存在重复（{stats.duplicateCount} 条）</div>}
       <div className="product-sync-meta">
@@ -51,7 +52,7 @@ export function ProductAcceptancePanel(props: ProductAcceptancePanelProps) {
         <span>耗时：{props.state.durationMs === undefined ? '—' : `${props.state.durationMs}ms`}</span>
       </div>
       {props.state.syncState === 'failed' && props.state.error && <div className="product-sync-error">
-        <AlertCircle size={14} /><span><strong>FAILED{props.state.error.code ? ` · ${props.state.error.code}` : ''}</strong><small>{props.state.error.code === 'CHALLENGE_REQUIRED' ? '需要完成平台安全验证。' : props.state.error.message}</small></span>
+        <AlertCircle size={14} /><span><strong>{props.state.error.code === 'CHALLENGE_REQUIRED' ? '需要平台安全验证' : `FAILED${props.state.error.code ? ` · ${props.state.error.code}` : ''}`}</strong><small>{props.state.error.code === 'CHALLENGE_REQUIRED' ? '已打开当前店铺的官方商品页面。请在该页面完成验证，再返回这里重新同步。' : props.state.error.message}</small></span>
       </div>}
       {props.state.syncState === 'success' && <div className="product-sync-success"><CheckCircle2 size={14} />本次同步成功，当前结果已替换为官方响应。</div>}
       {detailsOpen && <div className="product-acceptance-details">
