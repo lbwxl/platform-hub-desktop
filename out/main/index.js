@@ -125,6 +125,9 @@ class CdpSession extends EventEmitter {
   showPrimaryPage() {
     if (this.window && !this.window.isDestroyed()) this.window.show();
   }
+  hidePrimaryPage() {
+    if (this.window && !this.window.isDestroyed()) this.window.hide();
+  }
   async showRuntimePageFor(method) {
     const route = this.routeForMethod(method);
     if (!route) {
@@ -1931,6 +1934,8 @@ ${douyinHookRuntimeScript}
       content: item.content || '',
       type: item.type || 'unknown',
       isMine: item.direction === 'outbound',
+      direction: item.direction,
+      origin: item.origin,
       timestamp: item.timestamp || Date.now(),
       ...(item.attachments?.[0]?.url ? { avatar: item.attachments[0].url } : {}),
       raw: item.raw,
@@ -2023,6 +2028,7 @@ ${douyinHookRuntimeScript}
       return Array.isArray(rows) ? rows : []
     },
     transferSession: (conversationId, target) => unwrap('handoff.transfer', { conversationId, targetId: target }),
+    setConversationAttention: (conversationId, state) => unwrap('conversation.attention.set', { conversationId, state }),
     drainEvents: async () => (await runtime.drainEvents()).map(event),
     dispose: () => runtime.dispose(),
   }
@@ -2067,6 +2073,198 @@ const builtinPlatforms = [douyinHook, kuaishouHook, goofishHook].map((hook) => (
   hookVersion: hook.version,
   source: "builtin"
 }));
+class ShopRuntimeManager {
+  runtimes = /* @__PURE__ */ new Map();
+  listeners = /* @__PURE__ */ new Set();
+  replyApi;
+  constructor(replyApi) {
+    this.replyApi = replyApi;
+  }
+  register(accountId, transport) {
+    if (this.runtimes.has(accountId)) return;
+    const runtime = {
+      accountId,
+      transport,
+      online: false,
+      runtimeState: "stopped",
+      messageListening: false,
+      attention: /* @__PURE__ */ new Map(),
+      processing: /* @__PURE__ */ new Set()
+    };
+    runtime.unsubscribe = transport.subscribe((event) => this.handleEvent(runtime, event));
+    this.runtimes.set(accountId, runtime);
+  }
+  unregister(accountId) {
+    const runtime = this.runtimes.get(accountId);
+    if (!runtime) return;
+    runtime.unsubscribe?.();
+    runtime.unsubscribe = void 0;
+    this.runtimes.delete(accountId);
+  }
+  has(accountId) {
+    return this.runtimes.has(accountId);
+  }
+  snapshot(accountId) {
+    const runtime = this.runtimes.get(accountId);
+    if (!runtime) return void 0;
+    return this.toSnapshot(runtime);
+  }
+  snapshots() {
+    return [...this.runtimes.values()].map((runtime) => this.toSnapshot(runtime));
+  }
+  async setOnline(accountId, online) {
+    const runtime = this.require(accountId);
+    runtime.online = online;
+    if (!online) {
+      this.emit(runtime, "runtime", { online: false, runtimeState: runtime.runtimeState, messageListening: runtime.messageListening });
+      return this.toSnapshot(runtime);
+    }
+    await this.start(runtime);
+    return this.toSnapshot(runtime);
+  }
+  async stop(accountId) {
+    const runtime = this.runtimes.get(accountId);
+    if (!runtime) return;
+    runtime.online = false;
+    runtime.messageListening = false;
+    runtime.runtimeState = "stopped";
+    await runtime.transport.stop();
+    runtime.unsubscribe?.();
+    runtime.unsubscribe = void 0;
+    this.runtimes.delete(accountId);
+  }
+  async setAttention(accountId, conversationId, state) {
+    const runtime = this.require(accountId);
+    const result = await runtime.transport.invoke("conversation.attention.set", { conversationId, state });
+    if (!result.ok) throw new Error(result.error.message);
+    runtime.attention.set(conversationId, state);
+    this.emit(runtime, "attention", { conversationId, state });
+  }
+  onEvent(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  /** Feed a native/legacy event into the same account-scoped pipeline. */
+  pushEvent(accountId, event) {
+    const runtime = this.runtimes.get(accountId);
+    if (runtime) this.handleEvent(runtime, event);
+  }
+  async start(runtime) {
+    if (runtime.runtimeState === "running") return;
+    if (runtime.startPromise) return runtime.startPromise;
+    runtime.runtimeState = "starting";
+    runtime.startPromise = (async () => {
+      try {
+        await runtime.transport.start();
+        const listening = await runtime.transport.invoke("messages.listen", {});
+        if (!listening.ok) throw new Error(listening.error.message);
+        runtime.messageListening = true;
+        runtime.runtimeState = "running";
+        this.emit(runtime, "runtime", { online: runtime.online, runtimeState: runtime.runtimeState, messageListening: true });
+      } catch (error) {
+        runtime.runtimeState = "error";
+        this.emit(runtime, "runtime", { online: runtime.online, runtimeState: "error", message: errorMessage(error) });
+        throw error;
+      } finally {
+        runtime.startPromise = void 0;
+      }
+    })();
+    return runtime.startPromise;
+  }
+  handleEvent(runtime, event) {
+    const timestamp = event.timestamp || Date.now();
+    this.emit(runtime, "hook", { event });
+    if (event.type !== "message.created") return;
+    const message = event.payload?.message || event.payload;
+    if (!message) return;
+    const conversationId = String(message.conversationId || message.sessionId || "");
+    if (!conversationId) return;
+    const direction = String(message.direction || (message.isMine ? "outbound" : "inbound"));
+    const origin = String(message.origin || (direction === "outbound" ? "unknown" : "customer"));
+    if (direction === "outbound") {
+      if (origin === "human") void this.setAttention(runtime.accountId, conversationId, "resolved").catch(() => void 0);
+      return;
+    }
+    if (direction !== "inbound" || origin !== "customer") return;
+    runtime.lastIncomingAt = timestamp;
+    if (!runtime.online || runtime.processing.has(String(message.id || `${conversationId}:${timestamp}`))) return;
+    const key = String(message.id || `${conversationId}:${timestamp}`);
+    runtime.processing.add(key);
+    void this.processCustomerMessage(runtime, conversationId, message).finally(() => runtime.processing.delete(key));
+  }
+  async processCustomerMessage(runtime, conversationId, message) {
+    try {
+      const decision = await this.replyApi.reply({
+        accountId: runtime.accountId,
+        conversationId,
+        content: String(message.content || ""),
+        message
+      });
+      if (decision.type === "reply") {
+        const result = await runtime.transport.invoke("messages.send.text", { conversationId, text: decision.text });
+        if (!result.ok) throw new Error(result.error.message);
+      } else if (decision.type === "human_required") {
+        await this.setAttention(runtime.accountId, conversationId, "pending");
+      }
+      runtime.lastReplyAt = Date.now();
+      runtime.lastReplyType = decision.type;
+      this.emit(runtime, "reply", { decision, conversationId });
+    } catch (error) {
+      this.emit(runtime, "runtime", { replyError: errorMessage(error), conversationId });
+    }
+  }
+  emit(runtime, type, payload) {
+    const event = { accountId: runtime.accountId, type, timestamp: Date.now(), payload };
+    for (const listener of [...this.listeners]) listener(event);
+  }
+  toSnapshot(runtime) {
+    return {
+      accountId: runtime.accountId,
+      online: runtime.online,
+      runtimeState: runtime.runtimeState,
+      messageListening: runtime.messageListening,
+      lastIncomingAt: runtime.lastIncomingAt,
+      lastReplyAt: runtime.lastReplyAt,
+      lastReplyType: runtime.lastReplyType,
+      attention: Object.fromEntries(runtime.attention)
+    };
+  }
+  require(accountId) {
+    const runtime = this.runtimes.get(accountId);
+    if (!runtime) throw new Error(`店铺 Runtime 不存在: ${accountId}`);
+    return runtime;
+  }
+}
+class HttpShopReplyApi {
+  endpoint;
+  constructor(endpoint = process.env.PLATFORM_HUB_REPLY_API_URL || "") {
+    this.endpoint = endpoint;
+  }
+  async reply(input) {
+    if (!this.endpoint) return { type: "ignore", reason: "reply-api-not-configured" };
+    const response = await fetch(this.endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input)
+    });
+    if (!response.ok) throw new Error(`Reply API HTTP ${response.status}`);
+    const value = await response.json();
+    const type = String(value.type || value.action || "");
+    if (type === "reply") {
+      const text = String(value.text || value.reply || "");
+      if (!text) throw new Error("Reply API 返回 reply 但缺少 text");
+      return { type: "reply", text };
+    }
+    if (type === "human_required" || type === "human") return { type: "human_required", reason: stringValue(value.reason) };
+    return { type: "ignore", reason: stringValue(value.reason) || "reply-api-ignore" };
+  }
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function stringValue(value) {
+  return typeof value === "string" && value ? value : void 0;
+}
 class PlatformManager {
   sessions = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
@@ -2074,12 +2272,27 @@ class PlatformManager {
   statePath;
   stateBackupPath;
   saveQueue = Promise.resolve();
+  shopRuntimes = new ShopRuntimeManager(new HttpShopReplyApi());
   constructor() {
     this.statePath = join(app.getPath("userData"), "platform-hub.json");
     this.stateBackupPath = join(app.getPath("userData"), "platform-hub.json.bak");
+    this.shopRuntimes.onEvent((event) => this.emitRuntimeEvent(event));
   }
   async init() {
     this.state = await this.readState(this.statePath) || await this.readState(this.stateBackupPath) || { accounts: [], hooks: [] };
+    this.state.accounts = this.state.accounts.map((account) => ({
+      ...account,
+      online: account.online === true,
+      runtimeState: account.runtimeState || "stopped",
+      messageListening: account.messageListening === true
+    }));
+    for (const account of this.state.accounts) this.ensureSession(account.id);
+    for (const account of this.state.accounts.filter((item) => item.online)) {
+      await this.setAccountOnline(account.id, true).catch((error) => {
+        account.runtimeState = "error";
+        console.error(`[platform-hub] 恢复店铺 Runtime 失败: ${account.id}`, error);
+      });
+    }
   }
   listPlatforms() {
     return [...builtinPlatforms, ...this.state.hooks.map(({ manifest }) => ({
@@ -2100,7 +2313,8 @@ class PlatformManager {
         ...account,
         connected: live?.connected ?? account.connected,
         authenticated: live?.authenticated ?? account.authenticated,
-        webContentsId: cdp?.getWebContentsId()
+        webContentsId: cdp?.getWebContentsId(),
+        ...this.shopRuntimes.snapshot(account.id) || { online: account.online, runtimeState: account.runtimeState, messageListening: account.messageListening }
       };
     });
   }
@@ -2116,13 +2330,18 @@ class PlatformManager {
       partition: partitionFor(platform.id, id),
       connected: false,
       authenticated: false,
+      online: false,
+      runtimeState: "stopped",
+      messageListening: false,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     this.state.accounts.push(account);
+    this.ensureSession(account.id);
     await this.save();
     return account;
   }
   async removeAccount(accountId) {
+    await this.shopRuntimes.stop(accountId).catch(() => void 0);
     this.sessions.get(accountId)?.close();
     this.sessions.delete(accountId);
     this.state.accounts = this.state.accounts.filter((item) => item.id !== accountId);
@@ -2130,13 +2349,8 @@ class PlatformManager {
   }
   async open(accountId) {
     const account = this.requireAccount(accountId);
-    const platform = this.listPlatforms().find((item) => item.id === account.platform);
-    const hook = this.getHook(platform.id);
-    let cdp = this.sessions.get(accountId);
-    if (!cdp) {
-      cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook, emit: (event) => this.emit(event) });
-      this.sessions.set(accountId, cdp);
-    }
+    const cdp = this.ensureSession(accountId);
+    for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage();
     await cdp.open(true);
     account.connected = true;
     account.webContentsId = cdp.getWebContentsId();
@@ -2155,12 +2369,43 @@ class PlatformManager {
     return cdp.getStatus();
   }
   async disconnect(accountId) {
+    await this.shopRuntimes.stop(accountId).catch(() => void 0);
     this.sessions.get(accountId)?.close();
     this.sessions.delete(accountId);
     const account = this.requireAccount(accountId);
     account.connected = false;
     account.webContentsId = void 0;
+    account.online = false;
+    account.runtimeState = "stopped";
+    account.messageListening = false;
     await this.save();
+  }
+  async setAccountOnline(accountId, online) {
+    const account = this.requireAccount(accountId);
+    if (online && (!this.sessions.has(accountId) || !this.sessions.get(accountId)?.getStatus().connected)) await this.open(accountId);
+    const cdp = this.sessions.get(accountId);
+    if (!cdp) throw new Error("请先打开平台页面");
+    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
+    account.online = online;
+    try {
+      const snapshot = await this.shopRuntimes.setOnline(accountId, online);
+      account.runtimeState = snapshot.runtimeState;
+      account.messageListening = snapshot.messageListening;
+      await this.save();
+      return this.listAccounts().find((item) => item.id === accountId) || account;
+    } catch (error) {
+      const snapshot = this.shopRuntimes.snapshot(accountId);
+      account.runtimeState = snapshot?.runtimeState || "error";
+      account.messageListening = snapshot?.messageListening || false;
+      await this.save();
+      throw error;
+    }
+  }
+  runtimeStates() {
+    return this.shopRuntimes.snapshots();
+  }
+  async setConversationAttention(accountId, conversationId, state) {
+    await this.shopRuntimes.setAttention(accountId, conversationId, state);
   }
   async status(accountId) {
     let cdp = this.sessions.get(accountId);
@@ -2236,6 +2481,17 @@ class PlatformManager {
     if (!account) throw new Error("平台账号不存在");
     return account;
   }
+  ensureSession(accountId) {
+    const existing = this.sessions.get(accountId);
+    if (existing) return existing;
+    const account = this.requireAccount(accountId);
+    const platform = this.listPlatforms().find((item) => item.id === account.platform);
+    if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`);
+    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), emit: (event) => this.emit(event) });
+    this.sessions.set(accountId, cdp);
+    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
+    return cdp;
+  }
   async invoke(accountId, method, ...args) {
     const cdp = this.sessions.get(accountId);
     if (!cdp) throw new Error("请先打开平台页面");
@@ -2275,9 +2531,37 @@ class PlatformManager {
         account.authenticated = status.authenticated === true;
         account.lastSeenAt = new Date(event.timestamp).toISOString();
         void this.save();
+        if (account.online && account.authenticated && this.shopRuntimes.snapshot(account.id)?.runtimeState !== "running") {
+          void this.setAccountOnline(account.id, true).catch((error) => {
+            console.error(`[platform-hub] 登录后启动店铺监听失败: ${account.id}`, error);
+          });
+        }
       }
     }
+    const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : void 0;
+    if (runtime && event.type === "message") {
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+      runtime.pushEvent(event.accountId, {
+        type: "message.created",
+        timestamp: event.timestamp,
+        payload: { message: payload.message || payload }
+      });
+    }
     this.listeners.forEach((listener) => listener(event));
+  }
+  emitRuntimeEvent(event) {
+    const account = this.state.accounts.find((item) => item.id === event.accountId);
+    if (!account) return;
+    const payload = event.type === "hook" && event.payload.event && typeof event.payload.event === "object" ? event.payload.event : event.payload;
+    const sourceType = event.type === "hook" && payload && typeof payload === "object" ? String(payload.type || "") : event.type;
+    this.listeners.forEach((listener) => listener({
+      id: `${event.accountId}:runtime:${event.timestamp}:${Math.random().toString(16).slice(2)}`,
+      accountId: event.accountId,
+      platform: account.platform,
+      type: sourceType === "message.created" ? "message" : sourceType.startsWith("order.") ? "order" : "log",
+      timestamp: event.timestamp,
+      payload
+    }));
   }
   async readState(path) {
     try {
@@ -2311,6 +2595,35 @@ class PlatformManager {
     return operation;
   }
 }
+class CdpShopTransport {
+  constructor(cdp) {
+    this.cdp = cdp;
+  }
+  cdp;
+  async start() {
+    await this.cdp.open(false);
+  }
+  async invoke(operation, input) {
+    const args = input && typeof input === "object" ? input : {};
+    const method = operation === "messages.listen" ? "listenMessages" : operation === "messages.send.text" ? "sendMessage" : operation === "conversation.attention.set" ? "setConversationAttention" : operation;
+    const parameters = operation === "messages.send.text" ? [args.conversationId, args.text] : operation === "conversation.attention.set" ? [args.conversationId, args.state] : [];
+    try {
+      const value = await this.cdp.invoke(method, ...parameters);
+      if (value && typeof value === "object" && "errorCode" in value) {
+        const error = value;
+        return { ok: false, error: { code: error.errorCode || "PLATFORM_ERROR", message: error.error || "平台操作失败" } };
+      }
+      return { ok: true, data: value };
+    } catch (error) {
+      return { ok: false, error: { code: "PLATFORM_ERROR", message: error instanceof Error ? error.message : String(error) } };
+    }
+  }
+  subscribe(_listener) {
+    return () => void 0;
+  }
+  async stop() {
+  }
+}
 if (process.env.PLATFORM_HUB_USER_DATA) {
   app.setPath("userData", process.env.PLATFORM_HUB_USER_DATA);
 }
@@ -2336,7 +2649,7 @@ function createWindow() {
     minWidth: 1120,
     minHeight: 720,
     backgroundColor: "#f4f7fb",
-    webPreferences: { preload: join(__dirname, "../preload/index.mjs"), contextIsolation: true, sandbox: false }
+    webPreferences: { preload: join(__dirname, "../preload/index.mjs"), contextIsolation: true, sandbox: false, webviewTag: true }
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -2372,6 +2685,18 @@ function registerIpc() {
   ipcMain.handle("accounts:open", (event, id) => {
     assertRenderer(event);
     return manager.open(id);
+  });
+  ipcMain.handle("accounts:setOnline", (event, id, online) => {
+    assertRenderer(event);
+    return manager.setAccountOnline(id, online);
+  });
+  ipcMain.handle("runtime:states", (event) => {
+    assertRenderer(event);
+    return manager.runtimeStates();
+  });
+  ipcMain.handle("conversation:attention:set", (event, id, conversationId, state) => {
+    assertRenderer(event);
+    return manager.setConversationAttention(id, conversationId, state);
   });
   ipcMain.handle("platform:connect", (event, id, webContentsId) => {
     assertRenderer(event);

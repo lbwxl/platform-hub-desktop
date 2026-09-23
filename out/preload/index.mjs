@@ -4,7 +4,8 @@ const api = {
     list: () => ipcRenderer.invoke("accounts:list"),
     add: (input) => ipcRenderer.invoke("accounts:add", input),
     remove: (id) => ipcRenderer.invoke("accounts:remove", id),
-    open: (id) => ipcRenderer.invoke("accounts:open", id)
+    open: (id) => ipcRenderer.invoke("accounts:open", id),
+    setOnline: (id, online) => ipcRenderer.invoke("accounts:setOnline", id, online)
   },
   platforms: {
     list: () => ipcRenderer.invoke("platforms:list"),
@@ -25,6 +26,8 @@ const api = {
   sendMessage: (id, sessionId, content) => ipcRenderer.invoke("message:send", id, sessionId, content),
   sendFile: (id, sessionId, dataUrl, fileName) => ipcRenderer.invoke("message:file", id, sessionId, dataUrl, fileName),
   transferSession: (id, sessionId, target) => ipcRenderer.invoke("session:transfer", id, sessionId, target),
+  setConversationAttention: (id, conversationId, state) => ipcRenderer.invoke("conversation:attention:set", id, conversationId, state),
+  runtimeStates: () => ipcRenderer.invoke("runtime:states"),
   onEvent: (callback) => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on("platform:event", listener);

@@ -32,7 +32,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1120, minHeight: 720,
     backgroundColor: '#f4f7fb',
-    webPreferences: { preload: join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: join(__dirname, '../preload/index.mjs'), contextIsolation: true, sandbox: false, webviewTag: true },
   })
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
   mainWindow.on('closed', () => { mainWindow = null })
@@ -47,6 +47,9 @@ function registerIpc(): void {
   ipcMain.handle('accounts:add', (event, input) => { assertRenderer(event); return manager.addAccount(input) })
   ipcMain.handle('accounts:remove', (event, id: string) => { assertRenderer(event); return manager.removeAccount(id) })
   ipcMain.handle('accounts:open', (event, id: string) => { assertRenderer(event); return manager.open(id) })
+  ipcMain.handle('accounts:setOnline', (event, id: string, online: boolean) => { assertRenderer(event); return manager.setAccountOnline(id, online) })
+  ipcMain.handle('runtime:states', (event) => { assertRenderer(event); return manager.runtimeStates() })
+  ipcMain.handle('conversation:attention:set', (event, id: string, conversationId: string, state: 'pending' | 'opened' | 'resolved') => { assertRenderer(event); return manager.setConversationAttention(id, conversationId, state) })
   ipcMain.handle('platform:connect', (event, id: string, webContentsId: number) => { assertRenderer(event); return manager.connect(id, webContentsId) })
   ipcMain.handle('platform:disconnect', (event, id: string) => { assertRenderer(event); return manager.disconnect(id) })
   ipcMain.handle('platform:status', (event, id: string) => { assertRenderer(event); return manager.status(id) })

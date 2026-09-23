@@ -69,8 +69,9 @@ interface ManagedRuntime {
 export class ShopRuntimeManager {
   private readonly runtimes = new Map<string, ManagedRuntime>()
   private readonly listeners = new Set<(event: ShopRuntimeEvent) => void>()
+  private readonly replyApi: ShopReplyApi
 
-  constructor(private readonly replyApi: ShopReplyApi) {}
+  constructor(replyApi: ShopReplyApi) { this.replyApi = replyApi }
 
   register(accountId: string, transport: ShopTransportLike): void {
     if (this.runtimes.has(accountId)) return
@@ -109,7 +110,7 @@ export class ShopRuntimeManager {
     const runtime = this.require(accountId)
     runtime.online = online
     if (!online) {
-      this.emit(runtime, 'runtime', { online: false, runtimeState: runtime.runtimeState })
+      this.emit(runtime, 'runtime', { online: false, runtimeState: runtime.runtimeState, messageListening: runtime.messageListening })
       return this.toSnapshot(runtime)
     }
     await this.start(runtime)
@@ -122,9 +123,9 @@ export class ShopRuntimeManager {
     runtime.online = false
     runtime.messageListening = false
     runtime.runtimeState = 'stopped'
+    await runtime.transport.stop()
     runtime.unsubscribe?.()
     runtime.unsubscribe = undefined
-    await runtime.transport.stop()
     this.runtimes.delete(accountId)
   }
 
@@ -200,15 +201,15 @@ export class ShopRuntimeManager {
         content: String(message.content || ''),
         message,
       })
-      runtime.lastReplyAt = Date.now()
-      runtime.lastReplyType = decision.type
-      this.emit(runtime, 'reply', { decision, conversationId })
       if (decision.type === 'reply') {
         const result = await runtime.transport.invoke('messages.send.text', { conversationId, text: decision.text })
         if (!result.ok) throw new Error(result.error.message)
       } else if (decision.type === 'human_required') {
         await this.setAttention(runtime.accountId, conversationId, 'pending')
       }
+      runtime.lastReplyAt = Date.now()
+      runtime.lastReplyType = decision.type
+      this.emit(runtime, 'reply', { decision, conversationId })
     } catch (error) {
       this.emit(runtime, 'runtime', { replyError: errorMessage(error), conversationId })
     }
@@ -245,7 +246,9 @@ export class ShopRuntimeManager {
  * mock is created here: an unavailable API means no automation send.
  */
 export class HttpShopReplyApi implements ShopReplyApi {
-  constructor(private readonly endpoint = process.env.PLATFORM_HUB_REPLY_API_URL || '') {}
+  private readonly endpoint: string
+
+  constructor(endpoint = process.env.PLATFORM_HUB_REPLY_API_URL || '') { this.endpoint = endpoint }
 
   async reply(input: { accountId: string; conversationId: string; content: string; message: unknown }): Promise<ReplyDecision> {
     if (!this.endpoint) return { type: 'ignore', reason: 'reply-api-not-configured' }

@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { CdpSession, partitionFor } from './CdpSession'
 import type { ChatSession, HandoffTarget, HookPackageManifest, ImportedHookPackage, OrderListenResult, OrderSyncResult, PlatformAccount, PlatformDefinition, PlatformEvent, PlatformMessage, PlatformStatus, ProductRecord } from '../../shared/platform'
 import { builtinHooks, builtinPlatforms } from '../hooks'
+import { HttpShopReplyApi, ShopRuntimeManager, type ShopHookEvent, type ShopRuntimeEvent, type ShopTransportLike } from '../runtime/ShopRuntimeManager'
 
 type Persisted = { accounts: PlatformAccount[]; hooks: ImportedHookPackage[] }
 
@@ -15,16 +16,31 @@ export class PlatformManager {
   private readonly statePath: string
   private readonly stateBackupPath: string
   private saveQueue: Promise<void> = Promise.resolve()
+  private readonly shopRuntimes = new ShopRuntimeManager(new HttpShopReplyApi())
 
   constructor() {
     this.statePath = join(app.getPath('userData'), 'platform-hub.json')
     this.stateBackupPath = join(app.getPath('userData'), 'platform-hub.json.bak')
+    this.shopRuntimes.onEvent((event) => this.emitRuntimeEvent(event))
   }
 
   async init(): Promise<void> {
     this.state = await this.readState(this.statePath)
       || await this.readState(this.stateBackupPath)
       || { accounts: [], hooks: [] }
+    this.state.accounts = this.state.accounts.map((account) => ({
+      ...account,
+      online: account.online === true,
+      runtimeState: account.runtimeState || 'stopped',
+      messageListening: account.messageListening === true,
+    }))
+    for (const account of this.state.accounts) this.ensureSession(account.id)
+    for (const account of this.state.accounts.filter((item) => item.online)) {
+      await this.setAccountOnline(account.id, true).catch((error) => {
+        account.runtimeState = 'error'
+        console.error(`[platform-hub] 恢复店铺 Runtime 失败: ${account.id}`, error)
+      })
+    }
   }
 
   listPlatforms(): PlatformDefinition[] {
@@ -48,6 +64,7 @@ export class PlatformManager {
         connected: live?.connected ?? account.connected,
         authenticated: live?.authenticated ?? account.authenticated,
         webContentsId: cdp?.getWebContentsId(),
+        ...(this.shopRuntimes.snapshot(account.id) || { online: account.online, runtimeState: account.runtimeState, messageListening: account.messageListening }),
       }
     })
   }
@@ -59,24 +76,21 @@ export class PlatformManager {
     const account: PlatformAccount = {
       id, platform: platform.id, label: input.label.trim() || platform.label,
       url: input.url || platform.url, partition: partitionFor(platform.id, id), connected: false,
-      authenticated: false, createdAt: new Date().toISOString(),
+      authenticated: false, online: false, runtimeState: 'stopped', messageListening: false,
+      createdAt: new Date().toISOString(),
     }
     this.state.accounts.push(account)
+    this.ensureSession(account.id)
     await this.save()
     return account
   }
 
-  async removeAccount(accountId: string): Promise<void> { this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); this.state.accounts = this.state.accounts.filter((item) => item.id !== accountId); await this.save() }
+  async removeAccount(accountId: string): Promise<void> { await this.shopRuntimes.stop(accountId).catch(() => undefined); this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); this.state.accounts = this.state.accounts.filter((item) => item.id !== accountId); await this.save() }
 
   async open(accountId: string): Promise<PlatformAccount> {
     const account = this.requireAccount(accountId)
-    const platform = this.listPlatforms().find((item) => item.id === account.platform)!
-    const hook = this.getHook(platform.id)
-    let cdp = this.sessions.get(accountId)
-    if (!cdp) {
-      cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook, emit: (event) => this.emit(event) })
-      this.sessions.set(accountId, cdp)
-    }
+    const cdp = this.ensureSession(accountId)
+    for (const [id, session] of this.sessions) if (id !== accountId) session.hidePrimaryPage()
     await cdp.open(true)
     account.connected = true
     account.webContentsId = cdp.getWebContentsId()
@@ -93,7 +107,35 @@ export class PlatformManager {
     return cdp.getStatus()
   }
 
-  async disconnect(accountId: string): Promise<void> { this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); const account = this.requireAccount(accountId); account.connected = false; account.webContentsId = undefined; await this.save() }
+  async disconnect(accountId: string): Promise<void> { await this.shopRuntimes.stop(accountId).catch(() => undefined); this.sessions.get(accountId)?.close(); this.sessions.delete(accountId); const account = this.requireAccount(accountId); account.connected = false; account.webContentsId = undefined; account.online = false; account.runtimeState = 'stopped'; account.messageListening = false; await this.save() }
+  async setAccountOnline(accountId: string, online: boolean): Promise<PlatformAccount> {
+    const account = this.requireAccount(accountId)
+    if (online && (!this.sessions.has(accountId) || !this.sessions.get(accountId)?.getStatus().connected)) await this.open(accountId)
+    const cdp = this.sessions.get(accountId)
+    if (!cdp) throw new Error('请先打开平台页面')
+    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
+    account.online = online
+    try {
+      const snapshot = await this.shopRuntimes.setOnline(accountId, online)
+      account.runtimeState = snapshot.runtimeState
+      account.messageListening = snapshot.messageListening
+      await this.save()
+      return this.listAccounts().find((item) => item.id === accountId) || account
+    } catch (error) {
+      const snapshot = this.shopRuntimes.snapshot(accountId)
+      account.runtimeState = snapshot?.runtimeState || 'error'
+      account.messageListening = snapshot?.messageListening || false
+      await this.save()
+      throw error
+    }
+  }
+
+  runtimeStates() { return this.shopRuntimes.snapshots() }
+
+  async setConversationAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void> {
+    await this.shopRuntimes.setAttention(accountId, conversationId, state)
+  }
+
   async status(accountId: string): Promise<PlatformStatus> {
     let cdp = this.sessions.get(accountId)
     if (!cdp) {
@@ -139,6 +181,17 @@ export class PlatformManager {
 
   private getHook(id: string): HookPackageManifest { return this.state.hooks.find((item) => item.manifest.id === id)?.manifest || builtinHooks[id] }
   private requireAccount(id: string): PlatformAccount { const account = this.state.accounts.find((item) => item.id === id); if (!account) throw new Error('平台账号不存在'); return account }
+  private ensureSession(accountId: string): CdpSession {
+    const existing = this.sessions.get(accountId)
+    if (existing) return existing
+    const account = this.requireAccount(accountId)
+    const platform = this.listPlatforms().find((item) => item.id === account.platform)
+    if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`)
+    const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), emit: (event) => this.emit(event) })
+    this.sessions.set(accountId, cdp)
+    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
+    return cdp
+  }
   private async invoke<T>(accountId: string, method: string, ...args: unknown[]): Promise<T> { const cdp = this.sessions.get(accountId); if (!cdp) throw new Error('请先打开平台页面'); return cdp.invoke<T>(method, ...args) }
   private async withLogin<T>(accountId: string, method: string, ...args: unknown[]): Promise<T> {
     const cdp = this.sessions.get(accountId)
@@ -175,9 +228,40 @@ export class PlatformManager {
         account.authenticated = status.authenticated === true
         account.lastSeenAt = new Date(event.timestamp).toISOString()
         void this.save()
+        if (account.online && account.authenticated && this.shopRuntimes.snapshot(account.id)?.runtimeState !== 'running') {
+          void this.setAccountOnline(account.id, true).catch((error) => {
+            console.error(`[platform-hub] 登录后启动店铺监听失败: ${account.id}`, error)
+          })
+        }
       }
     }
+    const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : undefined
+    if (runtime && event.type === 'message') {
+      const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {}
+      runtime.pushEvent(event.accountId, {
+        type: 'message.created',
+        timestamp: event.timestamp,
+        payload: { message: payload.message || payload },
+      })
+    }
     this.listeners.forEach((listener) => listener(event))
+  }
+
+  private emitRuntimeEvent(event: ShopRuntimeEvent): void {
+    const account = this.state.accounts.find((item) => item.id === event.accountId)
+    if (!account) return
+    const payload = event.type === 'hook' && event.payload.event && typeof event.payload.event === 'object'
+      ? event.payload.event
+      : event.payload
+    const sourceType = event.type === 'hook' && payload && typeof payload === 'object' ? String((payload as { type?: string }).type || '') : event.type
+    this.listeners.forEach((listener) => listener({
+      id: `${event.accountId}:runtime:${event.timestamp}:${Math.random().toString(16).slice(2)}`,
+      accountId: event.accountId,
+      platform: account.platform,
+      type: sourceType === 'message.created' ? 'message' : sourceType.startsWith('order.') ? 'order' : 'log',
+      timestamp: event.timestamp,
+      payload,
+    }))
   }
   private async readState(path: string): Promise<Persisted | null> {
     try {
@@ -212,4 +296,37 @@ export class PlatformManager {
     this.saveQueue = operation
     return operation
   }
+}
+
+class CdpShopTransport implements ShopTransportLike {
+  constructor(private readonly cdp: CdpSession) {}
+
+  async start(): Promise<void> { await this.cdp.open(false) }
+
+  async invoke<T = unknown>(operation: string, input: unknown): Promise<{ ok: true; data: T } | { ok: false; error: { code: string; message: string; retryable?: boolean } }> {
+    const args = input && typeof input === 'object' ? input as Record<string, unknown> : {}
+    const method = operation === 'messages.listen' ? 'listenMessages'
+      : operation === 'messages.send.text' ? 'sendMessage'
+      : operation === 'conversation.attention.set' ? 'setConversationAttention'
+      : operation
+    const parameters = operation === 'messages.send.text'
+      ? [args.conversationId, args.text]
+      : operation === 'conversation.attention.set'
+        ? [args.conversationId, args.state]
+        : []
+    try {
+      const value = await this.cdp.invoke<T>(method, ...parameters)
+      if (value && typeof value === 'object' && 'errorCode' in (value as object)) {
+        const error = value as { errorCode?: string; error?: string }
+        return { ok: false, error: { code: error.errorCode || 'PLATFORM_ERROR', message: error.error || '平台操作失败' } }
+      }
+      return { ok: true, data: value }
+    } catch (error) {
+      return { ok: false, error: { code: 'PLATFORM_ERROR', message: error instanceof Error ? error.message : String(error) } }
+    }
+  }
+
+  subscribe(_listener: (event: ShopHookEvent) => void): () => void { return () => undefined }
+
+  async stop(): Promise<void> { /* The BrowserWindow remains available while an account is offline. */ }
 }

@@ -14420,7 +14420,7 @@ function createLucideIcon(iconDataOrName, iconNode = [], aliases = []) {
   }
   return Component;
 }
-const __iconData$k = {
+const __iconData$l = {
   name: "activity",
   size: 24,
   node: [
@@ -14433,9 +14433,9 @@ const __iconData$k = {
     ]
   ]
 };
-__iconData$k.node;
-const Activity = createLucideIcon(__iconData$k);
-const __iconData$j = {
+__iconData$l.node;
+const Activity = createLucideIcon(__iconData$l);
+const __iconData$k = {
   name: "bell",
   size: 24,
   node: [
@@ -14449,9 +14449,9 @@ const __iconData$j = {
     ]
   ]
 };
-__iconData$j.node;
-const Bell = createLucideIcon(__iconData$j);
-const __iconData$i = {
+__iconData$k.node;
+const Bell = createLucideIcon(__iconData$k);
+const __iconData$j = {
   name: "boxes",
   size: 24,
   node: [
@@ -14487,9 +14487,9 @@ const __iconData$i = {
     ["path", { d: "M12 13.5V8", key: "1io7kd" }]
   ]
 };
-__iconData$i.node;
-const Boxes = createLucideIcon(__iconData$i);
-const __iconData$h = {
+__iconData$j.node;
+const Boxes = createLucideIcon(__iconData$j);
+const __iconData$i = {
   name: "circle-alert",
   size: 24,
   node: [
@@ -14499,9 +14499,9 @@ const __iconData$h = {
   ],
   aliases: ["alert-circle"]
 };
-__iconData$h.node;
-const CircleAlert = createLucideIcon(__iconData$h);
-const __iconData$g = {
+__iconData$i.node;
+const CircleAlert = createLucideIcon(__iconData$i);
+const __iconData$h = {
   name: "circle-check",
   size: 24,
   node: [
@@ -14510,9 +14510,9 @@ const __iconData$g = {
   ],
   aliases: ["check-circle-2"]
 };
-__iconData$g.node;
-const CircleCheck = createLucideIcon(__iconData$g);
-const __iconData$f = {
+__iconData$h.node;
+const CircleCheck = createLucideIcon(__iconData$h);
+const __iconData$g = {
   name: "clipboard-check",
   size: 24,
   node: [
@@ -14527,9 +14527,9 @@ const __iconData$f = {
     ["path", { d: "m9 14 2 2 4-4", key: "df797q" }]
   ]
 };
-__iconData$f.node;
-const ClipboardCheck = createLucideIcon(__iconData$f);
-const __iconData$e = {
+__iconData$g.node;
+const ClipboardCheck = createLucideIcon(__iconData$g);
+const __iconData$f = {
   name: "clock-3",
   size: 24,
   node: [
@@ -14537,9 +14537,9 @@ const __iconData$e = {
     ["path", { d: "M12 6v6h4", key: "135r8i" }]
   ]
 };
-__iconData$e.node;
-const Clock3 = createLucideIcon(__iconData$e);
-const __iconData$d = {
+__iconData$f.node;
+const Clock3 = createLucideIcon(__iconData$f);
+const __iconData$e = {
   name: "message-square",
   size: 24,
   node: [
@@ -14552,9 +14552,9 @@ const __iconData$d = {
     ]
   ]
 };
-__iconData$d.node;
-const MessageSquare = createLucideIcon(__iconData$d);
-const __iconData$c = {
+__iconData$e.node;
+const MessageSquare = createLucideIcon(__iconData$e);
+const __iconData$d = {
   name: "package-search",
   size: 24,
   node: [
@@ -14572,9 +14572,9 @@ const __iconData$c = {
     ["circle", { cx: "18.5", cy: "16.5", r: "2.5", key: "ke13xx" }]
   ]
 };
-__iconData$c.node;
-const PackageSearch = createLucideIcon(__iconData$c);
-const __iconData$b = {
+__iconData$d.node;
+const PackageSearch = createLucideIcon(__iconData$d);
+const __iconData$c = {
   name: "play",
   size: 24,
   node: [
@@ -14587,9 +14587,9 @@ const __iconData$b = {
     ]
   ]
 };
-__iconData$b.node;
-const Play = createLucideIcon(__iconData$b);
-const __iconData$a = {
+__iconData$c.node;
+const Play = createLucideIcon(__iconData$c);
+const __iconData$b = {
   name: "plus",
   size: 24,
   node: [
@@ -14597,8 +14597,18 @@ const __iconData$a = {
     ["path", { d: "M12 5v14", key: "s699le" }]
   ]
 };
+__iconData$b.node;
+const Plus = createLucideIcon(__iconData$b);
+const __iconData$a = {
+  name: "power",
+  size: 24,
+  node: [
+    ["path", { d: "M12 2v10", key: "mnfbl" }],
+    ["path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04", key: "obofu9" }]
+  ]
+};
 __iconData$a.node;
-const Plus = createLucideIcon(__iconData$a);
+const Power = createLucideIcon(__iconData$a);
 const __iconData$9 = {
   name: "receipt-text",
   size: 24,
@@ -14998,28 +15008,15 @@ function PlatformViewport(props) {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card platform-frame", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "平台展示区域" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "平台原生工作区或自研 UI 均可挂载在此区域" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "官方消息工作台" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "当前店铺的原生 WebContents 使用该店铺独立 Electron partition。" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "frame-pill", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 14 }),
             ready ? "已连接" : "未登录"
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "platform-frame-body", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "frame-hero", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "frame-logo", children: (props.platform?.label || props.account.platform).slice(0, 1) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: props.platform?.label || props.account.platform }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: ready ? `${executionHost} 承载当前平台执行实例，Hook 只读取平台事实。` : "登录或连接后这里会展示平台工作区状态与适配器能力。" })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "frame-grid", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(FrameStat, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { size: 17 }), title: "消息监听", value: props.sessions.length ? `${props.sessions.length} 个会话` : "等待消息" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(FrameStat, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PackageSearch, { size: 17 }), title: "商品采集", value: props.products.length ? `${props.products.length} 件商品` : "尚未同步" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(FrameStat, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(ReceiptText, { size: 17 }), title: "订单事件", value: "created · paid · refund" })
-          ] })
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "platform-frame-body", children: /* @__PURE__ */ jsxRuntimeExports.jsx("webview", { className: "platform-workbench", src: props.account.url, partition: props.account.partition, "aria-label": `${props.account.label} 官方消息工作台` }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-card event-card", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card-title", children: [
@@ -15079,15 +15076,6 @@ function Capability({ icon, label, value, ready }) {
     ] })
   ] });
 }
-function FrameStat({ icon, title, value }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "frame-stat", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: icon }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: title }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: value })
-    ] })
-  ] });
-}
 function HookItem({ icon, label, enabled }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `hook-item ${enabled ? "enabled" : ""}`, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: icon }),
@@ -15132,7 +15120,11 @@ function StoreSidebar(props) {
               ready ? "已连接" : account.connected ? "等待登录" : "未连接"
             ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `connection-dot ${ready ? "ready" : ""}` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `connection-dot ${account.online ? "ready" : ""}` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `online-toggle ${account.online ? "enabled" : ""}`, role: "switch", "aria-checked": account.online, title: account.online ? "关闭 AI 在线" : "开启 AI 在线", onClick: (event) => {
+            event.stopPropagation();
+            props.onSetOnline(account, !account.online);
+          }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Power, { size: 13 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "store-remove", role: "button", title: "移除店铺", onClick: (event) => {
             event.stopPropagation();
             props.onRemove(account);
@@ -15161,22 +15153,37 @@ function App() {
   const [activeAccountId, setActiveAccountId] = reactExports.useState("");
   const [selectedPlatform, setSelectedPlatform] = reactExports.useState("douyin-shop");
   const [label, setLabel] = reactExports.useState("");
-  const [products, setProducts] = reactExports.useState([]);
-  const [sessions, setSessions] = reactExports.useState([]);
-  const [selectedSessionId, setSelectedSessionId] = reactExports.useState("");
-  const [messages, setMessages] = reactExports.useState([]);
-  const [messageDraft, setMessageDraft] = reactExports.useState("");
-  const [messageListening, setMessageListening] = reactExports.useState(false);
-  const [orderListening, setOrderListening] = reactExports.useState(false);
-  const [orderWatermark, setOrderWatermark] = reactExports.useState();
-  const [handoffTargets, setHandoffTargets] = reactExports.useState([]);
-  const [selectedHandoffTarget, setSelectedHandoffTarget] = reactExports.useState("");
-  const [status, setStatus] = reactExports.useState(null);
+  const [productsByAccount, setProductsByAccount] = reactExports.useState({});
+  const [sessionsByAccount, setSessionsByAccount] = reactExports.useState({});
+  const [selectedSessionByAccount, setSelectedSessionByAccount] = reactExports.useState({});
+  const [messagesByAccount, setMessagesByAccount] = reactExports.useState({});
+  const [messageDraftByAccount, setMessageDraftByAccount] = reactExports.useState({});
+  const [messageListeningByAccount, setMessageListeningByAccount] = reactExports.useState({});
+  const [orderListeningByAccount, setOrderListeningByAccount] = reactExports.useState({});
+  const [orderWatermarkByAccount, setOrderWatermarkByAccount] = reactExports.useState({});
+  const [handoffTargetsByAccount, setHandoffTargetsByAccount] = reactExports.useState({});
+  const [selectedHandoffByAccount, setSelectedHandoffByAccount] = reactExports.useState({});
+  const [statusByAccount, setStatusByAccount] = reactExports.useState({});
+  const [runtimeStateByAccount, setRuntimeStateByAccount] = reactExports.useState({});
   const [events, setEvents] = reactExports.useState([]);
   const [busy, setBusy] = reactExports.useState("");
   const [toast, setToast] = reactExports.useState("");
   const activeAccount = reactExports.useMemo(() => accounts.find((item) => item.id === activeAccountId), [accounts, activeAccountId]);
   const activePlatform = reactExports.useMemo(() => platforms.find((item) => item.id === (activeAccount?.platform || selectedPlatform)), [platforms, activeAccount, selectedPlatform]);
+  const sessions = sessionsByAccount[activeAccountId] || [];
+  const messages = messagesByAccount[activeAccountId] || [];
+  const products = productsByAccount[activeAccountId] || [];
+  const selectedSessionId = selectedSessionByAccount[activeAccountId] || "";
+  const messageDraft = messageDraftByAccount[activeAccountId] || "";
+  const messageListening = messageListeningByAccount[activeAccountId] || false;
+  const orderListening = orderListeningByAccount[activeAccountId] || false;
+  const orderWatermark = orderWatermarkByAccount[activeAccountId];
+  const handoffTargets = handoffTargetsByAccount[activeAccountId] || [];
+  const selectedHandoffTarget = selectedHandoffByAccount[activeAccountId] || "";
+  const status = statusByAccount[activeAccountId] || null;
+  const updateMap = reactExports.useCallback((setter, accountId, value) => {
+    setter((current) => ({ ...current, [accountId]: typeof value === "function" ? value(current[accountId]) : value }));
+  }, []);
   const notify = reactExports.useCallback((message) => {
     setToast(message);
     window.setTimeout(() => setToast((current) => current === message ? "" : current), 2800);
@@ -15184,21 +15191,21 @@ function App() {
   const inspect = reactExports.useCallback(async (accountId) => {
     try {
       const nextStatus = await window.platformApi.status(accountId);
-      setStatus(nextStatus);
+      updateMap(setStatusByAccount, accountId, nextStatus);
       setAccounts((current) => current.map((item) => item.id === accountId ? { ...item, connected: nextStatus.connected, authenticated: nextStatus.authenticated } : item));
     } catch (error) {
       notify(errorMessage(error));
     }
-  }, [notify]);
+  }, [notify, updateMap]);
   const loadMessages = reactExports.useCallback(async (accountId, sessionId) => {
     try {
       const result = await window.platformApi.messages(accountId, sessionId);
       if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回消息列表");
-      setMessages(result);
+      updateMap(setMessagesByAccount, accountId, result);
     } catch (error) {
       notify(errorMessage(error));
     }
-  }, [notify]);
+  }, [notify, updateMap]);
   const refreshSessions = reactExports.useCallback(async (accountId = activeAccountId) => {
     if (!accountId) return;
     setBusy("sessions");
@@ -15206,38 +15213,25 @@ function App() {
       const result = await window.platformApi.sessions(accountId);
       if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回会话列表");
       const nextSessions = result;
-      setSessions(nextSessions);
+      updateMap(setSessionsByAccount, accountId, nextSessions);
       const nextSessionId = nextSessions[0]?.id || "";
-      setSelectedSessionId(nextSessionId);
+      updateMap(setSelectedSessionByAccount, accountId, nextSessionId);
       if (nextSessionId) await loadMessages(accountId, nextSessionId);
-      else setMessages([]);
+      else updateMap(setMessagesByAccount, accountId, []);
       notify(`已读取 ${nextSessions.length} 个会话`);
     } catch (error) {
       notify(errorMessage(error));
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, loadMessages, notify]);
-  const resetAccountView = reactExports.useCallback(() => {
-    setStatus(null);
-    setProducts([]);
-    setSessions([]);
-    setSelectedSessionId("");
-    setMessages([]);
-    setMessageDraft("");
-    setMessageListening(false);
-    setOrderListening(false);
-    setOrderWatermark(void 0);
-    setHandoffTargets([]);
-    setSelectedHandoffTarget("");
-  }, []);
+  }, [activeAccountId, loadMessages, notify, updateMap]);
   const refresh = reactExports.useCallback(async () => {
     try {
-      const [nextPlatforms, nextAccounts] = await Promise.all([window.platformApi.platforms.list(), window.platformApi.accounts.list()]);
+      const [nextPlatforms, nextAccounts, runtimeStates] = await Promise.all([window.platformApi.platforms.list(), window.platformApi.accounts.list(), window.platformApi.runtimeStates()]);
       setPlatforms(nextPlatforms);
       setAccounts(nextAccounts);
+      setRuntimeStateByAccount(Object.fromEntries(runtimeStates.map((runtime) => [runtime.accountId, runtime.runtimeState])));
       const accountId = activeAccountId && nextAccounts.some((item) => item.id === activeAccountId) ? activeAccountId : nextAccounts[0]?.id || "";
-      if (accountId !== activeAccountId) resetAccountView();
       setActiveAccountId(accountId);
       if (accountId) {
         await inspect(accountId);
@@ -15246,14 +15240,13 @@ function App() {
     } catch (error) {
       notify(errorMessage(error));
     }
-  }, [activeAccountId, inspect, notify, refreshSessions, resetAccountView]);
+  }, [activeAccountId, inspect, notify, refreshSessions]);
   const addAccount = reactExports.useCallback(async () => {
     setBusy("add");
     try {
       const account = await window.platformApi.accounts.add({ platform: selectedPlatform, label: label || activePlatform?.label || "平台店铺" });
       setLabel("");
       setAccounts((current) => [...current, account]);
-      resetAccountView();
       setActiveAccountId(account.id);
       await window.platformApi.accounts.open(account.id);
       await inspect(account.id);
@@ -15263,9 +15256,8 @@ function App() {
     } finally {
       setBusy("");
     }
-  }, [activePlatform, inspect, label, notify, resetAccountView, selectedPlatform]);
+  }, [activePlatform, inspect, label, notify, selectedPlatform]);
   const openAccount = reactExports.useCallback(async (account) => {
-    if (account.id !== activeAccountId) resetAccountView();
     setActiveAccountId(account.id);
     setBusy(`open:${account.id}`);
     try {
@@ -15277,7 +15269,7 @@ function App() {
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, inspect, notify, resetAccountView]);
+  }, [inspect, notify]);
   const removeAccount = reactExports.useCallback(async (account) => {
     if (!window.confirm(`确定移除“${account.label}”吗？`)) return;
     try {
@@ -15306,18 +15298,18 @@ function App() {
     try {
       const result = await window.platformApi.collectProducts(activeAccountId);
       if (!Array.isArray(result)) throw new Error(operationError(result) || "平台未返回商品列表");
-      setProducts(result);
+      updateMap(setProductsByAccount, activeAccountId, result);
       notify("商品采集完成");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, notify]);
+  }, [activeAccountId, notify, updateMap]);
   const selectSession = reactExports.useCallback((sessionId) => {
-    setSelectedSessionId(sessionId);
+    updateMap(setSelectedSessionByAccount, activeAccountId, sessionId);
     if (activeAccountId && sessionId) void loadMessages(activeAccountId, sessionId);
-  }, [activeAccountId, loadMessages]);
+  }, [activeAccountId, loadMessages, updateMap]);
   const startMessageListening = reactExports.useCallback(async () => {
     if (!activeAccountId) return;
     setBusy("messages-listen");
@@ -15325,14 +15317,14 @@ function App() {
       const result = await window.platformApi.listenMessages(activeAccountId);
       const failure = operationError(result);
       if (failure) throw new Error(failure);
-      setMessageListening(result.listening === true);
+      updateMap(setMessageListeningByAccount, activeAccountId, result.listening === true);
       notify(result.listening ? "消息监听已启动，等待客户消息或商品卡片" : "平台未返回消息监听状态");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, notify]);
+  }, [activeAccountId, notify, updateMap]);
   const sendTestMessage = reactExports.useCallback(async () => {
     if (!activeAccountId || !selectedSessionId || !messageDraft.trim()) return;
     setBusy("send");
@@ -15340,7 +15332,7 @@ function App() {
       const result = await window.platformApi.sendMessage(activeAccountId, selectedSessionId, messageDraft.trim());
       if (!result.success) throw new Error(result.error || "消息发送失败");
       const sent = messageDraft.trim();
-      setMessageDraft("");
+      updateMap(setMessageDraftByAccount, activeAccountId, "");
       await loadMessages(activeAccountId, selectedSessionId);
       notify(`测试消息已发送：${sent.slice(0, 24)}`);
     } catch (error) {
@@ -15348,7 +15340,7 @@ function App() {
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, loadMessages, messageDraft, notify, selectedSessionId]);
+  }, [activeAccountId, loadMessages, messageDraft, notify, selectedSessionId, updateMap]);
   const startOrderListening = reactExports.useCallback(async () => {
     if (!activeAccountId) return;
     setBusy("orders-listen");
@@ -15356,30 +15348,30 @@ function App() {
       const result = await window.platformApi.listenOrders(activeAccountId, selectedSessionId || void 0);
       const failure = operationError(result);
       if (failure) throw new Error(failure);
-      setOrderListening(result.listening === true);
-      setOrderWatermark(result.watermark);
+      updateMap(setOrderListeningByAccount, activeAccountId, result.listening === true);
+      updateMap(setOrderWatermarkByAccount, activeAccountId, result.watermark);
       notify(result.listening ? "订单监听已启动，请按验收清单操作真实订单" : "平台未返回订单监听状态");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, notify, selectedSessionId]);
+  }, [activeAccountId, notify, selectedSessionId, updateMap]);
   const loadHandoffTargets = reactExports.useCallback(async () => {
     if (!activeAccountId) return;
     setBusy("handoff-targets");
     try {
       const targets = await window.platformApi.handoffTargets(activeAccountId);
       if (!Array.isArray(targets)) throw new Error(operationError(targets) || "平台未返回可转人工目标");
-      setHandoffTargets(targets);
-      setSelectedHandoffTarget("");
+      updateMap(setHandoffTargetsByAccount, activeAccountId, targets);
+      updateMap(setSelectedHandoffByAccount, activeAccountId, "");
       notify(targets.length ? `已读取 ${targets.length} 个官方转人工目标` : "当前平台没有可转人工目标");
     } catch (error) {
       notify(errorMessage(error));
     } finally {
       setBusy("");
     }
-  }, [activeAccountId, notify]);
+  }, [activeAccountId, notify, updateMap]);
   const transferSession = reactExports.useCallback(async () => {
     if (!activeAccountId || !selectedSessionId || !selectedHandoffTarget) return;
     const target = handoffTargets.find((item) => (item.id || item.name) === selectedHandoffTarget);
@@ -15396,6 +15388,19 @@ function App() {
       setBusy("");
     }
   }, [activeAccountId, handoffTargets, notify, selectedHandoffTarget, selectedSessionId]);
+  const setOnline = reactExports.useCallback(async (account, online) => {
+    setBusy(`online:${account.id}`);
+    try {
+      const next = await window.platformApi.accounts.setOnline(account.id, online);
+      setAccounts((current) => current.map((item) => item.id === next.id ? next : item));
+      updateMap(setRuntimeStateByAccount, account.id, next.runtimeState);
+      notify(`${account.label} 已${online ? "上线" : "下线"}`);
+    } catch (error) {
+      notify(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  }, [notify, updateMap]);
   const eventSummary = reactExports.useCallback((event) => {
     if (!event.payload || typeof event.payload !== "object") return String(event.payload || event.type);
     const payload = event.payload;
@@ -15415,28 +15420,35 @@ function App() {
   reactExports.useEffect(() => {
     const dispose = window.platformApi.onEvent((event) => {
       setEvents((current) => [event, ...current].slice(0, 80));
-      if (event.accountId !== activeAccountId) return;
       if (event.type === "connection") {
         const nextStatus = event.payload;
-        setStatus(nextStatus);
+        updateMap(setStatusByAccount, event.accountId, nextStatus);
+        setAccounts((current) => current.map((item) => item.id === event.accountId ? { ...item, connected: nextStatus.connected, authenticated: nextStatus.authenticated } : item));
         if (!nextStatus.authenticated) {
-          setMessageListening(false);
-          setOrderListening(false);
-          setOrderWatermark(void 0);
-          setHandoffTargets([]);
-          setSelectedHandoffTarget("");
+          updateMap(setMessageListeningByAccount, event.accountId, false);
+          updateMap(setOrderListeningByAccount, event.accountId, false);
+          updateMap(setOrderWatermarkByAccount, event.accountId, void 0);
+          updateMap(setHandoffTargetsByAccount, event.accountId, []);
+          updateMap(setSelectedHandoffByAccount, event.accountId, "");
+        }
+      }
+      if (event.type === "log" && event.payload && typeof event.payload === "object") {
+        const runtime = event.payload;
+        if (runtime.runtimeState) {
+          updateMap(setRuntimeStateByAccount, event.accountId, runtime.runtimeState);
+          setAccounts((current) => current.map((item) => item.id === event.accountId ? { ...item, runtimeState: runtime.runtimeState, ...typeof runtime.online === "boolean" ? { online: runtime.online } : {}, ...typeof runtime.messageListening === "boolean" ? { messageListening: runtime.messageListening } : {} } : item));
         }
       }
       if (event.type === "message") {
         const message = extractMessage(event.payload);
         if (!message) return;
-        setMessages((current) => upsertPlatformMessage(current, message));
-        setSessions((current) => current.some((item) => item.id === message.sessionId) ? current : [{ id: message.sessionId, title: message.senderName || "新会话", unread: 0 }, ...current]);
+        updateMap(setMessagesByAccount, event.accountId, (current) => upsertPlatformMessage(current || [], message));
+        updateMap(setSessionsByAccount, event.accountId, (current) => (current || []).some((item) => item.id === message.sessionId) ? current || [] : [{ id: message.sessionId, title: message.senderName || "新会话", unread: 0 }, ...current || []]);
       }
     });
     void refresh();
     return dispose;
-  }, [activeAccountId, refresh]);
+  }, [activeAccountId, refresh, updateMap]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-shell", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "app-topbar", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar-title", children: [
@@ -15460,8 +15472,8 @@ function App() {
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-layout", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(StoreSidebar, { platforms, accounts, activeAccountId, selectedPlatform, label, busy, onPlatformChange: setSelectedPlatform, onLabelChange: setLabel, onAdd: () => void addAccount(), onSelect: (account) => void openAccount(account), onRemove: (account) => void removeAccount(account), onImport: () => void importHook() }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: setMessageDraft, onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: setSelectedHandoffTarget, onTransfer: () => void transferSession(), eventSummary })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(StoreSidebar, { platforms, accounts, activeAccountId, selectedPlatform, label, busy, onPlatformChange: setSelectedPlatform, onLabelChange: setLabel, onAdd: () => void addAccount(), onSelect: (account) => void openAccount(account), onSetOnline: (account, online) => void setOnline(account, online), onRemove: (account) => void removeAccount(account), onImport: () => void importHook() }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(PlatformViewport, { account: activeAccount, platform: activePlatform, status, sessions, messages, products, events: events.filter((item) => item.accountId === activeAccountId), busy, selectedSessionId, messageDraft, messageListening, orderListening, orderWatermark, handoffTargets, selectedHandoffTarget, onRefreshSessions: () => void refreshSessions(), onCollectProducts: () => void collectProducts(), onSelectSession: selectSession, onMessageDraftChange: (value) => updateMap(setMessageDraftByAccount, activeAccountId, value), onStartMessages: () => void startMessageListening(), onSendMessage: () => void sendTestMessage(), onStartOrders: () => void startOrderListening(), onLoadHandoffTargets: () => void loadHandoffTargets(), onSelectHandoffTarget: (value) => updateMap(setSelectedHandoffByAccount, activeAccountId, value), onTransfer: () => void transferSession(), eventSummary })
     ] }),
     toast && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toast", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 15 }),

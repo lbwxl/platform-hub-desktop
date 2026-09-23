@@ -127,7 +127,7 @@ test('快手自发文本使用有界缓存回填发送瞬间的空正文事件',
   assert.match(kuaishouHook, /SENT_TEXT_MAX = 100/)
   assert.match(kuaishouHook, /pendingTextForMessage/)
   assert.match(kuaishouHook, /pendingSentTexts\.clear\(\)/)
-  assert.match(renderer, /upsertPlatformMessage\(current, message\)/)
+  assert.match(renderer, /upsertPlatformMessage\(current \|\| \[\], message\)/)
 })
 
 test('平台操作遇到登录状态时会等待并重试', () => {
@@ -176,7 +176,8 @@ test('多账号 CDP 心跳合并调用、阻止重叠并回收伴随页', () => 
 
 test('工作台认证完成后自动加载会话并接收未知会话消息', () => {
   assert.match(renderer, /if \(event\.type === 'message'\)/)
-  assert.match(renderer, /setSessions\(\(current\) => current\.some\(\(item\) => item\.id === message\.sessionId\)/)
+  assert.match(renderer, /setSessionsByAccount/)
+  assert.match(renderer, /item\.id === message\.sessionId/)
 })
 
 test('账号状态串行原子保存并可从有效备份恢复', () => {

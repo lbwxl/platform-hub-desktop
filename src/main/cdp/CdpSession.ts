@@ -136,6 +136,10 @@ export class CdpSession extends EventEmitter {
     if (this.window && !this.window.isDestroyed()) this.window.show()
   }
 
+  hidePrimaryPage(): void {
+    if (this.window && !this.window.isDestroyed()) this.window.hide()
+  }
+
   async showRuntimePageFor(method: string): Promise<void> {
     const route = this.routeForMethod(method)
     if (!route) {

@@ -1,4 +1,4 @@
-import { Plus, Store, Trash2, Upload, Wifi } from 'lucide-react'
+import { Plus, Store, Trash2, Upload, Wifi, Power } from 'lucide-react'
 import type { PlatformAccount, PlatformDefinition } from '../../../shared/platform'
 
 export interface StoreSidebarProps {
@@ -12,6 +12,7 @@ export interface StoreSidebarProps {
   onLabelChange: (label: string) => void
   onAdd: () => void
   onSelect: (account: PlatformAccount) => void
+  onSetOnline: (account: PlatformAccount, online: boolean) => void
   onRemove: (account: PlatformAccount) => void
   onImport: () => void
 }
@@ -35,7 +36,8 @@ export function StoreSidebar(props: StoreSidebarProps) {
           return <button key={account.id} className={`store-item ${account.id === props.activeAccountId ? 'selected' : ''}`} onClick={() => props.onSelect(account)}>
             <span className="store-avatar">{(platform?.label || account.platform).slice(0, 1)}</span>
             <span className="store-meta"><strong>{account.label}</strong><small>{platform?.label || account.platform} · {ready ? '已连接' : account.connected ? '等待登录' : '未连接'}</small></span>
-            <span className={`connection-dot ${ready ? 'ready' : ''}`} />
+            <span className={`connection-dot ${account.online ? 'ready' : ''}`} />
+            <span className={`online-toggle ${account.online ? 'enabled' : ''}`} role="switch" aria-checked={account.online} title={account.online ? '关闭 AI 在线' : '开启 AI 在线'} onClick={(event) => { event.stopPropagation(); props.onSetOnline(account, !account.online) }}><Power size={13} /></span>
             <span className="store-remove" role="button" title="移除店铺" onClick={(event) => { event.stopPropagation(); props.onRemove(account) }}><Trash2 size={14} /></span>
           </button>
         })}

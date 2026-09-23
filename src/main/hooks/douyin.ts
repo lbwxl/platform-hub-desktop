@@ -64,6 +64,8 @@ ${douyinHookRuntimeScript}
       content: item.content || '',
       type: item.type || 'unknown',
       isMine: item.direction === 'outbound',
+      direction: item.direction,
+      origin: item.origin,
       timestamp: item.timestamp || Date.now(),
       ...(item.attachments?.[0]?.url ? { avatar: item.attachments[0].url } : {}),
       raw: item.raw,
@@ -156,6 +158,7 @@ ${douyinHookRuntimeScript}
       return Array.isArray(rows) ? rows : []
     },
     transferSession: (conversationId, target) => unwrap('handoff.transfer', { conversationId, targetId: target }),
+    setConversationAttention: (conversationId, state) => unwrap('conversation.attention.set', { conversationId, state }),
     drainEvents: async () => (await runtime.drainEvents()).map(event),
     dispose: () => runtime.dispose(),
   }

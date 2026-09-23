@@ -266,6 +266,9 @@ body { min-width: 980px; background: #f5f7fb; }
 .store-meta strong { color: #34415a; font-size: 12px; }
 .store-meta small { margin-top: 3px; color: #9ba6b6; font-size: 10px; }
 .connection-dot.ready { background: #32b47f; box-shadow: 0 0 0 3px #32b47f1f; }
+.online-toggle { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: #9aa6b7; cursor: pointer; }
+.online-toggle:hover { background: #eaf0f8; color: #60718b; }
+.online-toggle.enabled { color: #1f9c6b; background: #e7f7ef; }
 .store-remove { display: grid; place-items: center; padding: 4px; color: #a7b0be; opacity: 0; }
 .store-item:hover .store-remove { opacity: 1; }
 .store-empty { display: grid; place-items: center; gap: 8px; padding: 44px 12px; color: #a4afbd; text-align: center; }
@@ -308,7 +311,8 @@ body { min-width: 980px; background: #f5f7fb; }
 .card-title strong { color: #43516a; font-size: 13px; }
 .card-title span { margin-top: 4px; color: #a0aaba; font-size: 10px; }
 .frame-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; color: #4a8e72; border-radius: 20px; background: #effaf4; font-size: 10px !important; }
-.platform-frame-body { min-height: 262px; padding: 25px; background: linear-gradient(145deg, #fbfcff, #f5f8ff); }
+.platform-frame-body { min-height: 262px; padding: 0; background: #fff; }
+.platform-workbench { display: inline-flex; width: 100%; height: 430px; border: 0; background: #fff; }
 .frame-hero { gap: 14px; max-width: 600px; padding: 19px; border: 1px solid #e6ebf5; border-radius: 10px; background: #fff; }
 .frame-logo { width: 46px; height: 46px; display: grid; place-items: center; color: #fff; border-radius: 12px; background: linear-gradient(145deg, #557ff1, #385fd2); font-size: 20px; font-weight: 700; }
 .frame-hero h2 { margin: 0; color: #34425c; font-size: 17px; }
