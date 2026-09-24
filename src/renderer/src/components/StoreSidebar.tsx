@@ -1,4 +1,4 @@
-import { Plus, Store, Trash2, Upload, Wifi, Power } from 'lucide-react'
+import { Plus, Store, Trash2, Upload, Wifi } from 'lucide-react'
 import type { PlatformAccount, PlatformDefinition } from '../../../shared/platform'
 
 export interface StoreSidebarProps {
@@ -33,13 +33,30 @@ export function StoreSidebar(props: StoreSidebarProps) {
         {props.accounts.map((account) => {
           const platform = props.platforms.find((item) => item.id === account.platform)
           const ready = account.connected && account.authenticated
-          return <button key={account.id} className={`store-item ${account.id === props.activeAccountId ? 'selected' : ''}`} onClick={() => props.onSelect(account)}>
-            <span className="store-avatar">{(platform?.label || account.platform).slice(0, 1)}</span>
-            <span className="store-meta"><strong>{account.label}</strong><small>{platform?.label || account.platform} · {ready ? '已连接' : account.connected ? '等待登录' : '未连接'}</small></span>
-            <span className={`connection-dot ${account.online ? 'ready' : ''}`} />
-            <span className={`online-toggle ${account.online ? 'enabled' : ''}`} role="switch" aria-checked={account.online} title={account.online ? '关闭 AI 在线' : '开启 AI 在线'} onClick={(event) => { event.stopPropagation(); props.onSetOnline(account, !account.online) }}><Power size={13} /></span>
-            <span className="store-remove" role="button" title="移除店铺" onClick={(event) => { event.stopPropagation(); props.onRemove(account) }}><Trash2 size={14} /></span>
-          </button>
+          return <div key={account.id} className={`store-item ${account.id === props.activeAccountId ? 'selected' : ''}`}>
+            <button type="button" className="store-select" onClick={() => props.onSelect(account)}>
+              <span className="store-avatar">{(platform?.label || account.platform).slice(0, 1)}</span>
+              <span className="store-meta"><strong>{account.label}</strong><small>{platform?.label || account.platform} · {ready ? '已连接' : account.connected ? '等待登录' : '未连接'}</small></span>
+              <span className={`connection-dot ${account.connected ? 'ready' : ''}`} />
+            </button>
+            <div className="store-online-row">
+              <span className="store-online-label">AI 自动回复</span>
+              <button
+                type="button"
+                className={`online-toggle ${account.online ? 'enabled' : ''}`}
+                role="switch"
+                aria-checked={account.online}
+                aria-label={`${account.label} AI 自动回复${account.online ? '已开启' : '已关闭'}`}
+                title={account.online ? '点击关闭该店铺的自动回复' : '点击开启该店铺的自动回复'}
+                disabled={props.busy === `online:${account.id}`}
+                onClick={() => props.onSetOnline(account, !account.online)}
+              >
+                <span className="online-toggle-state">{account.online ? '在线' : '离线'}</span>
+                <span className="online-toggle-track"><span /></span>
+              </button>
+              <button type="button" className="store-remove" aria-label={`移除${account.label}`} title="移除店铺" onClick={() => props.onRemove(account)}><Trash2 size={14} /></button>
+            </div>
+          </div>
         })}
         {!props.accounts.length && <div className="store-empty"><Store size={28} /><strong>还没有店铺</strong><span>添加店铺后，登录会话会独立保存</span></div>}
       </div>

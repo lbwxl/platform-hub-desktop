@@ -92,6 +92,31 @@ test('AUTOMATION_ECHO_NO_REENTRY', async () => {
   await manager.stop('shop-a'); await manager.stop('shop-b'); await manager.stop('shop-c')
 })
 
+test('OFFICIAL_SERVICE_NOTICES_AND_UNATTRIBUTED_EVENTS_DO_NOT_CALL_REPLY_API', async () => {
+  const { manager, hooks, replyCalls } = setup()
+  await manager.setOnline('shop-a', true)
+  const emit = (id, message) => manager.pushEvent('shop-a', {
+    id,
+    type: 'message.created',
+    timestamp: Date.now(),
+    payload: { message: { id, conversationId: 'conversation-a', ...message } },
+  })
+
+  emit('service-assigned', {
+    content: '人工客服 xinle 为您服务', type: 'system', direction: 'inbound', origin: 'system',
+  })
+  emit('unattributed', { content: 'hello', type: 'unknown', direction: 'inbound' })
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  assert.equal(replyCalls.length, 0)
+
+  emit('buyer-hello', {
+    content: 'hello', type: 'text', direction: 'inbound', origin: 'customer', senderId: 'buyer-a',
+  })
+  await eventually(() => assert.equal(replyCalls.length, 1))
+  assert.equal(replyCalls[0].content, 'hello')
+  await manager.stop('shop-a'); await manager.stop('shop-b'); await manager.stop('shop-c')
+})
+
 test('HUMAN_ATTENTION_LIFECYCLE', async () => {
   const { manager, hooks } = setup()
   await manager.setOnline('shop-a', true)

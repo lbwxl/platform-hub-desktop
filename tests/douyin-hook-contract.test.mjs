@@ -114,7 +114,7 @@ test('Douyin page runtime handshake, normalized operations, events, handoff and 
   let unsubscribeCount = 0
   let transferArgs
   const now = Date.now()
-  const oldMessage = { serverId: 'old', conversationId: 'conversation-1', sender: 'buyer-1', content: '历史消息', createTime: now - 60_000 }
+  const oldMessage = { serverId: 'old', conversationId: 'conversation-1', sender: 'buyer-1', content: '历史消息', ext: { sender_role: '1' }, createTime: now - 60_000 }
   const stream = { subscribe(callback) { callbacks.push(callback); return { unsubscribe() { unsubscribeCount += 1 } } } }
   const context = vm.createContext({
     location: { hostname: 'im.jinritemai.com', pathname: '/pc_seller_v2/main/workspace', search: '' },
@@ -179,10 +179,13 @@ test('Douyin page runtime handshake, normalized operations, events, handoff and 
   callbacks[0]({ serverId: 'manual', conversationId: 'conversation-1', sender: 'seller-1', content: '人工回复', isMine: true, ext: { operation_source: 'manual_agent' }, createTime: now + 1 })
   callbacks[0]({ serverId: 'other-client', conversationId: 'conversation-1', sender: 'seller-1', content: '其他端', isMine: true, createTime: now + 2 })
   callbacks[0]({ serverId: 'system', conversationId: 'conversation-1', content: '系统通知', ext: { sender_role: '3' }, createTime: now + 3 })
-  callbacks[0]({ serverId: 'duplicate', conversationId: 'conversation-1', sender: 'buyer-1', content: '去重', createTime: now + 4 })
-  callbacks[0]({ serverId: 'duplicate', conversationId: 'conversation-1', sender: 'buyer-1', content: '去重', createTime: now + 4 })
+  callbacks[0]({ serverId: 'service-notice', conversationId: 'conversation-1', content: '人工客服 xinle 为您服务', createTime: now + 4 })
+  callbacks[0]({ serverId: 'duplicate', conversationId: 'conversation-1', sender: 'buyer-1', content: '去重', ext: { sender_role: '1' }, createTime: now + 5 })
+  callbacks[0]({ serverId: 'duplicate', conversationId: 'conversation-1', sender: 'buyer-1', content: '去重', ext: { sender_role: '1' }, createTime: now + 5 })
   events = await runtime.drainEvents()
-  assert.deepEqual(Array.from(events.filter((event) => event.type === 'message.created'), (event) => event.payload.message.origin), ['human', 'unknown', 'system', 'customer'])
+  assert.deepEqual(Array.from(events.filter((event) => event.type === 'message.created'), (event) => event.payload.message.origin), ['human', 'unknown', 'system', 'system', 'customer'])
+  const serviceNotice = events.find((event) => event.type === 'message.created' && event.payload.message.id === 'service-notice')
+  assert.equal(serviceNotice.payload.message.type, 'system')
 
   const targets = await runtime.invoke('handoff.targets.list', {})
   assert.equal(targets.ok, true)

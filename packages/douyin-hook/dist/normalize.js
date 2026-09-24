@@ -38,7 +38,8 @@ export function normalizeDouyinMessage(value, context = {}) {
         return undefined;
     const senderId = text(item.sender ?? item.senderId ?? item.originSender ?? item.securitySender ?? item.from);
     const senderRole = text(ext.sender_role ?? ext['s:sender_biz_role'] ?? item.senderRole);
-    const system = senderRole === '3' || senderRole === '4' || explicitSystemEvidence(item, ext);
+    const system = senderRole === '3' || senderRole === '4' || explicitSystemEvidence(item, ext)
+        || (senderRole !== '1' && isOfficialServiceNotice(text(item.content ?? item.text ?? item.message)));
     const direction = !system && (item.isMine === true || senderId === context.selfId || senderRole === '2') ? 'outbound' : 'inbound';
     const content = text(item.content ?? item.text ?? item.message);
     const type = messageType(item, ext, system);
@@ -249,7 +250,7 @@ function messageOrigin(item, ext, direction, system) {
     if (system)
         return 'system';
     if (direction === 'inbound')
-        return 'customer';
+        return explicitBuyerEvidence(item, ext) ? 'customer' : 'unknown';
     const source = explicitSource(item, ext);
     return manualSendEvidence(ext) || /(?:^|[._ -])(manual|human|staff|agent)(?:$|[._ -])|人工|客服手动/i.test(source) ? 'human' : 'unknown';
 }
@@ -260,7 +261,17 @@ function explicitSource(item, ext) {
     ].map(text).filter(Boolean).join(' ');
 }
 function explicitSystemEvidence(item, ext) {
-    return /system|notice|notification|系统|通知/i.test([item.messageType, item.type, ext.type, ext.message_type].map(text).join(' '));
+    const clientMessageId = text(ext['s:client_message_id'] ?? item.clientMessageId);
+    return /system|notice|notification|allocated_service|user_enter_from_transfer|系统|通知|接入|转移/i.test([item.messageType, item.type, ext.type, ext.message_type].map(text).join(' '))
+        || Boolean(ext.from_event_center)
+        || /(?:CsAssign|transfer_staff|close_non_process)/i.test(clientMessageId);
+}
+function isOfficialServiceNotice(content) {
+    return /(?:人工)?客服.{0,30}(?:为您服务|已?接入|已加入(?:会话)?|进入会话)|(?:为您转接|转接给.{0,20}客服|客服.{0,20}(?:接入|已加入(?:会话)?))/i.test(content);
+}
+function explicitBuyerEvidence(item, ext) {
+    const senderRole = text(ext.sender_role ?? ext['s:sender_biz_role'] ?? item.senderRole);
+    return senderRole === '1' || /buyer|customer|买家|消费者/i.test(text(ext['s:sender_biz_role'] ?? item.senderRole));
 }
 function attributionMetadata(item, ext) {
     const result = {};

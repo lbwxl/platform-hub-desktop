@@ -639,14 +639,22 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     if (!conversationId || !id) return undefined
     const senderId = text(item.sender || item.senderId || item.originSender || item.securitySender || item.from)
     const senderRole = text(ext.sender_role || ext['s:sender_biz_role'] || item.senderRole)
-    const system = senderRole === '3' || senderRole === '4' || /system|notice|notification|系统|通知/i.test([item.messageType, item.type, ext.type].map(text).join(' '))
+    const platformMessageType = text(ext.type || item.messageType || item.type)
+    const clientMessageId = text(ext['s:client_message_id'] || item.clientMessageId)
+    const content = text(item.content || item.text || item.message)
+    const system = senderRole === '3' || senderRole === '4'
+      || /system|notice|notification|allocated_service|user_enter_from_transfer|系统|通知|接入|转移/i.test([item.messageType, item.type, ext.type, ext.message_type].map(text).join(' '))
+      || Boolean(ext.from_event_center)
+      || /(?:CsAssign|transfer_staff|close_non_process)/i.test(clientMessageId)
+      || (senderRole !== '1' && isOfficialServiceNotice(content))
     const direction = !system && (item.isMine === true || senderId === context.selfId || senderRole === '2') ? 'outbound' : 'inbound'
-    const platformType = text(ext.type || item.messageType || item.type).toLowerCase()
+    const platformType = platformMessageType.toLowerCase()
     const cardScene = text(json(ext.card_header).cardSourceScene)
     const type = /order|订单/i.test(platformType + cardScene) ? 'order' : system ? 'system' : /image|图片/.test(platformType) ? 'image' : /file|文件/.test(platformType) ? 'file' : /goods|product|商品/i.test(platformType + cardScene) ? 'product' : !platformType || /text|文字/.test(platformType) ? 'text' : 'unknown'
     const source = [ext.send_source, ext.sender_source, ext.operation_source, ext.source, item.sendSource, item.senderSource, item.operationSource, item.source].map(text).filter(Boolean).join(' ')
     const manualSendCheck = Boolean(text(ext['p:check_Send'] || ext['p:check_send'] || ext.p_check_send))
-    const origin = system ? 'system' : direction === 'inbound' ? 'customer' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
+    const buyer = senderRole === '1' || /buyer|customer|买家|消费者/i.test(text(ext['s:sender_biz_role'] || item.senderRole))
+    const origin = system ? 'system' : direction === 'inbound' ? buyer ? 'customer' : 'unknown' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
     const status = text(item.deliveryStatus || item.sendStatus || item.status).toLowerCase()
     const attachmentUrl = text(item.url || item.uri || item.imageUrl || item.fileUrl || ext.url || ext.image_url || ext.file_url)
     const attachmentName = text(item.fileName || item.name || ext.file_name)
@@ -655,7 +663,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       id, conversationId,
       ...(senderId ? { senderId } : {}),
       ...(text(ext.uname || item.senderName || context.conversationTitle) ? { senderName: system ? '系统' : text(ext.uname || item.senderName || context.conversationTitle) } : {}),
-      content: text(item.content || item.text || item.message), type, direction, origin,
+      content, type, direction, origin,
       deliveryStatus: /fail|error|失败/.test(status) ? 'failed' : /pending|sending|发送中/.test(status) ? 'pending' : 'sent',
       timestamp: time(item.createTime || item.createdAt || item.timestamp || item.timestampMs) || Date.now(),
       ...(attachmentUrl || attachmentName || attachmentMime ? { attachments: [{ ...(attachmentUrl ? { url: attachmentUrl } : {}), ...(attachmentName ? { name: attachmentName } : {}), ...(attachmentMime ? { mimeType: attachmentMime } : {}) }] } : {}),
@@ -676,6 +684,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       },
     }
   }
+  const isOfficialServiceNotice = (content) => /(?:人工)?客服.{0,30}(?:为您服务|已?接入|已加入(?:会话)?|进入会话)|(?:为您转接|转接给.{0,20}客服|客服.{0,20}(?:接入|已加入(?:会话)?))/i.test(text(content))
   const messages = (conversationId) => {
     const info = store()?.conversationsInfo
     if (!info) return []

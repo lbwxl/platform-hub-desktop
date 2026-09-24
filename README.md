@@ -48,6 +48,14 @@ const result = await runtime.invoke('sessions.list', {})
 
 开发界面由 Vite 提供在 `http://localhost:5173/`，同时自动启动 Electron 主窗口和抖店官方页面。
 
+## 用可控 Reply API 验收 Hook
+
+Main Process 收到买家入站消息后，会把规范化的平台、店铺、会话和买家字段发送到 Reply API；返回内容只作为测试/业务决策，实际发消息、发图片、设置原生 attention 和官方客服转接仍由对应店铺的 Hook 执行。Reply API 默认地址为 `http://192.168.5.3:18021/api/v1/chats/reply`，Mock 控制台在 `http://192.168.5.3:18021/`。可用 `PLATFORM_HUB_REPLY_API_URL` 覆盖完整接口地址，用 `PLATFORM_HUB_REPLY_API_TIMEOUT_MS` 设置单次请求超时（默认 15 秒）。
+
+先在 Mock 控制台选择响应场景，再让已登录且 online 的 FakeHook/测试店铺收到消息，就能验收单条/多条文本、静默、人工 attention、官方目标转接和图片发送。`ai_reply.file_urls` 当前只会尝试发送图片；PDF 等非图片会作为附件失败记录，不会伪装成功。地图卡片尚无 Hook 发送能力，会在运行事件中标记为 unsupported。找不到或不匹配官方客服目标时不会擅自转接，而是进入 pending attention。接口错误、超时或无效响应会显示为运行错误，不会自动编造一条对买家的降级话术。
+
+更完整的场景、控制 API 和限制见 [`docs/reply-api-hook-testing.md`](docs/reply-api-hook-testing.md)。
+
 ## 验证
 
 ```powershell

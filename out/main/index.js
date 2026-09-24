@@ -1147,14 +1147,22 @@ const douyinHookRuntimeScript = String.raw`(() => {
     if (!conversationId || !id) return undefined
     const senderId = text(item.sender || item.senderId || item.originSender || item.securitySender || item.from)
     const senderRole = text(ext.sender_role || ext['s:sender_biz_role'] || item.senderRole)
-    const system = senderRole === '3' || senderRole === '4' || /system|notice|notification|系统|通知/i.test([item.messageType, item.type, ext.type].map(text).join(' '))
+    const platformMessageType = text(ext.type || item.messageType || item.type)
+    const clientMessageId = text(ext['s:client_message_id'] || item.clientMessageId)
+    const content = text(item.content || item.text || item.message)
+    const system = senderRole === '3' || senderRole === '4'
+      || /system|notice|notification|allocated_service|user_enter_from_transfer|系统|通知|接入|转移/i.test([item.messageType, item.type, ext.type, ext.message_type].map(text).join(' '))
+      || Boolean(ext.from_event_center)
+      || /(?:CsAssign|transfer_staff|close_non_process)/i.test(clientMessageId)
+      || (senderRole !== '1' && isOfficialServiceNotice(content))
     const direction = !system && (item.isMine === true || senderId === context.selfId || senderRole === '2') ? 'outbound' : 'inbound'
-    const platformType = text(ext.type || item.messageType || item.type).toLowerCase()
+    const platformType = platformMessageType.toLowerCase()
     const cardScene = text(json(ext.card_header).cardSourceScene)
     const type = /order|订单/i.test(platformType + cardScene) ? 'order' : system ? 'system' : /image|图片/.test(platformType) ? 'image' : /file|文件/.test(platformType) ? 'file' : /goods|product|商品/i.test(platformType + cardScene) ? 'product' : !platformType || /text|文字/.test(platformType) ? 'text' : 'unknown'
     const source = [ext.send_source, ext.sender_source, ext.operation_source, ext.source, item.sendSource, item.senderSource, item.operationSource, item.source].map(text).filter(Boolean).join(' ')
     const manualSendCheck = Boolean(text(ext['p:check_Send'] || ext['p:check_send'] || ext.p_check_send))
-    const origin = system ? 'system' : direction === 'inbound' ? 'customer' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
+    const buyer = senderRole === '1' || /buyer|customer|买家|消费者/i.test(text(ext['s:sender_biz_role'] || item.senderRole))
+    const origin = system ? 'system' : direction === 'inbound' ? buyer ? 'customer' : 'unknown' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
     const status = text(item.deliveryStatus || item.sendStatus || item.status).toLowerCase()
     const attachmentUrl = text(item.url || item.uri || item.imageUrl || item.fileUrl || ext.url || ext.image_url || ext.file_url)
     const attachmentName = text(item.fileName || item.name || ext.file_name)
@@ -1163,7 +1171,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
       id, conversationId,
       ...(senderId ? { senderId } : {}),
       ...(text(ext.uname || item.senderName || context.conversationTitle) ? { senderName: system ? '系统' : text(ext.uname || item.senderName || context.conversationTitle) } : {}),
-      content: text(item.content || item.text || item.message), type, direction, origin,
+      content, type, direction, origin,
       deliveryStatus: /fail|error|失败/.test(status) ? 'failed' : /pending|sending|发送中/.test(status) ? 'pending' : 'sent',
       timestamp: time(item.createTime || item.createdAt || item.timestamp || item.timestampMs) || Date.now(),
       ...(attachmentUrl || attachmentName || attachmentMime ? { attachments: [{ ...(attachmentUrl ? { url: attachmentUrl } : {}), ...(attachmentName ? { name: attachmentName } : {}), ...(attachmentMime ? { mimeType: attachmentMime } : {}) }] } : {}),
@@ -1184,6 +1192,7 @@ const douyinHookRuntimeScript = String.raw`(() => {
       },
     }
   }
+  const isOfficialServiceNotice = (content) => /(?:人工)?客服.{0,30}(?:为您服务|已?接入|已加入(?:会话)?|进入会话)|(?:为您转接|转接给.{0,20}客服|客服.{0,20}(?:接入|已加入(?:会话)?))/i.test(text(content))
   const messages = (conversationId) => {
     const info = store()?.conversationsInfo
     if (!info) return []
@@ -2229,17 +2238,32 @@ const builtinPlatforms = [douyinHook, kuaishouHook, goofishHook].map((hook) => (
   hookVersion: hook.version,
   source: "builtin"
 }));
+const MESSAGE_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
+const MAX_MESSAGE_CLAIMS = 1e5;
 class ShopRuntimeManager {
   runtimes = /* @__PURE__ */ new Map();
+  /**
+   * Message delivery is shared by all account runtimes for the same shop.
+   * Douyin can replay a conversation's existing messages after handoff; the
+   * per-page/per-account listener watermarks cannot dedupe those deliveries.
+   */
+  messageClaims = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
   replyApi;
-  constructor(replyApi) {
+  fileLoader;
+  constructor(replyApi, options = {}) {
     this.replyApi = replyApi;
+    this.fileLoader = options.fileLoader || loadReplyFile;
   }
-  register(accountId, transport) {
+  register(accountId, transport, context = {}) {
     if (this.runtimes.has(accountId)) return;
     const runtime = {
       accountId,
+      platform: context.platform || "unknown",
+      shopName: context.shopName || accountId,
+      // Use the account id as a stable mock-routing fallback until auth.state
+      // supplies the platform's real shop id.
+      shopId: accountId,
       transport,
       online: false,
       runtimeState: "stopped",
@@ -2312,6 +2336,15 @@ class ShopRuntimeManager {
     runtime.startPromise = (async () => {
       try {
         await runtime.transport.start();
+        const auth = await runtime.transport.invoke("auth.state", {});
+        if (!auth.ok) throw new Error(auth.error.message);
+        const authData = asRecord(auth.data);
+        const shopId = scalarString(authData.shopId ?? authData.shop_id);
+        const userId = scalarString(authData.userId ?? authData.user_id);
+        const authFlag = [authData.authenticated, authData.isLogin, authData.loggedIn].find((value) => typeof value === "boolean");
+        const authenticated = typeof authFlag === "boolean" ? authFlag : Boolean(shopId || userId);
+        if (!authenticated) throw new Error("LOGIN_REQUIRED: 店铺尚未登录，暂不启动 Reply API 自动处理");
+        if (shopId) runtime.shopId = shopId;
         const listening = await runtime.transport.invoke("messages.listen", {});
         if (!listening.ok) throw new Error(listening.error.message);
         runtime.messageListening = true;
@@ -2335,39 +2368,160 @@ class ShopRuntimeManager {
     if (!message) return;
     const conversationId = String(message.conversationId || message.sessionId || "");
     if (!conversationId) return;
-    const direction = String(message.direction || (message.isMine ? "outbound" : "inbound"));
-    const origin = String(message.origin || (direction === "outbound" ? "unknown" : "customer"));
+    const direction = message.direction;
+    const origin = message.origin;
     if (direction === "outbound") {
       if (origin === "human") void this.setAttention(runtime.accountId, conversationId, "resolved").catch(() => void 0);
       return;
     }
-    if (direction !== "inbound" || origin !== "customer") return;
+    if (direction !== "inbound" || origin !== "customer" || message.type === "system" || message.type === "order") return;
     runtime.lastIncomingAt = timestamp;
-    if (!runtime.online || runtime.processing.has(String(message.id || `${conversationId}:${timestamp}`))) return;
     const key = String(message.id || `${conversationId}:${timestamp}`);
+    if (!runtime.online || runtime.runtimeState !== "running" || !runtime.messageListening || runtime.processing.has(key)) return;
+    if (!this.claimShopMessage(runtime, conversationId, message)) return;
     runtime.processing.add(key);
     void this.processCustomerMessage(runtime, conversationId, message).finally(() => runtime.processing.delete(key));
+  }
+  claimShopMessage(runtime, conversationId, message) {
+    const messageId = scalarString(message.id);
+    if (!messageId) return true;
+    const now = Date.now();
+    for (const [key, expiresAt] of this.messageClaims) {
+      if (expiresAt > now) break;
+      this.messageClaims.delete(key);
+    }
+    const claimKey = JSON.stringify([runtime.platform, runtime.shopId, conversationId, messageId]);
+    if (this.messageClaims.has(claimKey)) {
+      this.messageClaims.delete(claimKey);
+      this.messageClaims.set(claimKey, now + MESSAGE_CLAIM_TTL_MS);
+      return false;
+    }
+    this.messageClaims.set(claimKey, now + MESSAGE_CLAIM_TTL_MS);
+    while (this.messageClaims.size > MAX_MESSAGE_CLAIMS) {
+      const oldest = this.messageClaims.keys().next().value;
+      if (oldest === void 0) break;
+      this.messageClaims.delete(oldest);
+    }
+    return true;
   }
   async processCustomerMessage(runtime, conversationId, message) {
     try {
       const decision = await this.replyApi.reply({
         accountId: runtime.accountId,
+        platform: runtime.platform,
+        shopId: runtime.shopId,
+        shopName: runtime.shopName,
         conversationId,
         content: String(message.content || ""),
+        customerId: String(message.senderId || message.userId || ""),
+        customerName: String(message.senderName || message.name || ""),
         message
       });
+      if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) {
+        this.emit(runtime, "reply", { decision, conversationId, deliverySkipped: "shop-offline" });
+        return;
+      }
       if (decision.type === "reply") {
-        const result = await runtime.transport.invoke("messages.send.text", { conversationId, text: decision.text });
-        if (!result.ok) throw new Error(result.error.message);
+        const effects = {};
+        if (decision.warnings?.length) effects.warnings = decision.warnings;
+        if (decision.turn) effects.turn = decision.turn;
+        if (decision.lifecycleAction) {
+          const action = decision.lifecycleAction;
+          const mapCard = action.payload?.map_card;
+          if (action.kind === "map-card" || action.actionCode === 2 || mapCard) {
+            effects.unsupportedLifecycleAction = "map-card";
+            if (action.messages.length) await this.sendTexts(runtime, conversationId, action.messages);
+          } else if (action.kind === "greeting" || action.kind === "farewell") {
+            await this.sendTexts(runtime, conversationId, action.messages);
+          }
+          effects.lifecycleAction = action;
+        } else {
+          const texts = decision.texts || (decision.text ? [decision.text] : []);
+          await this.sendTexts(runtime, conversationId, texts);
+          for (const fileUrl of decision.fileUrls || []) {
+            try {
+              if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) break;
+              const file = await this.fileLoader(fileUrl);
+              const result = await runtime.transport.invoke("messages.send.file", {
+                conversationId,
+                data: file.dataUrl,
+                dataUrl: file.dataUrl,
+                name: file.name,
+                mimeType: file.mimeType
+              });
+              if (!result.ok) throw new Error(result.error.message);
+            } catch (error) {
+              const failures = Array.isArray(effects.fileErrors) ? effects.fileErrors : [];
+              failures.push(errorMessage(error));
+              effects.fileErrors = failures;
+            }
+          }
+          if (decision.transfer) {
+            await this.sendTexts(runtime, conversationId, decision.transfer.messages);
+            if (decision.transfer.sendGreetingBeforeHandoff && decision.transfer.messages.length === 0) {
+              await this.sendTexts(runtime, conversationId, ["您好，为您转接人工客服"]);
+            }
+            effects.handoff = await this.transferToOfficialTarget(runtime, conversationId, decision.transfer);
+          }
+        }
+        this.emit(runtime, "reply", { decision, conversationId, ...effects });
       } else if (decision.type === "human_required") {
         await this.setAttention(runtime.accountId, conversationId, "pending");
+        this.emit(runtime, "reply", { decision, conversationId, ...decision.turn ? { turn: decision.turn } : {}, ...decision.warnings?.length ? { warnings: decision.warnings } : {} });
+      } else {
+        this.emit(runtime, "reply", { decision, conversationId, ...decision.turn ? { turn: decision.turn } : {}, ...decision.warnings?.length ? { warnings: decision.warnings } : {} });
       }
       runtime.lastReplyAt = Date.now();
       runtime.lastReplyType = decision.type;
-      this.emit(runtime, "reply", { decision, conversationId });
     } catch (error) {
-      this.emit(runtime, "runtime", { replyError: errorMessage(error), conversationId });
+      this.emit(runtime, "runtime", {
+        replyError: errorMessage(error),
+        ...error instanceof ReplyApiError ? { replyErrorCode: error.code } : {},
+        conversationId
+      });
     }
+  }
+  async sendTexts(runtime, conversationId, texts) {
+    for (const text of texts) {
+      if (!text.trim()) continue;
+      if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return;
+      const result = await runtime.transport.invoke("messages.send.text", { conversationId, text });
+      if (!result.ok) throw new Error(result.error.message);
+    }
+  }
+  async transferToOfficialTarget(runtime, conversationId, transfer) {
+    if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return { transferred: false, reason: "shop-offline" };
+    const requested = transferTargetReference(transfer.target);
+    if (!requested) {
+      await this.setAttention(runtime.accountId, conversationId, "pending");
+      return { transferred: false, reason: "official-target-required" };
+    }
+    const listed = await runtime.transport.invoke("handoff.targets.list", {});
+    if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return { transferred: false, reason: "shop-offline" };
+    if (!listed.ok || !Array.isArray(listed.data)) {
+      await this.setAttention(runtime.accountId, conversationId, "pending");
+      return { transferred: false, reason: "official-target-list-unavailable" };
+    }
+    const target = listed.data.map(asRecord).find(
+      (item) => requested.id && scalarString(item.id) === requested.id || requested.name && scalarString(item.name) === requested.name
+    );
+    const targetId = target && scalarString(target.id);
+    const targetName = target && scalarString(target.name);
+    if (!target || !targetId) {
+      await this.setAttention(runtime.accountId, conversationId, "pending");
+      return { transferred: false, reason: "requested-target-not-in-official-list" };
+    }
+    const transferred = await runtime.transport.invoke("handoff.transfer", {
+      conversationId,
+      targetId,
+      targetName,
+      reason: transfer.reason
+    });
+    if (!transferred.ok) {
+      await this.setAttention(runtime.accountId, conversationId, "pending");
+      return { transferred: false, reason: transferred.error.message, target: { id: targetId, name: targetName } };
+    }
+    return { transferred: true, target: { id: targetId, name: targetName }, reason: transfer.reason };
   }
   emit(runtime, type, payload) {
     const event = { accountId: runtime.accountId, type, timestamp: Date.now(), payload };
@@ -2393,33 +2547,257 @@ class ShopRuntimeManager {
 }
 class HttpShopReplyApi {
   endpoint;
-  constructor(endpoint = process.env.PLATFORM_HUB_REPLY_API_URL || "") {
-    this.endpoint = endpoint;
+  endpointError;
+  fetcher;
+  timeoutMs;
+  waitBeforeRetry;
+  constructor(options = {}) {
+    const configuredEndpoint = options.endpoint || process.env.PLATFORM_HUB_REPLY_API_URL || DEFAULT_REPLY_API_URL;
+    try {
+      this.endpoint = normalizeReplyEndpoint(configuredEndpoint);
+    } catch (error) {
+      this.endpoint = configuredEndpoint;
+      this.endpointError = errorMessage(error);
+    }
+    this.fetcher = options.fetcher || fetch;
+    this.timeoutMs = positiveInteger(options.timeoutMs) || positiveInteger(Number(process.env.PLATFORM_HUB_REPLY_API_TIMEOUT_MS)) || 15e3;
+    this.waitBeforeRetry = options.waitBeforeRetry || wait;
   }
   async reply(input) {
-    if (!this.endpoint) return { type: "ignore", reason: "reply-api-not-configured" };
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input)
-    });
-    if (!response.ok) throw new Error(`Reply API HTTP ${response.status}`);
-    const value = await response.json();
-    const type = String(value.type || value.action || "");
-    if (type === "reply") {
-      const text = String(value.text || value.reply || "");
-      if (!text) throw new Error("Reply API 返回 reply 但缺少 text");
-      return { type: "reply", text };
+    if (this.endpointError) throw new ReplyApiError("INVALID_ENDPOINT", `Reply API 地址无效: ${this.endpointError}`);
+    const message = asRecord(input.message);
+    const messageType = scalarString(message.type) || scalarString(message.message_type) || "unknown";
+    const body = {
+      platform_data: {
+        platform_en: input.platform,
+        shop_id: input.shopId,
+        shop_name: input.shopName,
+        customer_name: input.customerName,
+        customer_id: input.customerId,
+        messages: [{
+          user_id: input.customerId,
+          name: input.customerName,
+          content: input.content,
+          message_type: messageType,
+          type: messageType,
+          from: { id: input.customerId, name: input.customerName }
+        }],
+        extra_context: {
+          account_id: input.accountId,
+          conversation_id: input.conversationId,
+          message_id: scalarString(message.id)
+        }
+      }
+    };
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let response;
+      try {
+        response = await this.fetcher(this.endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.timeoutMs)
+        });
+      } catch (error) {
+        const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+        if (attempt < maxAttempts) {
+          await this.waitBeforeRetry(retryDelay(null, attempt) ?? 250);
+          continue;
+        }
+        throw new ReplyApiError(timeout ? "TIMEOUT" : "NETWORK_ERROR", timeout ? "Reply API 请求超时" : `Reply API 网络失败: ${errorMessage(error)}`);
+      }
+      let responseText;
+      try {
+        responseText = await response.text();
+      } catch (error) {
+        if (attempt < maxAttempts) {
+          await this.waitBeforeRetry(retryDelay(null, attempt) ?? 250);
+          continue;
+        }
+        const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+        throw new ReplyApiError(timeout ? "TIMEOUT" : "NETWORK_ERROR", `读取 Reply API 响应失败: ${errorMessage(error)}`);
+      }
+      if (response.status < 200 || response.status >= 300) {
+        const detail = safeErrorDetail(responseText);
+        const retryable = response.status === 429 || [500, 502, 503].includes(response.status);
+        const delayMs = retryable ? retryDelay(response.headers.get("retry-after"), attempt) : void 0;
+        if (retryable && attempt < maxAttempts && delayMs !== void 0) {
+          await this.waitBeforeRetry(delayMs);
+          continue;
+        }
+        throw new ReplyApiError(`HTTP_${response.status}`, detail || `Reply API HTTP ${response.status}`);
+      }
+      return parseReplyApiBody(responseText);
     }
-    if (type === "human_required" || type === "human") return { type: "human_required", reason: stringValue(value.reason) };
-    return { type: "ignore", reason: stringValue(value.reason) || "reply-api-ignore" };
+    throw new ReplyApiError("NETWORK_ERROR", "Reply API 请求失败");
+  }
+}
+const DEFAULT_REPLY_API_URL = "http://192.168.5.3:18021/api/v1/chats/reply";
+class ReplyApiError extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "ReplyApiError";
+  }
+}
+function parseReplyApiBody(bodyText) {
+  if (!bodyText) throw new ReplyApiError("EMPTY_BODY", "Reply API 返回空 body");
+  let parsed;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    throw new ReplyApiError("INVALID_JSON", "Reply API 返回非法 JSON");
+  }
+  const root = asRecord(parsed);
+  const data = asRecord(root.data);
+  const turn = Object.keys(asRecord(data.turn)).length ? asRecord(data.turn) : void 0;
+  if (turn?.should_process === false) return { type: "ignore", reason: "turn-should-not-process", turn };
+  const lifecycle = asRecord(data.lifecycle);
+  const actionValue = asRecord(lifecycle.action);
+  if (Object.keys(actionValue).length) {
+    const messages = stringArray(actionValue.messages);
+    const warnings2 = Array.isArray(actionValue.messages) && messages.length !== actionValue.messages.length ? ["lifecycle.action.messages 包含非字符串，已丢弃"] : void 0;
+    return {
+      type: "reply",
+      texts: [],
+      lifecycleAction: {
+        kind: scalarString(actionValue.kind) || "unknown",
+        actionId: scalarString(actionValue.action_id),
+        messages,
+        actionCode: finiteNumber(actionValue.action_code),
+        payload: Object.keys(asRecord(actionValue.payload)).length ? asRecord(actionValue.payload) : void 0
+      },
+      ...turn ? { turn } : {},
+      ...warnings2 ? { warnings: warnings2 } : {}
+    };
+  }
+  if (!Object.prototype.hasOwnProperty.call(data, "ai_reply")) {
+    return { type: "ignore", reason: "unrecognized-response", ...turn ? { turn } : {}, warnings: ["响应缺少 data.ai_reply 与 lifecycle.action"] };
+  }
+  const ai = data.ai_reply;
+  if (ai === null) return { type: "ignore", reason: "no-ai-reply", ...turn ? { turn } : {} };
+  if (!ai || typeof ai !== "object" || Array.isArray(ai)) return { type: "ignore", reason: "unrecognized-ai-reply", ...turn ? { turn } : {}, warnings: ["data.ai_reply 类型错误，已忽略"] };
+  const aiReply = asRecord(ai);
+  const rawParts = aiReply.reply_parts;
+  const texts = stringArray(rawParts);
+  const rawFiles = aiReply.file_urls;
+  const fileUrls = stringArray(rawFiles).filter(isHttpUrl);
+  const transferRaw = asRecord(aiReply.transfer);
+  const transfer = transferRaw.is_transfer === true ? {
+    reason: scalarString(transferRaw.transfer_reason),
+    source: scalarString(transferRaw.transfer_source),
+    target: transferRaw.transfer_person,
+    messages: stringArray(transferRaw.transfer_messages),
+    sendGreetingBeforeHandoff: transferRaw.send_greeting_before_handoff === true,
+    confidence: finiteNumber(transferRaw.confidence)
+  } : void 0;
+  const warnings = [];
+  if (rawParts != null && !Array.isArray(rawParts)) warnings.push("ai_reply.reply_parts 类型错误，已丢弃");
+  else if (Array.isArray(rawParts) && texts.length !== rawParts.length) warnings.push("ai_reply.reply_parts 含非字符串，已丢弃");
+  if (rawFiles != null && !Array.isArray(rawFiles)) warnings.push("ai_reply.file_urls 类型错误，已丢弃");
+  else if (Array.isArray(rawFiles) && fileUrls.length !== rawFiles.length) warnings.push("ai_reply.file_urls 含无效 URL，已丢弃");
+  if (transferRaw.transfer_messages != null && !Array.isArray(transferRaw.transfer_messages)) warnings.push("transfer.transfer_messages 类型错误，已丢弃");
+  if (!texts.length && !fileUrls.length && !transfer) return { type: "ignore", reason: "empty-ai-reply", ...turn ? { turn } : {}, ...warnings.length ? { warnings } : {} };
+  return {
+    type: "reply",
+    texts,
+    fileUrls,
+    ...transfer ? { transfer } : {},
+    ...turn ? { turn } : {},
+    ...warnings.length ? { warnings } : {}
+  };
+}
+function transferTargetReference(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    const target = String(value).trim();
+    return target ? { id: target, name: target } : void 0;
+  }
+  const item = asRecord(value);
+  const id = scalarString(item.id || item.target_id || item.staff_id);
+  const name = scalarString(item.name || item.target_name || item.staff_name);
+  return id || name ? { id, name } : void 0;
+}
+async function loadReplyFile(url) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" || isPrivateHostname(parsed.hostname)) throw new Error("Reply API 附件必须使用公网 HTTPS URL");
+  const response = await fetch(url, { signal: AbortSignal.timeout(15e3), redirect: "error" });
+  if (!response.ok) throw new Error(`读取 Reply API 附件失败: HTTP ${response.status}`);
+  const mimeType = response.headers.get("content-type")?.split(";")[0].trim() || "application/octet-stream";
+  if (!mimeType.startsWith("image/")) throw new Error(`当前 Douyin Hook 暂不支持此附件类型: ${mimeType}`);
+  const declaredSize = Number(response.headers.get("content-length") || 0);
+  if (declaredSize > 8 * 1024 * 1024) throw new Error("Reply API 附件超过 8 MB 限制");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > 8 * 1024 * 1024) throw new Error("Reply API 附件超过 8 MB 限制");
+  const base64 = Buffer.from(bytes).toString("base64");
+  const leaf = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).at(-1) || "reply-attachment").slice(0, 180);
+  return { dataUrl: `data:${mimeType};base64,${base64}`, name: leaf, mimeType };
+}
+function isPrivateHostname(hostname) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (/^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(host)) return true;
+  return host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:");
+}
+function normalizeReplyEndpoint(value) {
+  const url = new URL(value);
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("仅支持 HTTP / HTTPS");
+  if (url.pathname === "/" || !url.pathname) url.pathname = "/api/v1/chats/reply";
+  return url.toString();
+}
+function safeErrorDetail(bodyText) {
+  try {
+    const value = asRecord(JSON.parse(bodyText));
+    return scalarString(value.detail) || scalarString(value.message);
+  } catch {
+    return bodyText.trim().slice(0, 400) || void 0;
+  }
+}
+function retryDelay(retryAfter, attempt) {
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) {
+      const delayMs = Math.max(0, seconds * 1e3);
+      return delayMs <= 3e4 ? delayMs : void 0;
+    }
+    const date = Date.parse(retryAfter);
+    if (Number.isFinite(date)) {
+      const delayMs = Math.max(0, date - Date.now());
+      return delayMs <= 3e4 ? delayMs : void 0;
+    }
+  }
+  return Math.min(2e3, 250 * 2 ** (attempt - 1));
+}
+function wait(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+function positiveInteger(value) {
+  return Number.isFinite(value) && Number(value) > 0 ? Math.floor(Number(value)) : void 0;
+}
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function scalarString(value) {
+  return typeof value === "string" || typeof value === "number" ? String(value) : void 0;
+}
+function finiteNumber(value) {
+  const number = Number(value);
+  return value !== void 0 && Number.isFinite(number) ? number : void 0;
+}
+function stringArray(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim().length > 0) : [];
+}
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
-}
-function stringValue(value) {
-  return typeof value === "string" && value ? value : void 0;
 }
 class PlatformManager {
   sessions = /* @__PURE__ */ new Map();
@@ -2574,7 +2952,7 @@ class PlatformManager {
       cdp.attachPrimaryView();
       if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
     }
-    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
+    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label });
     account.online = online;
     try {
       const snapshot = await this.shopRuntimes.setOnline(accountId, online);
@@ -2688,7 +3066,7 @@ class PlatformManager {
     if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`);
     const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), hostWindow: this.hostWindow, emit: (event) => this.emit(event) });
     this.sessions.set(accountId, cdp);
-    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp));
+    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label });
     return cdp;
   }
   detachPrimaryViewsExcept(accountId) {
@@ -2825,8 +3203,8 @@ class CdpShopTransport {
   }
   async invoke(operation, input) {
     const args = input && typeof input === "object" ? input : {};
-    const method = operation === "messages.listen" ? "listenMessages" : operation === "messages.send.text" ? "sendMessage" : operation === "conversation.attention.set" ? "setConversationAttention" : operation;
-    const parameters = operation === "messages.send.text" ? [args.conversationId, args.text] : operation === "conversation.attention.set" ? [args.conversationId, args.state] : [];
+    const method = operation === "auth.state" ? "getAuthState" : operation === "messages.listen" ? "listenMessages" : operation === "messages.send.text" ? "sendMessage" : operation === "messages.send.file" ? "sendFile" : operation === "handoff.targets.list" ? "listHandoffTargets" : operation === "handoff.transfer" ? "transferSession" : operation === "conversation.attention.set" ? "setConversationAttention" : operation;
+    const parameters = operation === "messages.send.text" ? [args.conversationId, args.text] : operation === "messages.send.file" ? [args.conversationId, args.data || args.dataUrl || args.url, args.name || args.fileName, args.mimeType] : operation === "handoff.transfer" ? [args.conversationId, args.targetId || args.targetName] : operation === "conversation.attention.set" ? [args.conversationId, args.state] : [];
     try {
       const value = await this.cdp.invoke(method, ...parameters);
       if (value && typeof value === "object" && "errorCode" in value) {

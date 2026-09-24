@@ -150,7 +150,7 @@ export class PlatformManager {
       cdp.attachPrimaryView()
       if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds)
     }
-    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
+    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label })
     account.online = online
     try {
       const snapshot = await this.shopRuntimes.setOnline(accountId, online)
@@ -237,7 +237,7 @@ export class PlatformManager {
     if (!platform) throw new Error(`未找到平台适配器: ${account.platform}`)
     const cdp = new CdpSession({ accountId, platform: platform.id, url: account.url, partition: account.partition, hook: this.getHook(platform.id), hostWindow: this.hostWindow, emit: (event) => this.emit(event) })
     this.sessions.set(accountId, cdp)
-    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp))
+    this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label })
     return cdp
   }
   private detachPrimaryViewsExcept(accountId: string): void {
@@ -378,15 +378,23 @@ class CdpShopTransport implements ShopTransportLike {
 
   async invoke<T = unknown>(operation: string, input: unknown): Promise<{ ok: true; data: T } | { ok: false; error: { code: string; message: string; retryable?: boolean } }> {
     const args = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-    const method = operation === 'messages.listen' ? 'listenMessages'
-      : operation === 'messages.send.text' ? 'sendMessage'
-      : operation === 'conversation.attention.set' ? 'setConversationAttention'
-      : operation
+    const method = operation === 'auth.state' ? 'getAuthState'
+      : operation === 'messages.listen' ? 'listenMessages'
+        : operation === 'messages.send.text' ? 'sendMessage'
+          : operation === 'messages.send.file' ? 'sendFile'
+            : operation === 'handoff.targets.list' ? 'listHandoffTargets'
+              : operation === 'handoff.transfer' ? 'transferSession'
+                : operation === 'conversation.attention.set' ? 'setConversationAttention'
+                  : operation
     const parameters = operation === 'messages.send.text'
       ? [args.conversationId, args.text]
-      : operation === 'conversation.attention.set'
-        ? [args.conversationId, args.state]
-        : []
+      : operation === 'messages.send.file'
+        ? [args.conversationId, args.data || args.dataUrl || args.url, args.name || args.fileName, args.mimeType]
+        : operation === 'handoff.transfer'
+          ? [args.conversationId, args.targetId || args.targetName]
+          : operation === 'conversation.attention.set'
+            ? [args.conversationId, args.state]
+            : []
     try {
       const value = await this.cdp.invoke<T>(method, ...parameters)
       if (value && typeof value === 'object' && 'errorCode' in (value as object)) {

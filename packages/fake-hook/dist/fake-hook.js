@@ -432,9 +432,10 @@ class FakePageRuntime {
     }
     sendFile(input) {
         const value = input;
-        if (!value?.conversationId || !value.url)
-            return fail(hookError('INVALID_INPUT', 'conversationId 和 url 必填'));
-        const content = value.name || value.url;
+        const source = value?.data || value?.dataUrl || value?.url;
+        if (!value?.conversationId || !source)
+            return fail(hookError('INVALID_INPUT', 'conversationId 和文件数据必填'));
+        const content = value.name || 'attachment';
         if (value.simulateFailure) {
             const tracked = this.state.outbound.register({
                 conversationId: value.conversationId,
@@ -448,7 +449,7 @@ class FakePageRuntime {
             conversationId: value.conversationId,
             content,
             type: 'file',
-            attachments: [{ url: value.url, name: value.name }],
+            attachments: [{ ...(source.startsWith('http') ? { url: source } : {}), name: value.name, mimeType: value.mimeType }],
         }));
     }
     productDetail(input) {

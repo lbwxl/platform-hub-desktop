@@ -40,7 +40,7 @@ test('Douyin auth and session values normalize to public contracts', () => {
 })
 
 test('Douyin message attribution requires affirmative human evidence', () => {
-  const buyer = normalizeDouyinMessage({ serverId: 'buyer', conversationId: 'c1', sender: 'buyer-1', content: '咨询', createTime: 100 })
+  const buyer = normalizeDouyinMessage({ serverId: 'buyer', conversationId: 'c1', sender: 'buyer-1', content: '咨询', ext: { sender_role: '1' }, createTime: 100 })
   const human = normalizeDouyinMessage({ serverId: 'human', conversationId: 'c1', sender: 'seller-1', content: '人工', isMine: true, ext: { operation_source: 'manual_agent' }, createTime: 101 })
   const unknown = normalizeDouyinMessage({ serverId: 'unknown', conversationId: 'c1', sender: 'seller-1', content: '其他端发送', isMine: true, createTime: 102 })
   const system = normalizeDouyinMessage({ serverId: 'system', conversationId: 'c1', content: '系统通知', ext: { sender_role: '3' }, createTime: 103 })
@@ -50,6 +50,15 @@ test('Douyin message attribution requires affirmative human evidence', () => {
   assert.equal(unknown.origin, 'unknown')
   assert.equal(system.origin, 'system')
   assert.equal(system.type, 'system')
+  const serviceNotice = normalizeDouyinMessage({
+    serverId: 'service-notice', conversationId: 'c1', content: '人工客服 xinle 为您服务', createTime: 104,
+  })
+  assert.equal(serviceNotice.origin, 'system')
+  assert.equal(serviceNotice.type, 'system')
+  const buyerQuote = normalizeDouyinMessage({
+    serverId: 'buyer-quote', conversationId: 'c1', content: '人工客服 xinle 为您服务', ext: { sender_role: '1' }, createTime: 105,
+  })
+  assert.equal(buyerQuote.origin, 'customer')
   const platformHuman = normalizeDouyinMessage({
     serverId: 'platform-human',
     conversationId: 'c1',
