@@ -1,51 +1,45 @@
-import { douyinHookManifest, douyinHookRuntimeScript } from '@platform-hub/douyin-hook'
-import type { HookPackageManifest, PlatformCapability } from '../../shared/platform'
-
-const primaryPage = douyinHookManifest.pages.find((page) => page.kind === 'primary')
-const productsPage = douyinHookManifest.pages.find((page) => page.id === 'products')
-const ordersPage = douyinHookManifest.pages.find((page) => page.id === 'orders')
-
-const capabilities: PlatformCapability[] = [
-  'messages.listen',
-  'messages.history',
-  'messages.send',
-  'messages.file',
-  'sessions.list',
-  'products.collect',
-  'products.detail',
-  'orders.read',
-  'orders.listen',
-  'session.transfer',
-]
-
+import { douyinHookManifest, douyinHookRuntimeScript } from '@platform-hub/douyin-hook';
+const primaryPage = douyinHookManifest.pages.find((page) => page.kind === 'primary');
+const productsPage = douyinHookManifest.pages.find((page) => page.id === 'products');
+const ordersPage = douyinHookManifest.pages.find((page) => page.id === 'orders');
+const capabilities = [
+    'messages.listen',
+    'messages.history',
+    'messages.send',
+    'messages.file',
+    'sessions.list',
+    'products.collect',
+    'products.detail',
+    'orders.read',
+    'orders.listen',
+    'session.transfer',
+];
 /**
  * The desktop shell still exposes the legacy package-manifest shape to its
  * CDP session. The runtime itself is the formal Douyin Hook; this small
  * compatibility layer only translates the shell's old method calls into the
  * Page Hook operation protocol.
  */
-export const douyinHook: HookPackageManifest = {
-  id: 'douyin-shop',
-  label: '抖店',
-  version: douyinHookManifest.version,
-  url: primaryPage?.url || 'https://im.jinritemai.com/pc_seller_v2/main/workspace',
-  executionModel: 'page',
-  loginUrl: 'https://fxg.jinritemai.com/login/common',
-  loginMatch: ['https://im.jinritemai.com/login*'],
-  capabilities,
-  runtimePages: [
-    ...(productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ['collectProducts', 'getProductDetail'] }] : []),
-    ...(ordersPage?.url ? [{ id: ordersPage.id, url: ordersPage.url, methods: ['getOrders', 'syncOrders', 'listenOrders'], persistent: true }] : []),
-  ],
-  script: createShellRuntimeScript(),
-  source: 'builtin',
-}
-
-export const douyinCapabilities = capabilities
-export const douyinHookScript = douyinHook.script || ''
-
-function createShellRuntimeScript(): string {
-  return `(() => {
+export const douyinHook = {
+    id: 'douyin-shop',
+    label: '抖店',
+    version: douyinHookManifest.version,
+    url: primaryPage?.url || 'https://im.jinritemai.com/pc_seller_v2/main/workspace',
+    executionModel: 'page',
+    loginUrl: 'https://fxg.jinritemai.com/login/common',
+    loginMatch: ['https://im.jinritemai.com/login*'],
+    capabilities,
+    runtimePages: [
+        ...(productsPage?.url ? [{ id: productsPage.id, url: productsPage.url, methods: ['collectProducts', 'getProductDetail'] }] : []),
+        ...(ordersPage?.url ? [{ id: ordersPage.id, url: ordersPage.url, methods: ['getOrders', 'syncOrders', 'listenOrders'], persistent: true }] : []),
+    ],
+    script: createShellRuntimeScript(),
+    source: 'builtin',
+};
+export const douyinCapabilities = capabilities;
+export const douyinHookScript = douyinHook.script || '';
+function createShellRuntimeScript() {
+    return `(() => {
 ${douyinHookRuntimeScript}
   const runtime = window.__PLATFORM_HOOK__
   if (!runtime) return
@@ -163,5 +157,6 @@ ${douyinHookRuntimeScript}
     drainEvents: async () => (await runtime.drainEvents()).map(event),
     dispose: () => runtime.dispose(),
   }
-})()`
+})()`;
 }
+//# sourceMappingURL=manifest.js.map

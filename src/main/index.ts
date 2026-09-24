@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { PlatformManager } from './cdp/PlatformManager'
 import type { PlatformEvent } from '../shared/platform'
+import { createImportedHookFactory, createPlatformRegistry } from './platforms/registry'
 
 // Development/verification runners can provide an isolated writable profile.
 // Electron otherwise inherits a locked-down global profile on some managed
@@ -25,7 +26,7 @@ if (!app.isPackaged) {
 }
 
 let mainWindow: BrowserWindow | null = null
-const manager = new PlatformManager()
+const manager = new PlatformManager(createPlatformRegistry(), createImportedHookFactory)
 
 function assertRenderer(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('未经授权的 IPC 调用')
@@ -81,15 +82,16 @@ app.whenReady().then(async () => {
   createWindow(false)
   if (mainWindow) await manager.attachMainWindow(mainWindow)
   if (!manager.listAccounts().length) {
-    await manager.addAccount({ platform: 'douyin-shop', label: '抖店主账号' })
+    const initialPlatform = manager.listPlatforms()[0]
+    if (initialPlatform) await manager.addAccount({ platform: initialPlatform.id, label: `${initialPlatform.label}主账号` })
   }
   registerIpc()
   manager.onEvent((event: PlatformEvent) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('platform:event', event)
   })
   if (mainWindow) loadRenderer(mainWindow)
-  const douyin = manager.listAccounts().find((account) => account.platform === 'douyin-shop')
-  if (douyin) void manager.open(douyin.id).catch((error) => console.error('[platform-hub] 打开抖店页面失败', error))
+  const initialAccount = manager.listAccounts()[0]
+  if (initialAccount) void manager.open(initialAccount.id).catch((error) => console.error('[platform-hub] 打开平台页面失败', error))
   app.on('activate', () => {
     if (!mainWindow) {
       const window = createWindow(false)

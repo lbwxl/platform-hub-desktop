@@ -8,21 +8,24 @@ importers:
 
   .:
     dependencies:
-      '@idle-fish/goofish-messaging':
+      '@platform-hub/douyin':
         specifier: workspace:*
-        version: link:packages/goofish-messaging
-      '@platform-hub/douyin-hook':
+        version: link:packages/platform-douyin
+      '@platform-hub/goofish':
         specifier: workspace:*
-        version: link:packages/douyin-hook
-      '@platform-hub/goofish-transport':
-        specifier: workspace:*
-        version: link:packages/goofish-transport
+        version: link:packages/platform-goofish
       '@platform-hub/hook-sdk':
         specifier: workspace:*
         version: link:packages/hook-sdk
+      '@platform-hub/hook-transport':
+        specifier: workspace:*
+        version: link:packages/hook-transport
       '@platform-hub/kuaishou-hook':
         specifier: workspace:*
         version: link:packages/kuaishou-hook
+      '@platform-hub/platform-runtime':
+        specifier: workspace:*
+        version: link:packages/platform-runtime
       lucide-react:
         specifier: ^1.47.0
         version: 1.47.0(react@19.3.0)
@@ -133,6 +136,76 @@ importers:
         version: 5.9.3
 
   packages/kuaishou-hook:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/platform-douyin:
+    dependencies:
+      '@platform-hub/douyin-hook':
+        specifier: workspace:*
+        version: link:../douyin-hook
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+      '@platform-hub/platform-runtime':
+        specifier: workspace:*
+        version: link:../platform-runtime
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/platform-fake:
+    dependencies:
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+      '@platform-hub/hook-transport':
+        specifier: workspace:*
+        version: link:../hook-transport
+      '@platform-hub/platform-runtime':
+        specifier: workspace:*
+        version: link:../platform-runtime
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/platform-goofish:
+    dependencies:
+      '@idle-fish/goofish-messaging':
+        specifier: workspace:*
+        version: link:../goofish-messaging
+      '@platform-hub/goofish-transport':
+        specifier: workspace:*
+        version: link:../goofish-transport
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+      '@platform-hub/hook-transport':
+        specifier: workspace:*
+        version: link:../hook-transport
+      '@platform-hub/platform-runtime':
+        specifier: workspace:*
+        version: link:../platform-runtime
+      electron:
+        specifier: '>=28'
+        version: 37.3.1
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/platform-runtime:
+    dependencies:
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+      '@platform-hub/hook-transport':
+        specifier: workspace:*
+        version: link:../hook-transport
     devDependencies:
       typescript:
         specifier: ^5.9.2

@@ -207,7 +207,7 @@ worker      按 Operation 按需创建、空闲回收的页面
 Persistent page 不是把 worker 的 `idleTtlMs` 设为无限，而是由
 `PersistentPageManager` 独立负责创建、复用、Runtime 安装、事件接收、刷新和释放。
 
-本节中的接口只定义 `HookTransport` 的架构方向；具体实现必须在当前 `HookTransport 抽象` Phase 中按用户明确任务推进。
+公共 `HookTransport` Contract 位于 `packages/hook-transport`；`PlatformRuntimeAdapter`、`PlatformRegistry` 和通用 Page Hook Adapter 位于 `packages/platform-runtime`。当前阶段补齐平台包的独立 Adapter 与 Registry 接线；不得把平台分支放回中央 `PlatformManager`。
 
 ---
 
@@ -309,7 +309,7 @@ packages/
 
 目录允许根据实际代码微调，但架构边界不能破坏。
 
-`PlatformRuntime`、`HookTransport` 和 Legacy Adapter 的具体包目录在各自对应 Phase 决定。当前只允许按明确任务建立 `HookTransport` 抽象，不提前创建 Legacy Adapter 或后续阶段目录。
+当前平台运行时包包括 `packages/platform-runtime`、`packages/platform-douyin`、`packages/platform-goofish`。Legacy Adapter 目录仍在对应阶段决定；不得提前迁移 Legacy 实现。
 
 ---
 
@@ -988,9 +988,7 @@ Douyin
 ↓
 Douyin 多账号 / 订单 / Handoff 真实验收
 ↓
-HookTransport 抽象
-↓
-Goofish Transport / Adapter（仅在用户明确授权时；复用现有 `goofish-messaging`）
+PlatformRuntimeAdapter / PlatformRegistry 插件边界
 ↓
 Fake Native / Legacy Transport
 ↓
@@ -1006,10 +1004,10 @@ WeWork / Qianniu Legacy Adapter
 当前主阶段：
 
 ```text
-HookTransport 抽象
+Platform Runtime 插件边界
 ```
 
-Douyin Page Hook 已完成最终真实验收并冻结。本轮在用户明确授权下执行一个限定子阶段：`Goofish Transport / Adapter Implementation`。该例外只覆盖闲鱼适配与它的 Electron Main 接入，不授权迁移 WeChat / WeWork / Qianniu、开始 React PlatformRuntime 对接或推进其他 Page Hook 平台。
+Douyin Page Hook 已完成最终真实验收并冻结，Goofish 底层核心也保持不变。本阶段只建立通用 Adapter / Registry 边界和独立平台包接线；不扩展 Goofish capability，不迁移 WeChat / WeWork / Qianniu，不开始 React PlatformRuntime 对接或推进其他 Page Hook 平台。
 
 ---
 
@@ -1078,16 +1076,10 @@ Page Hook 不复制旧架构；Legacy / Native / Service 平台则优先复用�
 当前 Phase 是：
 
 ```text
-HookTransport 抽象
+Platform Runtime 插件边界
 ```
 
-本轮明确授权的限定子阶段是：
-
-```text
-Goofish Transport / Adapter Implementation
-```
-
-该子阶段必须通过 `GoofishTransport → GoofishMessagingClient` 复用现有实现。完成本轮后停止；不得将本次授权扩展到其他平台或架构重构。
+`HookTransport` 是现有统一边界。本阶段只允许按用户指定完成 `PlatformRuntimeAdapter`、Factory Registry 和平台独立 Adapter package；不得扩展平台能力或迁移 Legacy。
 
 除非用户明确要求：
 
@@ -1184,12 +1176,14 @@ HookSession
 
 继续视为 Page Hook Foundation。
 
-未来增加 `HookTransport` 时，应当在 Page Hook Foundation 之上向上抽象：
+Page Hook Foundation 继续冻结；通用 Platform Runtime / Adapter 层在 Foundation 之上组合：
 
 ```text
-PlatformRuntime
+Application Core
 ↓
-Platform Adapter
+PlatformRegistry
+↓
+PlatformRuntimeAdapter
 ↓
 HookTransport
 ↓
@@ -1210,16 +1204,18 @@ Douyin Page Hook 已完成最终真实验收。进入 `HookTransport` 阶段后�
 * `PersistentPageManager`
 * `WorkerScheduler`
 
-Phase 进入 `HookTransport 抽象` 不代表每次任务都自动授权实现 `HookTransport`；仍必须服从用户当轮明确范围。
+进入 Platform Runtime 插件阶段不代表自动授权扩展任何平台 Capability 或迁移 Legacy；仍必须服从用户当轮明确范围。
 
 ## 34.1 HookTransport Ownership Boundary
 
-当前 Phase `HookTransport 抽象` 中，统一执行模型边界固定为：
+当前 Platform Runtime 插件边界中，统一执行模型固定为：
 
 ```text
-PlatformRuntime
+Application Core
 ↓
-Platform Adapter
+PlatformRegistry
+↓
+PlatformRuntimeAdapter
 ↓
 HookTransport
 ├─ PageHookTransport
@@ -1235,9 +1231,9 @@ HookTransport
 
 `PageHookTransport.stop()` 只能通过所属 Host 的 `disposeSession(sessionId)` 释放自己的 Session；不得调用 `HookHost.dispose()`，不得停止共享 Scheduler，也不得影响兄弟 Session。
 
-Goofish 采用真实 Native 执行模型：`GoofishTransport` 固定绑定一个 Hub account，并包装成熟的 `GoofishMessagingClient`；多个 Transport 可以共享 Client，但不得切换共享的 current account。闲鱼官方 primary `WebContents` 必须同时作为用户可见工作台与 Client command/event bridge 的页面，并复用 Client 提供的账号 partition、preload 与账号迁移逻辑；不得创建第二套闲鱼消息页面或伪造 Page Hook Runtime。Goofish 未声明的 orders、handoff 与 conversation attention 必须明确返回 `NOT_SUPPORTED`，不得以空实现冒充能力。
+Goofish 采用真实 Native 执行模型：`GoofishTransport` 固定绑定一个 Hub account，并包装成熟的 `GoofishMessagingClient`；多个 Transport 可以共享 Client，但不得切换共享的 current account。此状态仅由独立 Goofish Adapter package 所有，Application Core / PlatformManager 不得直接依赖或判断 Goofish 内部状态。闲鱼官方 primary `WebContents` 必须同时作为用户可见工作台与 Client command/event bridge 的页面，并复用 Client 提供的账号 partition、preload 与账号迁移逻辑；不得创建第二套闲鱼消息页面或伪造 Page Hook Runtime。Goofish 未声明的 orders、handoff 与 conversation attention 必须明确返回 `NOT_SUPPORTED`，不得以空实现冒充能力。
 
-除非发现明确 bug 或 Contract incompatibility，后续 `HookTransport` 工作不得随意重构 Douyin runtime、HookSession、HookHost、PersistentPageManager 或 WorkerScheduler。
+新平台只能通过 `PlatformRuntimeFactory` 注册；新增平台不得修改中央 `PlatformManager`、`ShopRuntimeManager` 或其他平台 package。除非发现明确 bug 或 Contract incompatibility，后续 Platform Runtime 工作不得随意重构 Douyin runtime、HookSession、HookHost、PersistentPageManager 或 WorkerScheduler。
 
 ---
 

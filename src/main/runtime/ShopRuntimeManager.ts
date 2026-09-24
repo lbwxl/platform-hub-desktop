@@ -1,4 +1,6 @@
 import type { PlatformEvent } from '../../shared/platform'
+import type { HookTransport } from '@platform-hub/hook-transport'
+import type { HookEvent } from '@platform-hub/hook-sdk'
 
 export type ShopRuntimeState = 'stopped' | 'starting' | 'running' | 'error'
 
@@ -48,19 +50,7 @@ export interface ShopReplyApi {
   }): Promise<ReplyDecision>
 }
 
-export interface ShopTransportLike {
-  start(): Promise<void>
-  invoke<T = unknown>(operation: string, input: unknown): Promise<{ ok: true; data: T } | { ok: false; error: { code: string; message: string; retryable?: boolean } }>
-  subscribe(listener: (event: ShopHookEvent) => void): () => void
-  stop(): Promise<void>
-}
-
-export interface ShopHookEvent {
-  id?: string
-  type: string
-  payload?: Record<string, unknown>
-  timestamp?: number
-}
+export type ShopHookEvent = HookEvent
 
 export interface ShopRuntimeSnapshot {
   accountId: string
@@ -93,7 +83,7 @@ interface ManagedRuntime {
   platform: string
   shopName: string
   shopId: string
-  transport: ShopTransportLike
+  transport: HookTransport
   online: boolean
   runtimeState: ShopRuntimeState
   messageListening: boolean
@@ -137,7 +127,7 @@ export class ShopRuntimeManager {
     this.fileLoader = options.fileLoader || loadReplyFile
   }
 
-  register(accountId: string, transport: ShopTransportLike, context: { platform?: string; shopName?: string } = {}): void {
+  register(accountId: string, transport: HookTransport, context: { platform?: string; shopName?: string } = {}): void {
     if (this.runtimes.has(accountId)) return
     const runtime: ManagedRuntime = {
       accountId,
@@ -222,7 +212,7 @@ export class ShopRuntimeManager {
   }
 
   /** Feed a native/legacy event into the same account-scoped pipeline. */
-  pushEvent(accountId: string, event: ShopHookEvent): void {
+  pushEvent(accountId: string, event: HookEvent): void {
     const runtime = this.runtimes.get(accountId)
     if (runtime) this.handleEvent(runtime, event)
   }
@@ -305,7 +295,7 @@ export class ShopRuntimeManager {
     const timestamp = event.timestamp || Date.now()
     this.emit(runtime, 'hook', { event })
     if (event.type !== 'message.created') return
-    const message = (event.payload?.message || event.payload) as Record<string, unknown> | undefined
+    const message = (event as HookEvent<'message.created'>).payload.message as unknown as Record<string, unknown> | undefined
     if (!message) return
     const conversationId = String(message.conversationId || message.sessionId || '')
     if (!conversationId) return
@@ -503,7 +493,7 @@ export class ShopRuntimeManager {
       await this.setAttention(runtime.accountId, conversationId, 'pending')
       return { transferred: false, reason: 'official-target-list-unavailable' }
     }
-    const target = listed.data.map(asRecord).find((item) =>
+    const target = listed.data.map((value: unknown) => asRecord(value)).find((item: Record<string, unknown>) =>
       (requested.id && scalarString(item.id) === requested.id)
       || (requested.name && scalarString(item.name) === requested.name),
     )

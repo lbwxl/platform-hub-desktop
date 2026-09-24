@@ -13,7 +13,9 @@
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
-      "require": "./src/index.cjs"
+      "import": "./src/index.cjs",
+      "require": "./src/index.cjs",
+      "default": "./src/index.cjs"
     },
     "./renderer": {
       "types": "./types/index.d.ts",

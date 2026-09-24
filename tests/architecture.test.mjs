@@ -7,7 +7,15 @@ const douyinRuntime = await readFile(new URL('../packages/douyin-hook/src/runtim
 const douyinManifest = await readFile(new URL('../packages/douyin-hook/src/manifest.ts', import.meta.url), 'utf8')
 const douyinPackage = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
 const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', import.meta.url), 'utf8')
-const goofishPlatform = await readFile(new URL('../src/main/hooks/goofish.ts', import.meta.url), 'utf8')
+const platformRegistry = await readFile(new URL('../src/main/platforms/registry.ts', import.meta.url), 'utf8')
+const platformRuntimeContracts = await readFile(new URL('../packages/platform-runtime/src/contracts.ts', import.meta.url), 'utf8')
+const platformRuntimeRegistry = await readFile(new URL('../packages/platform-runtime/src/platform-registry.ts', import.meta.url), 'utf8')
+const platformRuntimeManager = await readFile(new URL('../packages/platform-runtime/src/runtime-manager.ts', import.meta.url), 'utf8')
+const pageRuntimeAdapter = await readFile(new URL('../packages/platform-runtime/src/page-hook-adapter.ts', import.meta.url), 'utf8')
+const goofishAdapter = await readFile(new URL('../packages/platform-goofish/src/goofish-runtime-adapter.ts', import.meta.url), 'utf8')
+const douyinAdapter = await readFile(new URL('../packages/platform-douyin/src/runtime-factory.ts', import.meta.url), 'utf8')
+const shopRuntimeManager = await readFile(new URL('../src/main/runtime/ShopRuntimeManager.ts', import.meta.url), 'utf8')
+const platformTypes = await readFile(new URL('../src/shared/platform.ts', import.meta.url), 'utf8')
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
@@ -53,6 +61,22 @@ test('HookTransport keeps the public contract execution-model-neutral', () => {
   assert.match(hookTransportTypes, /interface HookTransport/)
   assert.match(hookTransportTypes, /HookEvent/)
   assert.match(hookTransportTypes, /HookResult/)
+})
+
+test('PlatformRuntimeAdapter and Registry provide one generic plugin boundary', () => {
+  for (const member of ['id', 'transport', 'start()', 'stop()', 'getStatus()', 'attachPrimaryView()', 'detachPrimaryView()', 'dispose()']) {
+    assert.ok(platformRuntimeContracts.includes(member), `PlatformRuntimeAdapter missing ${member}`)
+  }
+  assert.match(platformRuntimeRegistry, /register\(factory: PlatformRuntimeFactory\)/)
+  assert.match(platformRuntimeRegistry, /require\(platformId: string\)/)
+  assert.doesNotMatch(platformRuntimeRegistry, /douyin|goofish|kuaishou/i)
+  assert.match(platformRuntimeManager, /this\.registry\.require\(account\.platform\)/)
+  assert.match(platformRuntimeManager, /adapter\.transport\.invoke/)
+})
+
+test('ShopRuntimeManager consumes the unified HookTransport contract', () => {
+  assert.match(shopRuntimeManager, /import type \{ HookTransport \} from '@platform-hub\/hook-transport'/)
+  assert.doesNotMatch(shopRuntimeManager, /ShopTransportLike/)
 })
 
 test('PageHookTransport is a thin session adapter without host ownership or platform branches', () => {
@@ -137,19 +161,22 @@ test('快手自发文本使用有界缓存回填发送瞬间的空正文事件',
 test('平台操作遇到登录状态时会等待并重试', () => {
   assert.match(manager, /LOGIN_REQUIRED/)
   assert.match(manager, /waitForLogin/)
-  assert.match(manager, /return cdp\.invoke<T>\(method/)
+  assert.match(manager, /runtime\.transport\.invoke<T>/)
+  assert.match(pageRuntimeAdapter, /runtime\.invoke\(method, \.\.\.args\)/)
 })
 
 test('商品官方验证会显示并聚焦当前店铺的商品页', () => {
-  assert.match(manager, /errorCode === 'CHALLENGE_REQUIRED'/)
-  assert.match(manager, /showRuntimePageFor\(method\)/)
+  assert.match(manager, /result\.error\.code === 'CHALLENGE_REQUIRED'/)
+  assert.match(manager, /runtime\.showOperationPage\?\.\(operation\)/)
+  assert.match(pageRuntimeAdapter, /showRuntimePageFor\(methodFor\(operation\)\)/)
   assert.match(session, /clearRuntimeWindowTimer\(route\.id\)/)
   assert.match(session, /target\.focus\(\)/)
 })
 
 test('已登录但未暴露能力时不会误进入登录等待', () => {
-  assert.match(manager, /await cdp\.showRuntimePageFor\(method\)/)
-  assert.doesNotMatch(manager, /RUNTIME_NOT_READY' && cdp\.getStatus\(\)\.authenticated\) return result/)
+  const notReadyBranch = manager.match(/else if \(result\.error\.code === 'RUNTIME_NOT_READY'\)[\s\S]*?\n    \}/)?.[0] || ''
+  assert.match(notReadyBranch, /showOperationPage/)
+  assert.doesNotMatch(notReadyBranch, /waitForLogin/)
 })
 
 test('登录成功后自动进入 manifest 声明的消息接待页', () => {
@@ -163,7 +190,7 @@ test('平台可通过 manifest 声明官方登录页并保持同一账号分区'
   assert.match(session, /loginUrlFor/)
   assert.match(session, /contents\?\.loadURL\(loginUrl\)/)
   assert.match(session, /waitForLogin\(timeoutMs = 15 \* 60_000, method\?: string\)/)
-  assert.match(manager, /waitForLogin\(undefined, method\)/)
+  assert.match(pageRuntimeAdapter, /waitForLogin\(undefined, methodFor\(operation\)\)/)
 })
 
 test('伴随页官方登录重定向不会被 ERR_ABORTED 误判为加载失败', () => {
@@ -193,9 +220,9 @@ test('主工作台只展示 Hook primary WebContentsView，不创建 Renderer we
   assert.match(session, /primaryAttached/)
   assert.match(session, /contentView\.addChildView\(view\)/)
   assert.match(session, /contentView\.removeChildView\(view\)/)
-  assert.match(manager, /detachPrimaryView\(\)/)
-  assert.match(manager, /attachPrimaryView\(\)/)
-  assert.match(manager, /setPrimaryBounds\(this\.primaryViewportBounds\)/)
+  assert.match(manager, /runtimeManager\.detachPrimaryView\(other\.id\)/)
+  assert.match(manager, /runtime\.attachPrimaryView\(\)/)
+  assert.match(pageRuntimeAdapter, /runtime\.setPrimaryBounds\(bounds\)/)
   assert.match(session, /if \(this\.primaryAttached && this\.primaryView/)
   assert.match(main, /viewport:bounds/)
   assert.doesNotMatch(viewport, /<webview/)
@@ -204,36 +231,42 @@ test('主工作台只展示 Hook primary WebContentsView，不创建 Renderer we
 
 test('主工作台切换只移动 active View，不 reload 或销毁后台店铺 WebContents', () => {
   const openBody = manager.match(/async open\(accountId: string\): Promise<PlatformAccount> \{([\s\S]*?)\n  \}\n\n  async connect/)?.[1] || ''
-  const attachBody = manager.match(/private async attachPrimaryView\(accountId: string\): Promise<void> \{([\s\S]*?)\n  \}\n\n  private detachGoofishView/)?.[1] || ''
-  assert.match(openBody, /await this\.attachPrimaryView\(accountId\)/)
+  assert.match(openBody, /runtimeManager\.detachPrimaryView\(other\.id\)/)
+  assert.match(openBody, /await runtime\.attachPrimaryView\(\)/)
   assert.doesNotMatch(openBody, /loadURL\(|webContents\.(?:close|destroy)\(/)
-  assert.match(attachBody, /this\.detachPrimaryViewsExcept\(accountId\)/)
-  assert.match(attachBody, /await cdp\.open\(false\)/)
-  assert.match(attachBody, /contentView\.addChildView\(view\)/)
   const detachBody = session.match(/detachPrimaryView\(\): void \{([\s\S]*?)\n  \}\n\n  setPrimaryBounds/)?.[1] || ''
   assert.match(detachBody, /removeChildView\(view\)/)
   assert.doesNotMatch(detachBody, /webContents\.close\(\)/)
-  const managerDetachBody = manager.match(/private detachPrimaryViewsExcept\(accountId: string\): void \{([\s\S]*?)\n  \}\n\n  private async goofishInvoke/)?.[1] || ''
-  assert.match(managerDetachBody, /session\.detachPrimaryView\(\)/)
-  assert.match(managerDetachBody, /this\.detachGoofishView\(id\)/)
-  assert.doesNotMatch(managerDetachBody, /webContents\.(?:close|destroy)\(/)
+  assert.match(manager, /runtimeManager\.detachPrimaryView\(other\.id\)/)
+  assert.doesNotMatch(manager, /webContents\.(?:close|destroy)\(/)
 })
 
-test('Goofish Native Transport is wired to Main, ShopRuntimeManager and its visible embedded WebContents', () => {
-  assert.match(goofishPlatform, /executionModel:\s*'native'/)
-  assert.doesNotMatch(goofishPlatform, /script\s*:/)
-  assert.match(manager, /new GoofishMessagingClient\(/)
-  const transportBody = manager.match(/private ensureGoofishTransport\(accountId: string\): GoofishTransport \{([\s\S]*?)\n  \}\n\n  private ensureGoofishView/)?.[1] || ''
-  assert.match(transportBody, /new GoofishTransport\(\{ accountId, clientAccountId, client: this\.goofishClient \}\)/)
-  assert.match(transportBody, /shopRuntimes\.register\(accountId, transport/)
-  const viewBody = manager.match(/private ensureGoofishView\(accountId: string\): WebContentsView \{([\s\S]*?)\n  \}\n\n  private liveGoofishWebContentsId/)?.[1] || ''
-  assert.match(viewBody, /getEmbeddedWebviewConfig\(clientAccountId\)/)
-  assert.match(viewBody, /new WebContentsView\(/)
-  assert.match(viewBody, /attachEmbeddedWebContents\(clientAccountId, view\.webContents\)/)
-  assert.match(viewBody, /partition: config\.partition/)
-  assert.match(viewBody, /preload: fileURLToPath\(config\.preload\)/)
+test('PlatformManager 仅依赖 Registry/Adapter；Goofish 实现封装在独立包', () => {
+  assert.doesNotMatch(manager, /@idle-fish\/goofish-messaging|GoofishMessagingClient|GoofishTransport|goofishViews|ensureGoofish/)
+  assert.match(manager, /PlatformRuntimeManager/)
+  const addAccountBody = manager.match(/async addAccount\(input: \{[\s\S]*?\n  \}\n\n  async removeAccount/)?.[0] || ''
+  assert.match(addAccountBody, /this\.registry\.require\(input\.platform\)/)
+  assert.doesNotMatch(addAccountBody, /platform\s*===|switch\s*\(/)
+  assert.doesNotMatch(manager, /platform\s*===|switch\s*\(\s*account\.platform/)
+  assert.match(goofishAdapter, /executionModel:\s*'native'/)
+  assert.match(goofishAdapter, /new GoofishMessagingClient\(/)
+  assert.match(goofishAdapter, /new GoofishTransport\(/)
+  assert.match(goofishAdapter, /new WebContentsView\(/)
+  assert.match(goofishAdapter, /attachEmbeddedWebContents\(/)
+  assert.match(douyinAdapter, /class DouyinRuntimeAdapter extends PageHookRuntimeAdapter/)
+  assert.match(douyinAdapter, /createCdpSession\(account, context/)
+  assert.match(platformRegistry, /createGoofishRuntimeFactory/)
   assert.match(main, /await manager\.attachMainWindow\(mainWindow\)/)
   assert.match(main, /manager\.setAccountOnline\(id, online\)/)
+})
+
+test('公共 PlatformAccount 不泄漏平台私有 Adapter 元数据', () => {
+  const accountInterface = platformTypes.match(/export interface PlatformAccount \{([\s\S]*?)\n\}/)?.[1] || ''
+  assert.ok(accountInterface)
+  assert.doesNotMatch(accountInterface, /adapterMetadata|goofishClientAccountId/)
+  assert.match(platformRuntimeContracts, /adapterMetadata\?: Record<string, unknown>/)
+  const publicAccountBody = manager.match(/function publicAccount\([\s\S]*?\nfunction applyStatus/)?.[0] || ''
+  assert.doesNotMatch(publicAccountBody, /adapterMetadata|goofishClientAccountId/)
 })
 
 test('官方工作台占据主区域，调试信息默认折叠且页面不随 document 滚动', async () => {
