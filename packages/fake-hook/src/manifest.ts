@@ -1,4 +1,4 @@
-import type { HookManifest } from '@platform-hub/hook-sdk'
+import type { HookManifest } from '@platform-hub/core-sdk'
 
 export const fakeHookManifest: HookManifest = {
   platform: 'fake',

@@ -4,7 +4,7 @@
 
 ## 平台能力
 
-- Legacy Reference（历史上的旧抖店包）与 `packages/kuaishou-hook` 中的 window runtime 探测、平台方法适配、字段解析和 DTO normalize。
+- Legacy Reference（历史上的旧抖店包）与 `packages/legacy-kuaishou-hook` 中的 window runtime 探测、平台方法适配、字段解析和 DTO normalize。
 - 平台登录状态、会话与历史消息读取、消息发送、商品和订单 API 调用。
 - 平台原始状态到商品/订单/消息公共语义的映射。
 - 平台官方事件或平台 SDK 事件的订阅方式。
@@ -19,7 +19,7 @@
 - 超时、Abort、并发、任务优先级、Challenge 页面展示和恢复。
 - `src/main/cdp/PlatformManager.ts` 中多店铺 Session 生命周期与持久化边界。
 
-这些能力由 `packages/hook-host` 统一管理。平台 Hook 不创建 Electron 页面，也不管理轮询计时器。
+这些能力由 `packages/core-page-host` 统一管理。平台 Hook 不创建 Electron 页面，也不管理轮询计时器。
 
 ## 旧架构中的混合职责
 

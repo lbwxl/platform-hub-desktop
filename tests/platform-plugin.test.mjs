@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PlatformRegistry, PlatformRuntimeManager } from '../packages/platform-runtime/dist/index.js'
-import { createFakePlatformFactory } from '../packages/platform-fake/dist/index.js'
+import { PlatformRegistry, PlatformRuntimeManager } from '../packages/core-runtime/dist/index.js'
+import { createFakePlatformFactory } from '../packages/fake-platform/dist/index.js'
 
 test('FakePlatform 插件可经 Registry 完成创建、启动、invoke、展示、停止和释放', async () => {
   const registry = new PlatformRegistry()

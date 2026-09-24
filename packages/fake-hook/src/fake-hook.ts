@@ -1,4 +1,4 @@
-import { HookHost, HookSession, type HookPageAdapter, type HookPageContext, type HookPageFactory } from '@platform-hub/hook-host'
+import { HookHost, HookSession, type HookPageAdapter, type HookPageContext, type HookPageFactory } from '@platform-hub/core-page-host'
 import {
   fail,
   HOOK_PROTOCOL_VERSION,
@@ -17,7 +17,7 @@ import {
   type HookResult,
   type HookRuntimeDescription,
   type PageHookRuntime,
-} from '@platform-hub/hook-sdk'
+} from '@platform-hub/core-sdk'
 import { fakeHookManifest } from './manifest.js'
 
 interface FakeShopState {

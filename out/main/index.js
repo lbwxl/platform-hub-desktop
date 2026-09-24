@@ -2,11 +2,11 @@ import { app, dialog, WebContentsView, BrowserWindow, shell, ipcMain } from "ele
 import { join, dirname, resolve, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
-import { PlatformRuntimeManager, PlatformRegistry, createPageRuntimeFactory } from "@platform-hub/platform-runtime";
+import { PlatformRuntimeManager, PlatformRegistry, createPageRuntimeFactory } from "@platform-hub/core-runtime";
 import { EventEmitter } from "node:events";
-import { createDouyinRuntimeFactory, douyinHook } from "@platform-hub/douyin";
-import { createGoofishRuntimeFactory } from "@platform-hub/goofish";
-import { kuaishouHook } from "@platform-hub/kuaishou-hook";
+import { createDouyinRuntimeFactory, douyinHook } from "@platform-hub/douyin-platform";
+import { createGoofishRuntimeFactory } from "@platform-hub/goofish-platform";
+import { kuaishouHook } from "@platform-hub/legacy-kuaishou-hook";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;

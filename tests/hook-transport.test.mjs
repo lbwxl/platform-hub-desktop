@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FakeHookPageFactory, fakeHookManifest } from '../packages/fake-hook/dist/index.js'
-import { HookHost } from '../packages/hook-host/dist/index.js'
-import { PageHookTransport } from '../packages/hook-transport/dist/index.js'
+import { HookHost } from '../packages/core-page-host/dist/index.js'
+import { PageHookTransport } from '../packages/core-transport/dist/index.js'
 
 test('PageHookTransport delegates start once and preserves invoke results', async () => {
   const spy = createSpySession()

@@ -207,7 +207,7 @@ worker      按 Operation 按需创建、空闲回收的页面
 Persistent page 不是把 worker 的 `idleTtlMs` 设为无限，而是由
 `PersistentPageManager` 独立负责创建、复用、Runtime 安装、事件接收、刷新和释放。
 
-公共 `HookTransport` Contract 位于 `packages/hook-transport`；`PlatformRuntimeAdapter`、`PlatformRegistry` 和通用 Page Hook Adapter 位于 `packages/platform-runtime`。当前阶段补齐平台包的独立 Adapter 与 Registry 接线；不得把平台分支放回中央 `PlatformManager`。
+公共 `HookTransport` Contract 位于 `packages/core-transport`；`PlatformRuntimeAdapter`、`PlatformRegistry` 和通用 Page Hook Adapter 位于 `packages/core-runtime`。当前阶段补齐平台包的独立 Adapter 与 Registry 接线；不得把平台分支放回中央 `PlatformManager`。
 
 ---
 
@@ -224,13 +224,13 @@ Hook SDK 不允许依赖：
 Page Hook 平台的具体 Hook 可以依赖：
 
 ```text
-hook-sdk
+core-sdk
 ```
 
 HookHost 可以依赖：
 
 ```text
-hook-sdk
+core-sdk
 Electron
 ```
 
@@ -239,7 +239,7 @@ Electron
 ```text
 platform-hook-a → platform-hook-b
 
-kuaishou-hook → pinduoduo-hook
+legacy-kuaishou-hook → pinduoduo-hook
 ```
 
 平台之间不能互相依赖。
@@ -271,7 +271,7 @@ if (platform === 'qianniu') {}
 ```text
 packages/
 
-  hook-sdk/
+  core-sdk/
     src/
       manifest/
       protocol/
@@ -281,7 +281,7 @@ packages/
       errors/
       testing/
 
-  hook-host/
+  core-page-host/
     src/
       session/
       pages/
@@ -309,7 +309,7 @@ packages/
 
 目录允许根据实际代码微调，但架构边界不能破坏。
 
-当前平台运行时包包括 `packages/platform-runtime`、`packages/platform-douyin`、`packages/platform-goofish`。Legacy Adapter 目录仍在对应阶段决定；不得提前迁移 Legacy 实现。
+当前平台运行时包包括 `packages/core-runtime`、`packages/douyin-platform`、`packages/goofish-platform`。Legacy Adapter 目录仍在对应阶段决定；不得提前迁移 Legacy 实现。
 
 ---
 
@@ -1145,7 +1145,7 @@ Platform Runtime 插件边界
 
 优先保持统一上层 Contract 与正确的执行模型边界。
 
-不要为了快速支持抖店而在 HookHost / hook-sdk 中加入抖店特例。
+不要为了快速支持抖店而在 HookHost / core-sdk 中加入抖店特例。
 
 ---
 

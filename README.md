@@ -6,7 +6,7 @@
 
 抖店各项能力的 DTO、事件、错误和 Electron 壳层兼容格式见：[Douyin Hook 数据契约](docs/douyin-hook-data-contract.md)。
 
-快手小店能力位于 `packages/kuaishou-hook`（包名 `@platform-hub/kuaishou-hook`），使用相同的 typed client、订单同步和订单事件协议，默认消息页为 `https://im.kwaixiaodian.com/workbench`。
+快手小店能力位于 `packages/legacy-kuaishou-hook`（包名 `@platform-hub/legacy-kuaishou-hook`），使用相同的 typed client、订单同步和订单事件协议，默认消息页为 `https://im.kwaixiaodian.com/workbench`。
 
 ## 当前能力
 
@@ -44,7 +44,7 @@ const result = await runtime.invoke('sessions.list', {})
 
 本地项目直接使用 workspace 包 `@platform-hub/douyin-hook`。正式验证脚本统一位于 `scripts/*douyin*`，测试统一位于 `tests/*douyin*`。
 
-快手包可使用 `@platform-hub/kuaishou-hook: file:../douyin-platform-hub/packages/kuaishou-hook`，支持相同的 `syncOrders` / `subscribeOrders` 调用；发布前执行 `pnpm --dir packages/kuaishou-hook pack:check`。
+快手包可使用 `@platform-hub/legacy-kuaishou-hook: file:../douyin-platform-hub/packages/legacy-kuaishou-hook`，支持相同的 `syncOrders` / `subscribeOrders` 调用；发布前执行 `pnpm --dir packages/legacy-kuaishou-hook pack:check`。
 
 开发界面由 Vite 提供在 `http://localhost:5173/`，同时自动启动 Electron 主窗口和抖店官方页面。
 

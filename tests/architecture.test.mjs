@@ -2,42 +2,42 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-const kuaishouHook = await readFile(new URL('../packages/kuaishou-hook/src/hook.ts', import.meta.url), 'utf8')
+const kuaishouHook = await readFile(new URL('../packages/legacy-kuaishou-hook/src/hook.ts', import.meta.url), 'utf8')
 const douyinRuntime = await readFile(new URL('../packages/douyin-hook/src/runtime-source.ts', import.meta.url), 'utf8')
 const douyinManifest = await readFile(new URL('../packages/douyin-hook/src/manifest.ts', import.meta.url), 'utf8')
 const douyinPackage = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
 const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', import.meta.url), 'utf8')
 const platformRegistry = await readFile(new URL('../src/main/platforms/registry.ts', import.meta.url), 'utf8')
-const platformRuntimeContracts = await readFile(new URL('../packages/platform-runtime/src/contracts.ts', import.meta.url), 'utf8')
-const platformRuntimeRegistry = await readFile(new URL('../packages/platform-runtime/src/platform-registry.ts', import.meta.url), 'utf8')
-const platformRuntimeManager = await readFile(new URL('../packages/platform-runtime/src/runtime-manager.ts', import.meta.url), 'utf8')
-const pageRuntimeAdapter = await readFile(new URL('../packages/platform-runtime/src/page-hook-adapter.ts', import.meta.url), 'utf8')
-const goofishAdapter = await readFile(new URL('../packages/platform-goofish/src/goofish-runtime-adapter.ts', import.meta.url), 'utf8')
-const douyinAdapter = await readFile(new URL('../packages/platform-douyin/src/runtime-factory.ts', import.meta.url), 'utf8')
+const platformRuntimeContracts = await readFile(new URL('../packages/core-runtime/src/contracts.ts', import.meta.url), 'utf8')
+const platformRuntimeRegistry = await readFile(new URL('../packages/core-runtime/src/platform-registry.ts', import.meta.url), 'utf8')
+const platformRuntimeManager = await readFile(new URL('../packages/core-runtime/src/runtime-manager.ts', import.meta.url), 'utf8')
+const pageRuntimeAdapter = await readFile(new URL('../packages/core-runtime/src/page-hook-adapter.ts', import.meta.url), 'utf8')
+const goofishAdapter = await readFile(new URL('../packages/goofish-platform/src/goofish-runtime-adapter.ts', import.meta.url), 'utf8')
+const douyinAdapter = await readFile(new URL('../packages/douyin-platform/src/runtime-factory.ts', import.meta.url), 'utf8')
 const shopRuntimeManager = await readFile(new URL('../src/main/runtime/ShopRuntimeManager.ts', import.meta.url), 'utf8')
 const platformTypes = await readFile(new URL('../src/shared/platform.ts', import.meta.url), 'utf8')
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
 const viewport = await readFile(new URL('../src/renderer/src/components/PlatformViewport.tsx', import.meta.url), 'utf8')
-const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/hook-sdk/package.json', import.meta.url), 'utf8'))
-const hookHostPackage = JSON.parse(await readFile(new URL('../packages/hook-host/package.json', import.meta.url), 'utf8'))
-const hookTransportPackage = JSON.parse(await readFile(new URL('../packages/hook-transport/package.json', import.meta.url), 'utf8'))
-const hookTransportTypes = await readFile(new URL('../packages/hook-transport/src/types.ts', import.meta.url), 'utf8')
-const pageHookTransport = await readFile(new URL('../packages/hook-transport/src/page-hook-transport.ts', import.meta.url), 'utf8')
+const hookSdkPackage = JSON.parse(await readFile(new URL('../packages/core-sdk/package.json', import.meta.url), 'utf8'))
+const hookHostPackage = JSON.parse(await readFile(new URL('../packages/core-page-host/package.json', import.meta.url), 'utf8'))
+const hookTransportPackage = JSON.parse(await readFile(new URL('../packages/core-transport/package.json', import.meta.url), 'utf8'))
+const hookTransportTypes = await readFile(new URL('../packages/core-transport/src/types.ts', import.meta.url), 'utf8')
+const pageHookTransport = await readFile(new URL('../packages/core-transport/src/page-hook-transport.ts', import.meta.url), 'utf8')
 const foundationSources = await Promise.all([
-  '../packages/hook-sdk/src/protocol/index.ts',
-  '../packages/hook-sdk/src/contracts/index.ts',
-  '../packages/hook-sdk/src/outbound/index.ts',
-  '../packages/hook-host/src/index.ts',
-  '../packages/hook-host/src/session/hook-session.ts',
-  '../packages/hook-host/src/pages/worker-page-manager.ts',
-  '../packages/hook-host/src/scheduler/worker-scheduler.ts',
+  '../packages/core-sdk/src/protocol/index.ts',
+  '../packages/core-sdk/src/contracts/index.ts',
+  '../packages/core-sdk/src/outbound/index.ts',
+  '../packages/core-page-host/src/index.ts',
+  '../packages/core-page-host/src/session/hook-session.ts',
+  '../packages/core-page-host/src/pages/worker-page-manager.ts',
+  '../packages/core-page-host/src/scheduler/worker-scheduler.ts',
 ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
 
 test('Hook SDK stays platform and framework independent', () => {
   const dependencies = { ...hookSdkPackage.dependencies, ...hookSdkPackage.devDependencies }
-  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/kuaishou-hook']) {
+  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/legacy-kuaishou-hook']) {
     assert.equal(dependencies[forbidden], undefined)
   }
   assert.doesNotMatch(foundationSources.slice(0, 3).join('\n'), /from ['"](?:electron|react|vue)/)
@@ -47,17 +47,17 @@ test('Hook foundation contains no platform branches or direct console logging', 
   const source = foundationSources.join('\n')
   assert.doesNotMatch(source, /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
   assert.doesNotMatch(source, /console\.(?:log|info|warn|error|debug)/)
-  assert.equal(hookHostPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
+  assert.equal(hookHostPackage.dependencies['@platform-hub/core-sdk'], 'workspace:*')
 })
 
 test('HookTransport keeps the public contract execution-model-neutral', () => {
   const dependencies = { ...hookTransportPackage.dependencies, ...hookTransportPackage.devDependencies }
-  assert.equal(hookTransportPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
-  assert.equal(hookTransportPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
-  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/kuaishou-hook']) {
+  assert.equal(hookTransportPackage.dependencies['@platform-hub/core-sdk'], 'workspace:*')
+  assert.equal(hookTransportPackage.dependencies['@platform-hub/core-page-host'], 'workspace:*')
+  for (const forbidden of ['electron', 'react', 'vue', '@platform-hub/douyin-hook', '@platform-hub/legacy-kuaishou-hook']) {
     assert.equal(dependencies[forbidden], undefined)
   }
-  assert.doesNotMatch(hookTransportTypes, /hook-host|electron|react|vue|douyin|kuaishou|goofish|wechat|wework|qianniu/i)
+  assert.doesNotMatch(hookTransportTypes, /core-page-host|electron|react|vue|douyin|kuaishou|goofish|wechat|wework|qianniu/i)
   assert.match(hookTransportTypes, /interface HookTransport/)
   assert.match(hookTransportTypes, /HookEvent/)
   assert.match(hookTransportTypes, /HookResult/)
@@ -75,12 +75,12 @@ test('PlatformRuntimeAdapter and Registry provide one generic plugin boundary', 
 })
 
 test('ShopRuntimeManager consumes the unified HookTransport contract', () => {
-  assert.match(shopRuntimeManager, /import type \{ HookTransport \} from '@platform-hub\/hook-transport'/)
+  assert.match(shopRuntimeManager, /import type \{ HookTransport \} from '@platform-hub\/core-transport'/)
   assert.doesNotMatch(shopRuntimeManager, /ShopTransportLike/)
 })
 
 test('PageHookTransport is a thin session adapter without host ownership or platform branches', () => {
-  assert.match(pageHookTransport, /from '@platform-hub\/hook-host'/)
+  assert.match(pageHookTransport, /from '@platform-hub\/core-page-host'/)
   assert.doesNotMatch(pageHookTransport, /new\s+HookHost/)
   assert.doesNotMatch(pageHookTransport, /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|goofish|wechat|wework|qianniu/i)
   assert.match(pageHookTransport, /disposeSession/)
@@ -90,8 +90,8 @@ test('正式 Douyin Hook 仅将 DOM 投影限制在会话原生 attention，且�
   assert.doesNotMatch(douyinRuntime, /\.click\(|dispatchEvent|XMLHttpRequest|WebSocket/)
   assert.match(douyinRuntime, /PRODUCT_LIST_PATH\s*=\s*['"]\/product\/tproduct\/list/)
   assert.match(douyinRuntime, /credentials:\s*['"]include['"]/)
-  assert.equal(douyinPackage.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
-  assert.equal(douyinPackage.dependencies['@platform-hub/hook-host'], 'workspace:*')
+  assert.equal(douyinPackage.dependencies['@platform-hub/core-sdk'], 'workspace:*')
+  assert.equal(douyinPackage.dependencies['@platform-hub/core-page-host'], 'workspace:*')
   assert.match(douyinRuntime, /__PLATFORM_HOOK__/)
   assert.match(douyinRuntime, /conversationsInfo/)
   assert.match(douyinRuntime, /_message\$/)

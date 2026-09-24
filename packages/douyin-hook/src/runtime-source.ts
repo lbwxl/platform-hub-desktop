@@ -1,4 +1,4 @@
-import { HOOK_PROTOCOL_VERSION } from '@platform-hub/hook-sdk'
+import { HOOK_PROTOCOL_VERSION } from '@platform-hub/core-sdk'
 import { DOUYIN_PRIMARY_OPERATIONS, DOUYIN_PRODUCTS_OPERATIONS, DOUYIN_PLATFORM_ID } from './manifest.js'
 
 export const douyinHookRuntimeScript = String.raw`(() => {

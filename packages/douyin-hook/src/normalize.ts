@@ -10,7 +10,7 @@ import {
   type HookProduct,
   type HookProductStatus,
   type HookSessionSummary,
-} from '@platform-hub/hook-sdk'
+} from '@platform-hub/core-sdk'
 
 type UnknownRecord = Record<string, unknown>
 

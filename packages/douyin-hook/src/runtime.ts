@@ -11,7 +11,7 @@ import {
   type HookResult,
   type HookRuntimeDescription,
   type PageHookRuntime,
-} from '@platform-hub/hook-sdk'
+} from '@platform-hub/core-sdk'
 import { douyinHookRuntimeScript } from './runtime-source.js'
 
 export type DouyinEvaluate = <T>(expression: string) => Promise<T>

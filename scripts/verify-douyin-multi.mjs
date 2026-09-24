@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { app, BrowserWindow, session as electronSession } from 'electron'
-import { HookHost } from '../packages/hook-host/dist/index.js'
+import { HookHost } from '../packages/core-page-host/dist/index.js'
 import {
   createCdpEvaluator,
   createDouyinElectronPageFactory,

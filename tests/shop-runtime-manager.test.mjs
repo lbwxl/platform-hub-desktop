@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { FakeHook } from '../packages/fake-hook/dist/index.js'
-import { PageHookTransport } from '../packages/hook-transport/dist/index.js'
+import { PageHookTransport } from '../packages/core-transport/dist/index.js'
 import { ShopRuntimeManager } from '../src/main/runtime/ShopRuntimeManager.ts'
 
 function setup() {

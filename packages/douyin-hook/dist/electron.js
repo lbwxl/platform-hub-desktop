@@ -1,4 +1,4 @@
-import { ElectronHookPageFactory } from '@platform-hub/hook-host';
+import { ElectronHookPageFactory } from '@platform-hub/core-page-host';
 import { installDouyinPageRuntime } from './runtime.js';
 export function createDouyinElectronPageFactory(options) {
     return new ElectronHookPageFactory({

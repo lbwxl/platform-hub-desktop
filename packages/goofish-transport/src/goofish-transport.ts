@@ -10,7 +10,7 @@ import {
   type HookProduct,
   type HookResult,
   type HookSessionSummary,
-} from '@platform-hub/hook-sdk'
+} from '@platform-hub/core-sdk'
 import {
   array,
   asRow,

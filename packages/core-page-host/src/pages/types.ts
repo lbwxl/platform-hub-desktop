@@ -1,0 +1,34 @@
+import type { HookEvent, HookManifest, HookPageDefinition, PageHookRuntime } from '@platform-hub/core-sdk'
+
+export interface HookPageContext {
+  sessionId: string
+  shopId: string
+  partition: string
+  manifest: HookManifest
+  definition: HookPageDefinition
+}
+
+/** Adapter boundary for Electron BrowserWindow/WebContents or a test runtime. */
+export interface HookPageAdapter {
+  readonly id: string
+  readonly partition: string
+  readonly definition: HookPageDefinition
+  installRuntime(): Promise<PageHookRuntime>
+  subscribeEvents?: (listener: (event: HookEvent) => void) => (() => void) | Promise<() => void>
+  show(): Promise<void>
+  waitForRuntimeReady(signal?: AbortSignal): Promise<void>
+  close(): Promise<void>
+  isAlive(): boolean
+}
+
+export interface HookPageFactory {
+  create(context: HookPageContext): Promise<HookPageAdapter>
+}
+
+export interface WorkerPageLease {
+  readonly page: HookPageAdapter
+  readonly runtime: PageHookRuntime
+  refreshRuntime(): Promise<PageHookRuntime>
+  release(): void
+  discard(): Promise<void>
+}

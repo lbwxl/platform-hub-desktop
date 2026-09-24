@@ -8,10 +8,10 @@ import {
   type PageRuntimeEvent,
   type PlatformAccountRecord,
   type PlatformRuntimeHostContext,
-} from '@platform-hub/platform-runtime'
-import { createDouyinRuntimeFactory, douyinHook } from '@platform-hub/douyin'
-import { createGoofishRuntimeFactory } from '@platform-hub/goofish'
-import { kuaishouHook } from '@platform-hub/kuaishou-hook'
+} from '@platform-hub/core-runtime'
+import { createDouyinRuntimeFactory, douyinHook } from '@platform-hub/douyin-platform'
+import { createGoofishRuntimeFactory } from '@platform-hub/goofish-platform'
+import { kuaishouHook } from '@platform-hub/legacy-kuaishou-hook'
 
 export function createPlatformRegistry(): PlatformRegistry {
   const registry = new PlatformRegistry()

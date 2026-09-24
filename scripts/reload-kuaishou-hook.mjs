@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
-const runtime = await readFile(new URL('../packages/kuaishou-hook/dist/runtime.js', import.meta.url), 'utf8')
+const runtime = await readFile(new URL('../packages/legacy-kuaishou-hook/dist/runtime.js', import.meta.url), 'utf8')
 const targets = await fetch('http://127.0.0.1:9333/json/list').then((response) => response.json())
 const target = targets.find((item) => /im\.kwaixiaodian\.com\/workbench/i.test(item.url))
 if (!target) throw new Error('未找到快手小店 CDP 页面')

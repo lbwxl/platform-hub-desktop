@@ -1,4 +1,4 @@
-import { HOOK_PROTOCOL_VERSION, OutboundCorrelationTracker, fail, hookError, } from '@platform-hub/hook-sdk';
+import { HOOK_PROTOCOL_VERSION, OutboundCorrelationTracker, fail, hookError, } from '@platform-hub/core-sdk';
 import { douyinHookRuntimeScript } from './runtime-source.js';
 export function createDouyinPageRuntime(options) {
     let disposed = false;

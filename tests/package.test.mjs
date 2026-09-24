@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import vm from 'node:vm'
-import { createKuaishouClient, kuaishouHook, kuaishouHookScript } from '@platform-hub/kuaishou-hook'
+import { createKuaishouClient, kuaishouHook, kuaishouHookScript } from '@platform-hub/legacy-kuaishou-hook'
 
 test('快手 package 暴露 manifest、独立 runtime 和 typed client', async () => {
-  const manifest = JSON.parse(await readFile(new URL('../packages/kuaishou-hook/manifest.json', import.meta.url), 'utf8'))
-  const runtime = await readFile(new URL('../packages/kuaishou-hook/dist/runtime.js', import.meta.url), 'utf8')
+  const manifest = JSON.parse(await readFile(new URL('../packages/legacy-kuaishou-hook/manifest.json', import.meta.url), 'utf8'))
+  const runtime = await readFile(new URL('../packages/legacy-kuaishou-hook/dist/runtime.js', import.meta.url), 'utf8')
   assert.equal(manifest.id, kuaishouHook.id)
   assert.equal(manifest.version, kuaishouHook.version)
   assert.equal(manifest.version, '1.2.5')
@@ -15,7 +15,7 @@ test('快手 package 暴露 manifest、独立 runtime 和 typed client', async (
   assert.equal(manifest.runtimePages, undefined)
   assert.match(runtime, /__platformHub/)
   assert.equal(/document\.|querySelector|fetch\(/.test(runtime), false)
-  await import('../packages/kuaishou-hook/dist/runtime.js')
+  await import('../packages/legacy-kuaishou-hook/dist/runtime.js')
   assert.match(kuaishouHookScript, /currentSessionMessageListStore/)
   assert.match(kuaishouHookScript, /sessionModel\?\.sessionAllModel\?\.allSessionMap/)
   assert.match(kuaishouHookScript, /chatWithTarget\(\{ targetSession: session \}\)/)

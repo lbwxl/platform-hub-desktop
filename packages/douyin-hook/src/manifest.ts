@@ -1,4 +1,4 @@
-import type { HookManifest, HookOperation } from '@platform-hub/hook-sdk'
+import type { HookManifest, HookOperation } from '@platform-hub/core-sdk'
 
 export const DOUYIN_PLATFORM_ID = 'douyin'
 export const DOUYIN_PRIMARY_PAGE_ID = 'primary'

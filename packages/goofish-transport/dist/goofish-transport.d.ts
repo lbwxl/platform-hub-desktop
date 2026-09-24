@@ -1,4 +1,4 @@
-import { type HookEvent, type HookOperation, type HookResult } from '@platform-hub/hook-sdk';
+import { type HookEvent, type HookOperation, type HookResult } from '@platform-hub/core-sdk';
 export declare const GOOFISH_OPERATIONS: HookOperation[];
 export interface GoofishMessagingClientLike {
     listAccounts(): unknown[];

@@ -1,4 +1,4 @@
-import { type HookAuthState, type HookError, type HookMessage, type HookOrder, type HookOrderStatus, type HookProduct, type HookProductStatus, type HookSessionSummary } from '@platform-hub/hook-sdk';
+import { type HookAuthState, type HookError, type HookMessage, type HookOrder, type HookOrderStatus, type HookProduct, type HookProductStatus, type HookSessionSummary } from '@platform-hub/core-sdk';
 type UnknownRecord = Record<string, unknown>;
 export interface DouyinMessageContext {
     conversationId?: string;

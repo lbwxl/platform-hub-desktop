@@ -1,4 +1,4 @@
-import type { HookManifest } from '@platform-hub/hook-sdk';
+import type { HookManifest } from '@platform-hub/core-sdk';
 export declare const DOUYIN_PLATFORM_ID = "douyin";
 export declare const DOUYIN_PRIMARY_PAGE_ID = "primary";
 export declare const DOUYIN_PRODUCTS_PAGE_ID = "products";

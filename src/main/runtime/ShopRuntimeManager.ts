@@ -1,6 +1,6 @@
 import type { PlatformEvent } from '../../shared/platform'
-import type { HookTransport } from '@platform-hub/hook-transport'
-import type { HookEvent } from '@platform-hub/hook-sdk'
+import type { HookTransport } from '@platform-hub/core-transport'
+import type { HookEvent } from '@platform-hub/core-sdk'
 
 export type ShopRuntimeState = 'stopped' | 'starting' | 'running' | 'error'
 

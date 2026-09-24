@@ -1,4 +1,4 @@
-import { OutboundCorrelationTracker, fail, hookError, ok, } from '@platform-hub/hook-sdk';
+import { OutboundCorrelationTracker, fail, hookError, ok, } from '@platform-hub/core-sdk';
 import { array, asRow, normalizeGoofishAuth, normalizeGoofishMessage, normalizeGoofishProduct, normalizeGoofishSession, text, timestamp, } from './normalize.js';
 export const GOOFISH_OPERATIONS = [
     'auth.state',

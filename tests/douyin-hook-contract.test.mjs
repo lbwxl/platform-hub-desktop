@@ -11,7 +11,7 @@ import {
   assertPageHookRuntime,
   HOOK_PROTOCOL_VERSION,
   validateHookManifest,
-} from '../packages/hook-sdk/dist/index.js'
+} from '../packages/core-sdk/dist/index.js'
 
 test('Douyin manifest routes only supported operations and passes protocol validation', () => {
   assert.deepEqual(validateHookManifest(douyinHookManifest), [])
@@ -26,8 +26,8 @@ test('Douyin manifest routes only supported operations and passes protocol valid
 
 test('Douyin package is independent from Legacy and limits DOM work to native conversation attention', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
-  assert.equal(packageJson.dependencies['@platform-hub/hook-sdk'], 'workspace:*')
-  assert.equal(packageJson.dependencies['@platform-hub/hook-host'], 'workspace:*')
+  assert.equal(packageJson.dependencies['@platform-hub/core-sdk'], 'workspace:*')
+  assert.equal(packageJson.dependencies['@platform-hub/core-page-host'], 'workspace:*')
   assert.doesNotMatch(douyinHookRuntimeScript, /\.click\(|dispatchEvent|XMLHttpRequest|WebSocket/)
   assert.match(douyinHookRuntimeScript, /PRODUCT_LIST_PATH\s*=\s*['"]\/product\/tproduct\/list/)
   assert.match(douyinHookRuntimeScript, /credentials:\s*['"]include['"]/)

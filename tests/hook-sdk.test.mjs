@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { OutboundCorrelationTracker } from '../packages/hook-sdk/dist/index.js'
+import { OutboundCorrelationTracker } from '../packages/core-sdk/dist/index.js'
 
 test('OutboundCorrelationTracker matches and consumes platform-neutral fingerprints', () => {
   let now = 100

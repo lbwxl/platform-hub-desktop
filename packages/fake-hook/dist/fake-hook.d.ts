@@ -1,5 +1,5 @@
-import { HookHost, HookSession, type HookPageAdapter, type HookPageContext, type HookPageFactory } from '@platform-hub/hook-host';
-import { OutboundCorrelationTracker, type HookEvent, type HookHandoffTarget, type HookHandoffTransferResult, type HookMessage, type HookMessageType, type HookOperation, type HookOrder, type HookProduct, type PageHookRuntime } from '@platform-hub/hook-sdk';
+import { HookHost, HookSession, type HookPageAdapter, type HookPageContext, type HookPageFactory } from '@platform-hub/core-page-host';
+import { OutboundCorrelationTracker, type HookEvent, type HookHandoffTarget, type HookHandoffTransferResult, type HookMessage, type HookMessageType, type HookOperation, type HookOrder, type HookProduct, type PageHookRuntime } from '@platform-hub/core-sdk';
 interface FakeShopState {
     authenticated: boolean;
     messages: HookMessage[];

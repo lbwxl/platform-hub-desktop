@@ -1,4 +1,4 @@
-import type { HookAuthState, HookMessage, HookProduct, HookSessionSummary } from '@platform-hub/hook-sdk';
+import type { HookAuthState, HookMessage, HookProduct, HookSessionSummary } from '@platform-hub/core-sdk';
 type Row = Record<string, unknown>;
 export declare function normalizeGoofishAuth(value: unknown, account?: unknown, checkedAt?: number): HookAuthState;
 export declare function normalizeGoofishSession(value: unknown): HookSessionSummary | undefined;

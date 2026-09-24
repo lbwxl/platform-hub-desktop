@@ -1,5 +1,5 @@
-import { HookHost, HookSession } from '@platform-hub/hook-host';
-import { fail, HOOK_PROTOCOL_VERSION, hookError, ok, OutboundCorrelationTracker, } from '@platform-hub/hook-sdk';
+import { HookHost, HookSession } from '@platform-hub/core-page-host';
+import { fail, HOOK_PROTOCOL_VERSION, hookError, ok, OutboundCorrelationTracker, } from '@platform-hub/core-sdk';
 import { fakeHookManifest } from './manifest.js';
 const defaultProducts = () => [{
         id: 'product-1',

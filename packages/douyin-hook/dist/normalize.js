@@ -1,4 +1,4 @@
-import { hookError, } from '@platform-hub/hook-sdk';
+import { hookError, } from '@platform-hub/core-sdk';
 export function asRecord(value) {
     return value && typeof value === 'object' ? value : {};
 }

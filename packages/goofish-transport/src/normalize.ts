@@ -5,7 +5,7 @@ import type {
   HookMessageType,
   HookProduct,
   HookSessionSummary,
-} from '@platform-hub/hook-sdk'
+} from '@platform-hub/core-sdk'
 
 type Row = Record<string, unknown>
 

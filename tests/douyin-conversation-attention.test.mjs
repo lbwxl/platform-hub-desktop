@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import vm from 'node:vm'
-import { HookHost } from '../packages/hook-host/dist/index.js'
+import { HookHost } from '../packages/core-page-host/dist/index.js'
 import { douyinHookManifest, douyinHookRuntimeScript } from '../packages/douyin-hook/dist/index.js'
 
 test('Douyin conversation attention keeps multiple native rows independent across state changes and rerenders', async () => {

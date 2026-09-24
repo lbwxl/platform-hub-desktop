@@ -1,7 +1,7 @@
-import { ElectronHookPageFactory, type ElectronPageFactoryOptions } from '@platform-hub/hook-host';
+import { ElectronHookPageFactory, type ElectronPageFactoryOptions } from '@platform-hub/core-page-host';
 import type { WebContents } from 'electron';
-import type { HookPageContext } from '@platform-hub/hook-host';
-import type { HookLogger } from '@platform-hub/hook-sdk';
+import type { HookPageContext } from '@platform-hub/core-page-host';
+import type { HookLogger } from '@platform-hub/core-sdk';
 import { type DouyinEvaluate } from './runtime.js';
 export interface DouyinElectronPageFactoryOptions extends Omit<ElectronPageFactoryOptions, 'installRuntime'> {
     evaluate?(context: HookPageContext, contents: WebContents, expression: string): Promise<unknown>;

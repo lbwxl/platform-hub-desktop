@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { FakeHook, FakeHookPageFactory, fakeHookManifest } from '../packages/fake-hook/dist/index.js'
-import { ElectronHookPageFactory, HookHost } from '../packages/hook-host/dist/index.js'
-import { HOOK_PROTOCOL_VERSION, ok, validateHookManifest } from '../packages/hook-sdk/dist/index.js'
+import { ElectronHookPageFactory, HookHost } from '../packages/core-page-host/dist/index.js'
+import { HOOK_PROTOCOL_VERSION, ok, validateHookManifest } from '../packages/core-sdk/dist/index.js'
 import { registerHookContractTests } from './hook-contract-suite.mjs'
 
 const createHarness = async (shopId = 'contract-shop', options = {}) => {
@@ -369,10 +369,10 @@ test('structured logger receives safe operation context', async () => {
 
 test('HookHost foundation contains no platform-specific branch', async () => {
   const sources = await Promise.all([
-    '../packages/hook-host/src/index.ts',
-    '../packages/hook-host/src/session/hook-session.ts',
-    '../packages/hook-host/src/pages/worker-page-manager.ts',
-    '../packages/hook-host/src/scheduler/worker-scheduler.ts',
+    '../packages/core-page-host/src/index.ts',
+    '../packages/core-page-host/src/session/hook-session.ts',
+    '../packages/core-page-host/src/pages/worker-page-manager.ts',
+    '../packages/core-page-host/src/scheduler/worker-scheduler.ts',
   ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')))
   assert.doesNotMatch(sources.join('\n'), /platform\s*===|switch\s*\(\s*platform|douyin|kuaishou|pinduoduo|goofish/)
 })

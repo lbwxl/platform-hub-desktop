@@ -8,24 +8,24 @@ importers:
 
   .:
     dependencies:
-      '@platform-hub/douyin':
+      '@platform-hub/core-runtime':
         specifier: workspace:*
-        version: link:packages/platform-douyin
-      '@platform-hub/goofish':
+        version: link:packages/core-runtime
+      '@platform-hub/core-sdk':
         specifier: workspace:*
-        version: link:packages/platform-goofish
-      '@platform-hub/hook-sdk':
+        version: link:packages/core-sdk
+      '@platform-hub/core-transport':
         specifier: workspace:*
-        version: link:packages/hook-sdk
-      '@platform-hub/hook-transport':
+        version: link:packages/core-transport
+      '@platform-hub/douyin-platform':
         specifier: workspace:*
-        version: link:packages/hook-transport
-      '@platform-hub/kuaishou-hook':
+        version: link:packages/douyin-platform
+      '@platform-hub/goofish-platform':
         specifier: workspace:*
-        version: link:packages/kuaishou-hook
-      '@platform-hub/platform-runtime':
+        version: link:packages/goofish-platform
+      '@platform-hub/legacy-kuaishou-hook':
         specifier: workspace:*
-        version: link:packages/platform-runtime
+        version: link:packages/legacy-kuaishou-hook
       lucide-react:
         specifier: ^1.47.0
         version: 1.47.0(react@19.3.0)
@@ -61,14 +61,75 @@ importers:
         specifier: ^7.1.3
         version: 7.3.6(@types/node@24.13.3)
 
+  packages/core-page-host:
+    dependencies:
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+      electron:
+        specifier: 37.3.1
+        version: 37.3.1
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/core-runtime:
+    dependencies:
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+      '@platform-hub/core-transport':
+        specifier: workspace:*
+        version: link:../core-transport
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/core-sdk:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/core-transport:
+    dependencies:
+      '@platform-hub/core-page-host':
+        specifier: workspace:*
+        version: link:../core-page-host
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   packages/douyin-hook:
     dependencies:
-      '@platform-hub/hook-host':
+      '@platform-hub/core-page-host':
         specifier: workspace:*
-        version: link:../hook-host
-      '@platform-hub/hook-sdk':
+        version: link:../core-page-host
+      '@platform-hub/core-sdk':
         specifier: workspace:*
-        version: link:../hook-sdk
+        version: link:../core-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/douyin-platform:
+    dependencies:
+      '@platform-hub/core-runtime':
+        specifier: workspace:*
+        version: link:../core-runtime
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+      '@platform-hub/douyin-hook':
+        specifier: workspace:*
+        version: link:../douyin-hook
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -76,12 +137,28 @@ importers:
 
   packages/fake-hook:
     dependencies:
-      '@platform-hub/hook-host':
+      '@platform-hub/core-page-host':
         specifier: workspace:*
-        version: link:../hook-host
-      '@platform-hub/hook-sdk':
+        version: link:../core-page-host
+      '@platform-hub/core-sdk':
         specifier: workspace:*
-        version: link:../hook-sdk
+        version: link:../core-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/fake-platform:
+    dependencies:
+      '@platform-hub/core-runtime':
+        specifier: workspace:*
+        version: link:../core-runtime
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+      '@platform-hub/core-transport':
+        specifier: workspace:*
+        version: link:../core-transport
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -93,103 +170,23 @@ importers:
         specifier: '>=28'
         version: 37.3.1
 
-  packages/goofish-transport:
-    dependencies:
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/hook-host:
-    dependencies:
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-      electron:
-        specifier: 37.3.1
-        version: 37.3.1
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/hook-sdk:
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/hook-transport:
-    dependencies:
-      '@platform-hub/hook-host':
-        specifier: workspace:*
-        version: link:../hook-host
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/kuaishou-hook:
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/platform-douyin:
-    dependencies:
-      '@platform-hub/douyin-hook':
-        specifier: workspace:*
-        version: link:../douyin-hook
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-      '@platform-hub/platform-runtime':
-        specifier: workspace:*
-        version: link:../platform-runtime
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/platform-fake:
-    dependencies:
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-      '@platform-hub/hook-transport':
-        specifier: workspace:*
-        version: link:../hook-transport
-      '@platform-hub/platform-runtime':
-        specifier: workspace:*
-        version: link:../platform-runtime
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
-  packages/platform-goofish:
+  packages/goofish-platform:
     dependencies:
       '@idle-fish/goofish-messaging':
         specifier: workspace:*
         version: link:../goofish-messaging
+      '@platform-hub/core-runtime':
+        specifier: workspace:*
+        version: link:../core-runtime
+      '@platform-hub/core-sdk':
+        specifier: workspace:*
+        version: link:../core-sdk
+      '@platform-hub/core-transport':
+        specifier: workspace:*
+        version: link:../core-transport
       '@platform-hub/goofish-transport':
         specifier: workspace:*
         version: link:../goofish-transport
-      '@platform-hub/hook-sdk':
-        specifier: workspace:*
-        version: link:../hook-sdk
-      '@platform-hub/hook-transport':
-        specifier: workspace:*
-        version: link:../hook-transport
-      '@platform-hub/platform-runtime':
-        specifier: workspace:*
-        version: link:../platform-runtime
       electron:
         specifier: '>=28'
         version: 37.3.1
@@ -198,14 +195,11 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
-  packages/platform-runtime:
+  packages/goofish-transport:
     dependencies:
-      '@platform-hub/hook-sdk':
+      '@platform-hub/core-sdk':
         specifier: workspace:*
-        version: link:../hook-sdk
-      '@platform-hub/hook-transport':
-        specifier: workspace:*
-        version: link:../hook-transport
+        version: link:../core-sdk
     devDependencies:
       typescript:
         specifier: ^5.9.2

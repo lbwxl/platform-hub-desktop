@@ -504,8 +504,8 @@ packages/douyin-hook
 修改 DTO、事件字段或 Operation 语义时，必须同步更新：
 
 ```text
-packages/hook-sdk/src/contracts
-packages/hook-sdk/src/events
+packages/core-sdk/src/contracts
+packages/core-sdk/src/events
 tests/douyin-hook-*
 ```
 

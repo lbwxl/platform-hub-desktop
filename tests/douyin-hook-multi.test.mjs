@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { HookHost } from '../packages/hook-host/dist/index.js'
+import { HookHost } from '../packages/core-page-host/dist/index.js'
 import { FakeHookPageFactory, fakeHookManifest } from '../packages/fake-hook/dist/index.js'
-import { HOOK_PROTOCOL_VERSION } from '../packages/hook-sdk/dist/index.js'
+import { HOOK_PROTOCOL_VERSION } from '../packages/core-sdk/dist/index.js'
 import { createDouyinPageRuntime } from '../packages/douyin-hook/dist/index.js'
 
 test('two sessions isolate auth, events, workers, restart and disposal on one host', async () => {

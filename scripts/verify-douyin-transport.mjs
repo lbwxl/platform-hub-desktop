@@ -2,8 +2,8 @@ import { app } from 'electron'
 import { createInterface } from 'node:readline'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { HookHost } from '../packages/hook-host/dist/index.js'
-import { PageHookTransport } from '../packages/hook-transport/dist/index.js'
+import { HookHost } from '../packages/core-page-host/dist/index.js'
+import { PageHookTransport } from '../packages/core-transport/dist/index.js'
 import {
   createDouyinElectronPageFactory,
   douyinHookManifest,

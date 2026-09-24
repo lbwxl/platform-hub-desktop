@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@platform-hub/hook-sdk": "workspace:*"
+    "@platform-hub/core-sdk": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

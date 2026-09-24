@@ -2,8 +2,8 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
-import type { HookEvent, HookOperation } from '@platform-hub/hook-sdk'
-import { PlatformRuntimeManager, type PlatformRegistry, type PlatformRuntimeAdapter, type PlatformRuntimeFactory, type PlatformAccountRecord } from '@platform-hub/platform-runtime'
+import type { HookEvent, HookOperation } from '@platform-hub/core-sdk'
+import { PlatformRuntimeManager, type PlatformRegistry, type PlatformRuntimeAdapter, type PlatformRuntimeFactory, type PlatformAccountRecord } from '@platform-hub/core-runtime'
 import type {
   ChatSession,
   HandoffTarget,
