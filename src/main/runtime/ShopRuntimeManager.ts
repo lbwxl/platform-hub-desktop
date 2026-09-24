@@ -1,3 +1,5 @@
+import type { PlatformEvent } from '../../shared/platform'
+
 export type ShopRuntimeState = 'stopped' | 'starting' | 'running' | 'error'
 
 export interface ShopReplyTransfer {
@@ -78,6 +80,14 @@ export interface ShopRuntimeEvent {
   payload: Record<string, unknown>
 }
 
+interface AutomationOutboundRecord {
+  id?: string
+  conversationId: string
+  type: string
+  content: string
+  createdAt: number
+}
+
 interface ManagedRuntime {
   accountId: string
   platform: string
@@ -98,6 +108,8 @@ interface ManagedRuntime {
 
 const MESSAGE_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const MAX_MESSAGE_CLAIMS = 100_000
+const AUTOMATION_OUTBOUND_TTL_MS = 30_000
+const MAX_AUTOMATION_OUTBOUNDS = 500
 
 export type ReplyFile = { dataUrl: string; name: string; mimeType: string }
 export type ReplyFileLoader = (url: string) => Promise<ReplyFile>
@@ -115,6 +127,7 @@ export class ShopRuntimeManager {
    * per-page/per-account listener watermarks cannot dedupe those deliveries.
    */
   private readonly messageClaims = new Map<string, number>()
+  private readonly automationOutbounds = new Map<string, AutomationOutboundRecord[]>()
   private readonly listeners = new Set<(event: ShopRuntimeEvent) => void>()
   private readonly replyApi: ShopReplyApi
   private readonly fileLoader: ReplyFileLoader
@@ -150,6 +163,7 @@ export class ShopRuntimeManager {
     runtime.unsubscribe?.()
     runtime.unsubscribe = undefined
     this.runtimes.delete(accountId)
+    this.automationOutbounds.delete(accountId)
   }
 
   has(accountId: string): boolean { return this.runtimes.has(accountId) }
@@ -183,6 +197,7 @@ export class ShopRuntimeManager {
     runtime.unsubscribe?.()
     runtime.unsubscribe = undefined
     this.runtimes.delete(accountId)
+    this.automationOutbounds.delete(accountId)
   }
 
   async setAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void> {
@@ -202,6 +217,48 @@ export class ShopRuntimeManager {
   pushEvent(accountId: string, event: ShopHookEvent): void {
     const runtime = this.runtimes.get(accountId)
     if (runtime) this.handleEvent(runtime, event)
+  }
+
+  /**
+   * The Electron compatibility shell can receive an official outbound echo
+   * without the Page Hook origin metadata. Attribute only messages that were
+   * sent through this account's Reply API path, using a short-lived record and
+   * an exact platform message id whenever one is available.
+   */
+  annotateEvent(accountId: string, event: PlatformEvent): PlatformEvent {
+    if (event.type !== 'message') return event
+    const payload = asRecord(event.payload)
+    const message = asRecord(payload.message || event.payload)
+    const raw = asRecord(message.raw)
+    const attribution = asRecord(raw.attributionMetadata)
+    if (message.direction !== 'outbound' || message.origin === 'human' || message.origin === 'automation' || attribution.manualSendCheck === true) return event
+    const records = this.automationOutbounds.get(accountId)
+    if (!records?.length) return event
+    const now = Date.now()
+    while (records.length && now - records[0].createdAt > AUTOMATION_OUTBOUND_TTL_MS) records.shift()
+    const id = scalarString(message.id ?? message.serverId ?? message.messageId)
+    const conversationId = scalarString(message.conversationId ?? message.sessionId)
+    const type = scalarString(message.type ?? message.messageType) || 'text'
+    const content = scalarString(message.content ?? message.text)
+    const matched = records.find((record) => Boolean(record.id && id && record.id === id))
+      || records.find((record) => {
+        const timestamp = Number(message.timestamp) || event.timestamp || now
+        return record.conversationId === conversationId
+          && record.type === type
+          && record.content === content
+          && timestamp >= record.createdAt - 5_000
+          && timestamp <= record.createdAt + AUTOMATION_OUTBOUND_TTL_MS
+      })
+    if (!matched) return event
+    const index = records.indexOf(matched)
+    if (index >= 0) records.splice(index, 1)
+    const annotatedMessage = { ...message, origin: 'automation' }
+    return {
+      ...event,
+      payload: Object.prototype.hasOwnProperty.call(payload, 'message')
+        ? { ...payload, message: annotatedMessage }
+        : annotatedMessage,
+    }
   }
 
   private async start(runtime: ManagedRuntime): Promise<void> {
@@ -338,14 +395,21 @@ export class ShopRuntimeManager {
             try {
               if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) break
               const file = await this.fileLoader(fileUrl)
-              const result = await runtime.transport.invoke('messages.send.file', {
-                conversationId,
-                data: file.dataUrl,
-                dataUrl: file.dataUrl,
-                name: file.name,
-                mimeType: file.mimeType,
-              })
-              if (!result.ok) throw new Error(result.error.message)
+              const correlation = this.trackAutomation(runtime.accountId, conversationId, 'image', file.name)
+              try {
+                const result = await runtime.transport.invoke('messages.send.file', {
+                  conversationId,
+                  data: file.dataUrl,
+                  dataUrl: file.dataUrl,
+                  name: file.name,
+                  mimeType: file.mimeType,
+                })
+                if (!result.ok) throw new Error(result.error.message)
+                this.completeAutomation(correlation, result.data)
+              } catch (error) {
+                this.removeAutomation(runtime.accountId, correlation)
+                throw error
+              }
             } catch (error) {
               const failures = Array.isArray(effects.fileErrors) ? effects.fileErrors as string[] : []
               failures.push(errorMessage(error))
@@ -382,9 +446,40 @@ export class ShopRuntimeManager {
     for (const text of texts) {
       if (!text.trim()) continue
       if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return
-      const result = await runtime.transport.invoke('messages.send.text', { conversationId, text })
-      if (!result.ok) throw new Error(result.error.message)
+      const correlation = this.trackAutomation(runtime.accountId, conversationId, 'text', text)
+      try {
+        const result = await runtime.transport.invoke('messages.send.text', { conversationId, text })
+        if (!result.ok) throw new Error(result.error.message)
+        this.completeAutomation(correlation, result.data)
+      } catch (error) {
+        this.removeAutomation(runtime.accountId, correlation)
+        throw error
+      }
     }
+  }
+
+  private trackAutomation(accountId: string, conversationId: string, type: string, content: string): AutomationOutboundRecord {
+    const record: AutomationOutboundRecord = { conversationId, type, content, createdAt: Date.now() }
+    const records = this.automationOutbounds.get(accountId) || []
+    records.push(record)
+    while (records.length > MAX_AUTOMATION_OUTBOUNDS) records.shift()
+    this.automationOutbounds.set(accountId, records)
+    return record
+  }
+
+  private completeAutomation(record: AutomationOutboundRecord, value: unknown): void {
+    const wrapper = asRecord(value)
+    const message = asRecord(wrapper.message || value)
+    record.id = scalarString(message.id ?? message.serverId ?? message.messageId) || undefined
+    record.content = scalarString(message.content ?? message.text ?? message.name) || record.content
+  }
+
+  private removeAutomation(accountId: string, record: AutomationOutboundRecord): void {
+    const records = this.automationOutbounds.get(accountId)
+    if (!records) return
+    const index = records.indexOf(record)
+    if (index >= 0) records.splice(index, 1)
+    if (!records.length) this.automationOutbounds.delete(accountId)
   }
 
   private async transferToOfficialTarget(runtime: ManagedRuntime, conversationId: string, transfer: ShopReplyTransfer): Promise<Record<string, unknown>> {

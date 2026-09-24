@@ -2285,6 +2285,8 @@ const builtinPlatforms = [douyinHook, kuaishouHook, goofishHook].map((hook) => (
 }));
 const MESSAGE_CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
 const MAX_MESSAGE_CLAIMS = 1e5;
+const AUTOMATION_OUTBOUND_TTL_MS = 3e4;
+const MAX_AUTOMATION_OUTBOUNDS = 500;
 class ShopRuntimeManager {
   runtimes = /* @__PURE__ */ new Map();
   /**
@@ -2293,6 +2295,7 @@ class ShopRuntimeManager {
    * per-page/per-account listener watermarks cannot dedupe those deliveries.
    */
   messageClaims = /* @__PURE__ */ new Map();
+  automationOutbounds = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
   replyApi;
   fileLoader;
@@ -2325,6 +2328,7 @@ class ShopRuntimeManager {
     runtime.unsubscribe?.();
     runtime.unsubscribe = void 0;
     this.runtimes.delete(accountId);
+    this.automationOutbounds.delete(accountId);
   }
   has(accountId) {
     return this.runtimes.has(accountId);
@@ -2357,6 +2361,7 @@ class ShopRuntimeManager {
     runtime.unsubscribe?.();
     runtime.unsubscribe = void 0;
     this.runtimes.delete(accountId);
+    this.automationOutbounds.delete(accountId);
   }
   async setAttention(accountId, conversationId, state) {
     const runtime = this.require(accountId);
@@ -2373,6 +2378,40 @@ class ShopRuntimeManager {
   pushEvent(accountId, event) {
     const runtime = this.runtimes.get(accountId);
     if (runtime) this.handleEvent(runtime, event);
+  }
+  /**
+   * The Electron compatibility shell can receive an official outbound echo
+   * without the Page Hook origin metadata. Attribute only messages that were
+   * sent through this account's Reply API path, using a short-lived record and
+   * an exact platform message id whenever one is available.
+   */
+  annotateEvent(accountId, event) {
+    if (event.type !== "message") return event;
+    const payload = asRecord(event.payload);
+    const message = asRecord(payload.message || event.payload);
+    const raw = asRecord(message.raw);
+    const attribution = asRecord(raw.attributionMetadata);
+    if (message.direction !== "outbound" || message.origin === "human" || message.origin === "automation" || attribution.manualSendCheck === true) return event;
+    const records = this.automationOutbounds.get(accountId);
+    if (!records?.length) return event;
+    const now = Date.now();
+    while (records.length && now - records[0].createdAt > AUTOMATION_OUTBOUND_TTL_MS) records.shift();
+    const id = scalarString(message.id ?? message.serverId ?? message.messageId);
+    const conversationId = scalarString(message.conversationId ?? message.sessionId);
+    const type = scalarString(message.type ?? message.messageType) || "text";
+    const content = scalarString(message.content ?? message.text);
+    const matched = records.find((record) => Boolean(record.id && id && record.id === id)) || records.find((record) => {
+      const timestamp = Number(message.timestamp) || event.timestamp || now;
+      return record.conversationId === conversationId && record.type === type && record.content === content && timestamp >= record.createdAt - 5e3 && timestamp <= record.createdAt + AUTOMATION_OUTBOUND_TTL_MS;
+    });
+    if (!matched) return event;
+    const index = records.indexOf(matched);
+    if (index >= 0) records.splice(index, 1);
+    const annotatedMessage = { ...message, origin: "automation" };
+    return {
+      ...event,
+      payload: Object.prototype.hasOwnProperty.call(payload, "message") ? { ...payload, message: annotatedMessage } : annotatedMessage
+    };
   }
   async start(runtime) {
     if (runtime.runtimeState === "running") return;
@@ -2487,14 +2526,21 @@ class ShopRuntimeManager {
             try {
               if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) break;
               const file = await this.fileLoader(fileUrl);
-              const result = await runtime.transport.invoke("messages.send.file", {
-                conversationId,
-                data: file.dataUrl,
-                dataUrl: file.dataUrl,
-                name: file.name,
-                mimeType: file.mimeType
-              });
-              if (!result.ok) throw new Error(result.error.message);
+              const correlation = this.trackAutomation(runtime.accountId, conversationId, "image", file.name);
+              try {
+                const result = await runtime.transport.invoke("messages.send.file", {
+                  conversationId,
+                  data: file.dataUrl,
+                  dataUrl: file.dataUrl,
+                  name: file.name,
+                  mimeType: file.mimeType
+                });
+                if (!result.ok) throw new Error(result.error.message);
+                this.completeAutomation(correlation, result.data);
+              } catch (error) {
+                this.removeAutomation(runtime.accountId, correlation);
+                throw error;
+              }
             } catch (error) {
               const failures = Array.isArray(effects.fileErrors) ? effects.fileErrors : [];
               failures.push(errorMessage(error));
@@ -2530,9 +2576,37 @@ class ShopRuntimeManager {
     for (const text of texts) {
       if (!text.trim()) continue;
       if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return;
-      const result = await runtime.transport.invoke("messages.send.text", { conversationId, text });
-      if (!result.ok) throw new Error(result.error.message);
+      const correlation = this.trackAutomation(runtime.accountId, conversationId, "text", text);
+      try {
+        const result = await runtime.transport.invoke("messages.send.text", { conversationId, text });
+        if (!result.ok) throw new Error(result.error.message);
+        this.completeAutomation(correlation, result.data);
+      } catch (error) {
+        this.removeAutomation(runtime.accountId, correlation);
+        throw error;
+      }
     }
+  }
+  trackAutomation(accountId, conversationId, type, content) {
+    const record = { conversationId, type, content, createdAt: Date.now() };
+    const records = this.automationOutbounds.get(accountId) || [];
+    records.push(record);
+    while (records.length > MAX_AUTOMATION_OUTBOUNDS) records.shift();
+    this.automationOutbounds.set(accountId, records);
+    return record;
+  }
+  completeAutomation(record, value) {
+    const wrapper = asRecord(value);
+    const message = asRecord(wrapper.message || value);
+    record.id = scalarString(message.id ?? message.serverId ?? message.messageId) || void 0;
+    record.content = scalarString(message.content ?? message.text ?? message.name) || record.content;
+  }
+  removeAutomation(accountId, record) {
+    const records = this.automationOutbounds.get(accountId);
+    if (!records) return;
+    const index = records.indexOf(record);
+    if (index >= 0) records.splice(index, 1);
+    if (!records.length) this.automationOutbounds.delete(accountId);
   }
   async transferToOfficialTarget(runtime, conversationId, transfer) {
     if (!runtime.online || this.runtimes.get(runtime.accountId) !== runtime) return { transferred: false, reason: "shop-offline" };
@@ -3175,18 +3249,19 @@ class PlatformManager {
       }
     }
     const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : void 0;
-    if (runtime && event.type === "message") {
-      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+    const attributedEvent = runtime ? runtime.annotateEvent(event.accountId, event) : event;
+    if (runtime && attributedEvent.type === "message") {
+      const payload = attributedEvent.payload && typeof attributedEvent.payload === "object" ? attributedEvent.payload : {};
       if (this.forwardedRuntimeEventIds.size >= 2e3) this.forwardedRuntimeEventIds.clear();
-      this.forwardedRuntimeEventIds.add(event.id);
+      this.forwardedRuntimeEventIds.add(attributedEvent.id);
       runtime.pushEvent(event.accountId, {
-        id: event.id,
+        id: attributedEvent.id,
         type: "message.created",
-        timestamp: event.timestamp,
+        timestamp: attributedEvent.timestamp,
         payload: { message: payload.message || payload }
       });
     }
-    this.listeners.forEach((listener) => listener(event));
+    this.listeners.forEach((listener) => listener(attributedEvent));
   }
   emitRuntimeEvent(event) {
     if (event.type === "hook" && event.payload.event && typeof event.payload.event === "object") {

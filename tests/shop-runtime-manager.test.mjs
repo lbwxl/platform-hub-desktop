@@ -138,3 +138,60 @@ test('SHOP_LIFECYCLE_ISOLATION', async () => {
   await eventually(() => assert.equal(replyCalls.some((call) => call.accountId === 'shop-b'), true))
   await manager.stop('shop-b'); await manager.stop('shop-c')
 })
+
+test('REPLY_HOOK_OUTBOUND_ECHO_IS_ATTRIBUTED_AS_AUTOMATION', async () => {
+  let earlyEcho
+  let manualEcho
+  let crossAccountEcho
+  const manager = new ShopRuntimeManager({
+    async reply() { return { type: 'reply', texts: ['Mock 默认回复'] } },
+  })
+  const transport = {
+    async start() {},
+    async stop() {},
+    subscribe() { return () => undefined },
+    async invoke(operation, input) {
+      if (operation === 'auth.state') return { ok: true, data: { authenticated: true, shopId: 'shop-real' } }
+      if (operation === 'messages.listen') return { ok: true, data: { listening: true } }
+      if (operation === 'messages.send.text') {
+        const data = { id: 'reply-echo-1', conversationId: input.conversationId, content: input.text, type: 'text', direction: 'outbound', origin: 'automation' }
+        const event = {
+          id: 'platform-echo-1', accountId: 'shop-real-account', platform: 'douyin-shop', type: 'message', timestamp: Date.now(),
+          payload: { message: { ...data, id: 'platform-echo-1', origin: 'unknown' } },
+        }
+        const manualEvent = {
+          ...event,
+          id: 'manual-echo-1',
+          payload: { message: { ...event.payload.message, id: 'manual-echo-1', origin: 'unknown', raw: { attributionMetadata: { manualSendCheck: true } } } },
+        }
+        manualEcho = manager.annotateEvent('shop-real-account', manualEvent)
+        crossAccountEcho = manager.annotateEvent('another-account', event)
+        // The official echo can arrive before send.text resolves. It has a
+        // different id from the API response, so matching must use the
+        // pre-registered account/conversation/type/content correlation.
+        earlyEcho = manager.annotateEvent('shop-real-account', event)
+        return { ok: true, data }
+      }
+      return { ok: true, data: {} }
+    },
+  }
+  manager.register('another-account', {
+    async start() {}, async stop() {}, subscribe() { return () => undefined },
+    async invoke(operation) {
+      if (operation === 'auth.state') return { ok: true, data: { authenticated: true, shopId: 'shop-real' } }
+      if (operation === 'messages.listen') return { ok: true, data: { listening: true } }
+      return { ok: true, data: {} }
+    },
+  })
+  manager.register('shop-real-account', transport)
+  await manager.setOnline('shop-real-account', true)
+  manager.pushEvent('shop-real-account', {
+    id: 'buyer-1', type: 'message.created', timestamp: Date.now(),
+    payload: { message: { id: 'buyer-1', conversationId: 'conversation-1', content: 'hello', type: 'text', direction: 'inbound', origin: 'customer' } },
+  })
+  await eventually(() => assert.equal(earlyEcho?.payload.message.origin, 'automation'))
+  assert.equal(manualEcho.payload.message.origin, 'unknown')
+  assert.equal(crossAccountEcho.payload.message.origin, 'unknown')
+  await manager.stop('shop-real-account')
+  await manager.stop('another-account')
+})

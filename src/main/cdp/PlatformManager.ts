@@ -298,18 +298,19 @@ export class PlatformManager {
       }
     }
     const runtime = this.shopRuntimes.has(event.accountId) ? this.shopRuntimes : undefined
-    if (runtime && event.type === 'message') {
-      const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {}
+    const attributedEvent = runtime ? runtime.annotateEvent(event.accountId, event) : event
+    if (runtime && attributedEvent.type === 'message') {
+      const payload = attributedEvent.payload && typeof attributedEvent.payload === 'object' ? attributedEvent.payload as Record<string, unknown> : {}
       if (this.forwardedRuntimeEventIds.size >= 2_000) this.forwardedRuntimeEventIds.clear()
-      this.forwardedRuntimeEventIds.add(event.id)
+      this.forwardedRuntimeEventIds.add(attributedEvent.id)
       runtime.pushEvent(event.accountId, {
-        id: event.id,
+        id: attributedEvent.id,
         type: 'message.created',
-        timestamp: event.timestamp,
+        timestamp: attributedEvent.timestamp,
         payload: { message: payload.message || payload },
       })
     }
-    this.listeners.forEach((listener) => listener(event))
+    this.listeners.forEach((listener) => listener(attributedEvent))
   }
 
   private emitRuntimeEvent(event: ShopRuntimeEvent): void {
