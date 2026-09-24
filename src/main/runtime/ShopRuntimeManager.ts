@@ -203,7 +203,15 @@ export class ShopRuntimeManager {
   async setAttention(accountId: string, conversationId: string, state: 'pending' | 'opened' | 'resolved'): Promise<void> {
     const runtime = this.require(accountId)
     const result = await runtime.transport.invoke('conversation.attention.set', { conversationId, state })
-    if (!result.ok) throw new Error(result.error.message)
+    if (!result.ok) {
+      // Attention is an optional platform capability. A platform that cannot
+      // map it to native UI must still complete the Reply API decision path.
+      if (result.error.code === 'NOT_SUPPORTED') {
+        this.emit(runtime, 'attention', { conversationId, requestedState: state, supported: false })
+        return
+      }
+      throw new Error(result.error.message)
+    }
     runtime.attention.set(conversationId, state)
     this.emit(runtime, 'attention', { conversationId, state })
   }

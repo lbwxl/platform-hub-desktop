@@ -1,10 +1,14 @@
-import { WebContentsView, BrowserWindow, app, dialog, shell, ipcMain } from "electron";
+import { WebContentsView, BrowserWindow, app, session, dialog, shell, ipcMain } from "electron";
 import { join, dirname, resolve, relative } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomInt } from "node:crypto";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
+import { HOOK_PROTOCOL_VERSION } from "@platform-hub/hook-sdk";
 import "node:module";
 import { kuaishouHook as kuaishouHook$1 } from "@platform-hub/kuaishou-hook";
+import { GoofishMessagingClient } from "@idle-fish/goofish-messaging";
+import { GoofishTransport } from "@platform-hub/goofish-transport";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
@@ -507,7 +511,6 @@ const douyinHookManifest = {
     }
   ]
 };
-const HOOK_PROTOCOL_VERSION = 1;
 const douyinHookRuntimeScript = String.raw`(() => {
   const KEY = '__PLATFORM_HOOK__'
   const VERSION = ${HOOK_PROTOCOL_VERSION}
@@ -2249,24 +2252,10 @@ const goofishHook = {
   id: "goofish",
   label: "闲鱼",
   version: "1.0.0",
-  url: "https://www.goofish.com/",
-  executionModel: "page",
+  url: "https://www.goofish.com/im",
+  executionModel: "native",
   capabilities,
-  source: "builtin",
-  script: `(() => {
-    const bridge = window.__GOOFISH_BRIDGE__ || window.__goofishBridge
-    const api = window.__platformHub || {}
-    if (!bridge) return
-    window.__platformHub = { ...api, __version: '2',
-      getAuthState: () => bridge.snapshot?.() || { authenticated: true },
-      collectProducts: () => bridge.listOnSaleProducts?.() || [],
-      listSessions: () => bridge.listSessions?.() || [],
-      listMessages: (id) => bridge.listMessages?.(id) || [],
-      sendMessage: (id, text) => bridge.sendMessage?.(id, text),
-      sendFile: (id, data, name) => bridge.sendFile?.(id, data, name),
-      drainEvents: () => bridge.drainEvents?.() || []
-    }
-  })()`
+  source: "builtin"
 };
 const kuaishouHook = { ...kuaishouHook$1, executionModel: "page" };
 const builtinHooks = {
@@ -2366,7 +2355,13 @@ class ShopRuntimeManager {
   async setAttention(accountId, conversationId, state) {
     const runtime = this.require(accountId);
     const result = await runtime.transport.invoke("conversation.attention.set", { conversationId, state });
-    if (!result.ok) throw new Error(result.error.message);
+    if (!result.ok) {
+      if (result.error.code === "NOT_SUPPORTED") {
+        this.emit(runtime, "attention", { conversationId, requestedState: state, supported: false });
+        return;
+      }
+      throw new Error(result.error.message);
+    }
     runtime.attention.set(conversationId, state);
     this.emit(runtime, "attention", { conversationId, state });
   }
@@ -2387,10 +2382,10 @@ class ShopRuntimeManager {
    */
   annotateEvent(accountId, event) {
     if (event.type !== "message") return event;
-    const payload = asRecord(event.payload);
-    const message = asRecord(payload.message || event.payload);
-    const raw = asRecord(message.raw);
-    const attribution = asRecord(raw.attributionMetadata);
+    const payload = asRecord$1(event.payload);
+    const message = asRecord$1(payload.message || event.payload);
+    const raw = asRecord$1(message.raw);
+    const attribution = asRecord$1(raw.attributionMetadata);
     if (message.direction !== "outbound" || message.origin === "human" || message.origin === "automation" || attribution.manualSendCheck === true) return event;
     const records = this.automationOutbounds.get(accountId);
     if (!records?.length) return event;
@@ -2422,7 +2417,7 @@ class ShopRuntimeManager {
         await runtime.transport.start();
         const auth = await runtime.transport.invoke("auth.state", {});
         if (!auth.ok) throw new Error(auth.error.message);
-        const authData = asRecord(auth.data);
+        const authData = asRecord$1(auth.data);
         const shopId = scalarString(authData.shopId ?? authData.shop_id);
         const userId = scalarString(authData.userId ?? authData.user_id);
         const authFlag = [authData.authenticated, authData.isLogin, authData.loggedIn].find((value) => typeof value === "boolean");
@@ -2596,8 +2591,8 @@ class ShopRuntimeManager {
     return record;
   }
   completeAutomation(record, value) {
-    const wrapper = asRecord(value);
-    const message = asRecord(wrapper.message || value);
+    const wrapper = asRecord$1(value);
+    const message = asRecord$1(wrapper.message || value);
     record.id = scalarString(message.id ?? message.serverId ?? message.messageId) || void 0;
     record.content = scalarString(message.content ?? message.text ?? message.name) || record.content;
   }
@@ -2621,7 +2616,7 @@ class ShopRuntimeManager {
       await this.setAttention(runtime.accountId, conversationId, "pending");
       return { transferred: false, reason: "official-target-list-unavailable" };
     }
-    const target = listed.data.map(asRecord).find(
+    const target = listed.data.map(asRecord$1).find(
       (item) => requested.id && scalarString(item.id) === requested.id || requested.name && scalarString(item.name) === requested.name
     );
     const targetId = target && scalarString(target.id);
@@ -2684,7 +2679,7 @@ class HttpShopReplyApi {
   }
   async reply(input) {
     if (this.endpointError) throw new ReplyApiError("INVALID_ENDPOINT", `Reply API 地址无效: ${this.endpointError}`);
-    const message = asRecord(input.message);
+    const message = asRecord$1(input.message);
     const messageType = scalarString(message.type) || scalarString(message.message_type) || "unknown";
     const body = {
       platform_data: {
@@ -2769,12 +2764,12 @@ function parseReplyApiBody(bodyText) {
   } catch {
     throw new ReplyApiError("INVALID_JSON", "Reply API 返回非法 JSON");
   }
-  const root = asRecord(parsed);
-  const data = asRecord(root.data);
-  const turn = Object.keys(asRecord(data.turn)).length ? asRecord(data.turn) : void 0;
+  const root = asRecord$1(parsed);
+  const data = asRecord$1(root.data);
+  const turn = Object.keys(asRecord$1(data.turn)).length ? asRecord$1(data.turn) : void 0;
   if (turn?.should_process === false) return { type: "ignore", reason: "turn-should-not-process", turn };
-  const lifecycle = asRecord(data.lifecycle);
-  const actionValue = asRecord(lifecycle.action);
+  const lifecycle = asRecord$1(data.lifecycle);
+  const actionValue = asRecord$1(lifecycle.action);
   if (Object.keys(actionValue).length) {
     const messages = stringArray(actionValue.messages);
     const warnings2 = Array.isArray(actionValue.messages) && messages.length !== actionValue.messages.length ? ["lifecycle.action.messages 包含非字符串，已丢弃"] : void 0;
@@ -2786,7 +2781,7 @@ function parseReplyApiBody(bodyText) {
         actionId: scalarString(actionValue.action_id),
         messages,
         actionCode: finiteNumber(actionValue.action_code),
-        payload: Object.keys(asRecord(actionValue.payload)).length ? asRecord(actionValue.payload) : void 0
+        payload: Object.keys(asRecord$1(actionValue.payload)).length ? asRecord$1(actionValue.payload) : void 0
       },
       ...turn ? { turn } : {},
       ...warnings2 ? { warnings: warnings2 } : {}
@@ -2798,12 +2793,12 @@ function parseReplyApiBody(bodyText) {
   const ai = data.ai_reply;
   if (ai === null) return { type: "ignore", reason: "no-ai-reply", ...turn ? { turn } : {} };
   if (!ai || typeof ai !== "object" || Array.isArray(ai)) return { type: "ignore", reason: "unrecognized-ai-reply", ...turn ? { turn } : {}, warnings: ["data.ai_reply 类型错误，已忽略"] };
-  const aiReply = asRecord(ai);
+  const aiReply = asRecord$1(ai);
   const rawParts = aiReply.reply_parts;
   const texts = stringArray(rawParts);
   const rawFiles = aiReply.file_urls;
   const fileUrls = stringArray(rawFiles).filter(isHttpUrl);
-  const transferRaw = asRecord(aiReply.transfer);
+  const transferRaw = asRecord$1(aiReply.transfer);
   const transfer = transferRaw.is_transfer === true ? {
     reason: scalarString(transferRaw.transfer_reason),
     source: scalarString(transferRaw.transfer_source),
@@ -2833,7 +2828,7 @@ function transferTargetReference(value) {
     const target = String(value).trim();
     return target ? { id: target, name: target } : void 0;
   }
-  const item = asRecord(value);
+  const item = asRecord$1(value);
   const id = scalarString(item.id || item.target_id || item.staff_id);
   const name = scalarString(item.name || item.target_name || item.staff_name);
   return id || name ? { id, name } : void 0;
@@ -2867,7 +2862,7 @@ function normalizeReplyEndpoint(value) {
 }
 function safeErrorDetail(bodyText) {
   try {
-    const value = asRecord(JSON.parse(bodyText));
+    const value = asRecord$1(JSON.parse(bodyText));
     return scalarString(value.detail) || scalarString(value.message);
   } catch {
     return bodyText.trim().slice(0, 400) || void 0;
@@ -2894,7 +2889,7 @@ function wait(ms) {
 function positiveInteger(value) {
   return Number.isFinite(value) && Number(value) > 0 ? Math.floor(Number(value)) : void 0;
 }
-function asRecord(value) {
+function asRecord$1(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 function scalarString(value) {
@@ -2920,6 +2915,10 @@ function errorMessage(error) {
 }
 class PlatformManager {
   sessions = /* @__PURE__ */ new Map();
+  goofishTransports = /* @__PURE__ */ new Map();
+  goofishViews = /* @__PURE__ */ new Map();
+  goofishAttachedWindows = /* @__PURE__ */ new Map();
+  goofishPrimaryLoads = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
   forwardedRuntimeEventIds = /* @__PURE__ */ new Set();
   state = { accounts: [], hooks: [] };
@@ -2927,6 +2926,13 @@ class PlatformManager {
   stateBackupPath;
   saveQueue = Promise.resolve();
   shopRuntimes = new ShopRuntimeManager(new HttpShopReplyApi());
+  goofishClientListener = (event) => this.onGoofishClientEvent(event);
+  goofishClient = new GoofishMessagingClient({
+    electron: { BrowserWindow, session, app },
+    userDataPath: app.getPath("userData"),
+    partitionPrefix: "goofish-messaging",
+    shouldKeepAccountAlive: (clientAccountId) => [...this.state.accounts].some((account) => account.goofishClientAccountId === clientAccountId && account.online)
+  });
   hostWindow = null;
   activeAccountId = "";
   primaryViewportBounds = null;
@@ -2943,13 +2949,22 @@ class PlatformManager {
       runtimeState: account.runtimeState || "stopped",
       messageListening: account.messageListening === true
     }));
+    this.goofishClient.on("event", this.goofishClientListener);
+    for (const account of this.state.accounts.filter((item) => item.platform === "goofish")) {
+      this.ensureGoofishClientAccount(account);
+      this.ensureGoofishTransport(account.id);
+    }
   }
   async attachMainWindow(window) {
+    if (this.hostWindow && this.hostWindow !== window) this.detachPrimaryViewsExcept("");
     this.hostWindow = window;
     for (const account of this.state.accounts) {
-      const existing = this.sessions.get(account.id);
-      if (existing) existing.bindHostWindow(window);
-      else this.ensureSession(account.id);
+      if (account.platform === "goofish") this.ensureGoofishTransport(account.id);
+      else {
+        const existing = this.sessions.get(account.id);
+        if (existing) existing.bindHostWindow(window);
+        else this.ensureSession(account.id);
+      }
     }
     for (const account of this.state.accounts.filter((item) => item.online)) {
       await this.setAccountOnline(account.id, true).catch((error) => {
@@ -2959,11 +2974,7 @@ class PlatformManager {
     }
     if (this.activeAccountId) {
       this.detachPrimaryViewsExcept(this.activeAccountId);
-      const active = this.sessions.get(this.activeAccountId);
-      if (active?.hasPrimaryView()) {
-        active.attachPrimaryView();
-        if (this.primaryViewportBounds) active.setPrimaryBounds(this.primaryViewportBounds);
-      }
+      await this.attachPrimaryView(this.activeAccountId);
     }
   }
   listPlatforms() {
@@ -2980,12 +2991,13 @@ class PlatformManager {
   listAccounts() {
     return this.state.accounts.map((account) => {
       const cdp = this.sessions.get(account.id);
+      const goofishView = this.goofishViews.get(account.id);
       const live = cdp?.getStatus();
       return {
         ...account,
         connected: live?.connected ?? account.connected,
         authenticated: live?.authenticated ?? account.authenticated,
-        webContentsId: cdp?.getWebContentsId(),
+        webContentsId: cdp?.getWebContentsId() || this.liveGoofishWebContentsId(goofishView),
         ...this.shopRuntimes.snapshot(account.id) || { online: account.online, runtimeState: account.runtimeState, messageListening: account.messageListening }
       };
     });
@@ -3007,36 +3019,62 @@ class PlatformManager {
       messageListening: false,
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
+    if (platform.id === "goofish") {
+      const clientAccount = this.goofishClient.addAccount({ id: temporaryGoofishAccountId(), label: account.label, show: false });
+      const config = this.goofishClient.getEmbeddedWebviewConfig(clientAccount.id);
+      account.goofishClientAccountId = clientAccount.id;
+      account.partition = config.partition;
+      account.url = config.url;
+    }
     this.state.accounts.push(account);
-    if (this.hostWindow) this.ensureSession(account.id);
+    if (this.hostWindow) {
+      if (account.platform === "goofish") this.ensureGoofishTransport(account.id);
+      else this.ensureSession(account.id);
+    }
     await this.save();
     return account;
   }
   async removeAccount(accountId) {
     await this.shopRuntimes.stop(accountId).catch(() => void 0);
+    this.shopRuntimes.unregister(accountId);
     this.sessions.get(accountId)?.close();
     this.sessions.delete(accountId);
+    const account = this.state.accounts.find((item) => item.id === accountId);
+    this.closeGoofishView(accountId);
+    this.goofishTransports.delete(accountId);
+    this.goofishPrimaryLoads.delete(accountId);
+    if (account?.platform === "goofish") {
+      const clientAccountId = this.currentGoofishClientAccountId(account);
+      try {
+        this.goofishClient.removeAccount(clientAccountId);
+      } catch {
+      }
+    }
     this.state.accounts = this.state.accounts.filter((item) => item.id !== accountId);
+    if (this.activeAccountId === accountId) this.activeAccountId = "";
     await this.save();
   }
   async open(accountId) {
     const account = this.requireAccount(accountId);
-    const previousAccountId = this.activeAccountId;
-    if (previousAccountId && previousAccountId !== accountId) this.sessions.get(previousAccountId)?.detachPrimaryView();
-    const cdp = this.ensureSession(accountId);
+    await this.attachPrimaryView(accountId);
     this.activeAccountId = accountId;
-    this.detachPrimaryViewsExcept(accountId);
-    await cdp.open(false);
-    cdp.attachPrimaryView();
-    if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
+    const webContentsId = account.platform === "goofish" ? this.liveGoofishWebContentsId(this.goofishViews.get(accountId)) : this.sessions.get(accountId)?.getWebContentsId();
     account.connected = true;
-    account.webContentsId = cdp.getWebContentsId();
+    account.webContentsId = webContentsId;
     account.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
     await this.save();
-    return { ...account, connected: true, webContentsId: cdp.getWebContentsId() };
+    return { ...account, connected: true, webContentsId };
   }
   async connect(accountId, webContentsId) {
     const account = this.requireAccount(accountId);
+    if (account.platform === "goofish") {
+      if (this.liveGoofishWebContentsId(this.goofishViews.get(accountId)) !== webContentsId) throw new Error("闲鱼 WebContents 与账号不匹配");
+      account.connected = true;
+      account.webContentsId = webContentsId;
+      account.lastSeenAt = (/* @__PURE__ */ new Date()).toISOString();
+      await this.save();
+      return this.status(accountId);
+    }
     const cdp = this.sessions.get(accountId);
     if (!cdp || cdp.getWebContentsId() !== webContentsId) throw new Error("CDP 页面与账号不匹配");
     account.connected = true;
@@ -3047,9 +3085,19 @@ class PlatformManager {
   }
   async disconnect(accountId) {
     await this.shopRuntimes.stop(accountId).catch(() => void 0);
+    this.shopRuntimes.unregister(accountId);
     this.sessions.get(accountId)?.close();
     this.sessions.delete(accountId);
     const account = this.requireAccount(accountId);
+    if (account.platform === "goofish") {
+      try {
+        this.goofishClient.closeProducts(this.currentGoofishClientAccountId(account));
+      } catch {
+      }
+      this.closeGoofishView(accountId);
+      this.goofishTransports.delete(accountId);
+      this.goofishPrimaryLoads.delete(accountId);
+    }
     account.connected = false;
     account.webContentsId = void 0;
     account.online = false;
@@ -3059,19 +3107,28 @@ class PlatformManager {
   }
   async setAccountOnline(accountId, online) {
     const account = this.requireAccount(accountId);
-    let cdp = this.sessions.get(accountId);
-    if (online && (!cdp || !cdp.getStatus().connected)) {
-      cdp = this.ensureSession(accountId);
-      await cdp.open(false);
-      account.connected = true;
-      account.webContentsId = cdp.getWebContentsId();
+    if (account.platform === "goofish") {
+      const transport = this.ensureGoofishTransport(accountId);
+      if (online) {
+        const view = this.ensureGoofishView(accountId);
+        await this.waitForGoofishPrimary(view);
+        account.connected = true;
+        account.webContentsId = view.webContents.id;
+      }
+      if (this.activeAccountId === accountId) await this.attachPrimaryView(accountId);
+      if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, transport, { platform: account.platform, shopName: account.label });
+    } else {
+      let cdp = this.sessions.get(accountId);
+      if (online && (!cdp || !cdp.getStatus().connected)) {
+        cdp = this.ensureSession(accountId);
+        await cdp.open(false);
+        account.connected = true;
+        account.webContentsId = cdp.getWebContentsId();
+      }
+      if (!cdp) throw new Error("请先打开平台页面");
+      if (this.activeAccountId === accountId) await this.attachPrimaryView(accountId);
+      if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label });
     }
-    if (!cdp) throw new Error("请先打开平台页面");
-    if (this.activeAccountId === accountId) {
-      cdp.attachPrimaryView();
-      if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
-    }
-    if (!this.shopRuntimes.has(accountId)) this.shopRuntimes.register(accountId, new CdpShopTransport(cdp), { platform: account.platform, shopName: account.label });
     account.online = online;
     try {
       const snapshot = await this.shopRuntimes.setOnline(accountId, online);
@@ -3097,12 +3154,37 @@ class PlatformManager {
       width: Math.max(1, Math.round(bounds.width)),
       height: Math.max(1, Math.round(bounds.height))
     };
-    if (this.activeAccountId) this.sessions.get(this.activeAccountId)?.setPrimaryBounds(this.primaryViewportBounds);
+    if (!this.activeAccountId) return;
+    const account = this.state.accounts.find((item) => item.id === this.activeAccountId);
+    if (account?.platform === "goofish") {
+      const view = this.goofishViews.get(this.activeAccountId);
+      if (view && this.goofishAttachedWindows.has(this.activeAccountId)) view.setBounds(this.primaryViewportBounds);
+    } else this.sessions.get(this.activeAccountId)?.setPrimaryBounds(this.primaryViewportBounds);
   }
   async setConversationAttention(accountId, conversationId, state) {
     await this.shopRuntimes.setAttention(accountId, conversationId, state);
   }
   async status(accountId) {
+    const account = this.requireAccount(accountId);
+    if (account.platform === "goofish") {
+      const view = this.ensureGoofishView(accountId);
+      const auth = await this.goofishInvoke(accountId, "auth.state", {});
+      account.connected = Boolean(this.liveGoofishWebContentsId(view));
+      account.authenticated = auth.authenticated === true;
+      account.webContentsId = this.liveGoofishWebContentsId(view);
+      if (auth.userId) {
+        account.label = account.label || String(auth.nickname || "闲鱼店铺");
+      }
+      return {
+        accountId,
+        platform: account.platform,
+        connected: account.connected,
+        authenticated: account.authenticated,
+        url: view.webContents.getURL() || account.url,
+        title: view.webContents.getTitle(),
+        message: account.authenticated ? "闲鱼已登录，Runtime 已就绪" : "请在当前闲鱼官方页面完成登录"
+      };
+    }
     let cdp = this.sessions.get(accountId);
     if (!cdp) {
       await this.open(accountId);
@@ -3113,44 +3195,75 @@ class PlatformManager {
     return cdp.refreshStatus();
   }
   async collectProducts(accountId) {
+    if (this.requireAccount(accountId).platform === "goofish") return (await this.goofishInvoke(accountId, "products.list", {})).map(toPlatformProduct);
     return this.withLogin(accountId, "collectProducts");
   }
   async productDetail(accountId, goodsId) {
+    if (this.requireAccount(accountId).platform === "goofish") return toPlatformProduct(await this.goofishInvoke(accountId, "products.detail", { id: goodsId }));
     return this.withLogin(accountId, "getProductDetail", goodsId);
   }
   async sessionsFor(accountId) {
+    if (this.requireAccount(accountId).platform === "goofish") return (await this.goofishInvoke(accountId, "sessions.list", {})).map(toPlatformSession);
     return this.withLogin(accountId, "listSessions");
   }
   async messagesFor(accountId, sessionId) {
+    if (this.requireAccount(accountId).platform === "goofish") return (await this.goofishInvoke(accountId, "messages.history", { conversationId: sessionId })).map(toPlatformMessage);
     return this.withLogin(accountId, "listMessages", sessionId);
   }
   async ordersFor(accountId, userId) {
+    if (this.requireAccount(accountId).platform === "goofish") throw new Error("闲鱼暂不支持订单能力");
     return this.withLogin(accountId, "getOrders", userId);
   }
   async syncOrdersFor(accountId, sessionId, userId) {
+    if (this.requireAccount(accountId).platform === "goofish") throw new Error("闲鱼暂不支持订单能力");
     return this.withLogin(accountId, "syncOrders", sessionId, userId);
   }
   async listenOrdersFor(accountId, sessionId, orderId) {
+    if (this.requireAccount(accountId).platform === "goofish") throw new Error("闲鱼暂不支持订单能力");
     return this.withLogin(accountId, "listenOrders", sessionId, orderId);
   }
   async listenMessagesFor(accountId) {
+    if (this.requireAccount(accountId).platform === "goofish") return this.goofishInvoke(accountId, "messages.listen", {});
     return this.withLogin(accountId, "listenMessages");
   }
   async handoffTargetsFor(accountId) {
+    if (this.requireAccount(accountId).platform === "goofish") throw new Error("闲鱼暂不支持官方转人工目标能力");
     return this.withLogin(accountId, "listHandoffTargets");
   }
   async sendMessage(accountId, sessionId, content) {
+    if (this.requireAccount(accountId).platform === "goofish") {
+      await this.goofishInvoke(accountId, "messages.send.text", { conversationId: sessionId, text: content });
+      return { success: true };
+    }
     return this.withLogin(accountId, "sendMessage", sessionId, content);
   }
   async sendFile(accountId, sessionId, dataUrl, fileName) {
+    if (this.requireAccount(accountId).platform === "goofish") {
+      await this.goofishInvoke(accountId, "messages.send.file", { conversationId: sessionId, dataUrl, name: fileName, mimeType: dataUrl.match(/^data:([^;,]+)/)?.[1] || "image/png" });
+      return { success: true };
+    }
     return this.withLogin(accountId, "sendFile", sessionId, dataUrl, fileName);
   }
   async transferSession(accountId, sessionId, target) {
+    if (this.requireAccount(accountId).platform === "goofish") throw new Error("闲鱼暂不支持官方会话转接能力");
     return this.withLogin(accountId, "transferSession", sessionId, target);
   }
   onEvent(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+  async dispose() {
+    for (const account of this.state.accounts) {
+      await this.shopRuntimes.stop(account.id).catch(() => void 0);
+      this.shopRuntimes.unregister(account.id);
+      this.sessions.get(account.id)?.close();
+      this.sessions.delete(account.id);
+      if (account.platform === "goofish") this.closeGoofishView(account.id);
+    }
+    this.goofishClient.removeListener("event", this.goofishClientListener);
+    this.goofishClient.dispose();
+    this.goofishTransports.clear();
+    this.listeners.clear();
   }
   async importPackage() {
     const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Hook package", extensions: ["json"] }] });
@@ -3176,6 +3289,153 @@ class PlatformManager {
     if (!account) throw new Error("平台账号不存在");
     return account;
   }
+  ensureGoofishClientAccount(account) {
+    const clientAccounts = this.goofishClient.listAccounts();
+    const match = clientAccounts.find((item) => String(item.id) === account.goofishClientAccountId) || clientAccounts.find((item) => {
+      try {
+        return this.goofishClient.getEmbeddedWebviewConfig(String(item.id)).partition === account.partition;
+      } catch {
+        return false;
+      }
+    });
+    const clientAccount = match || this.goofishClient.addAccount({
+      id: account.goofishClientAccountId || temporaryGoofishAccountId(),
+      label: account.label,
+      show: false
+    });
+    const config = this.goofishClient.getEmbeddedWebviewConfig(clientAccount.id);
+    const changed = account.goofishClientAccountId !== clientAccount.id || account.partition !== config.partition || account.url !== config.url;
+    account.goofishClientAccountId = clientAccount.id;
+    account.partition = config.partition;
+    account.url = config.url;
+    if (changed) void this.save();
+    return clientAccount.id;
+  }
+  currentGoofishClientAccountId(account) {
+    return this.ensureGoofishClientAccount(account);
+  }
+  ensureGoofishTransport(accountId) {
+    const existing = this.goofishTransports.get(accountId);
+    if (existing) return existing;
+    const account = this.requireAccount(accountId);
+    if (account.platform !== "goofish") throw new Error("账号不是闲鱼平台");
+    const clientAccountId = this.ensureGoofishClientAccount(account);
+    const transport = new GoofishTransport({ accountId, clientAccountId, client: this.goofishClient });
+    this.goofishTransports.set(accountId, transport);
+    this.shopRuntimes.register(accountId, transport, { platform: account.platform, shopName: account.label });
+    return transport;
+  }
+  ensureGoofishView(accountId) {
+    const account = this.requireAccount(accountId);
+    if (account.platform !== "goofish") throw new Error("账号不是闲鱼平台");
+    const existing = this.goofishViews.get(accountId);
+    if (existing && !existing.webContents.isDestroyed()) return existing;
+    if (!this.hostWindow || this.hostWindow.isDestroyed()) throw new Error("主工作台窗口尚未就绪");
+    if (existing) this.goofishViews.delete(accountId);
+    const clientAccountId = this.ensureGoofishClientAccount(account);
+    const config = this.goofishClient.getEmbeddedWebviewConfig(clientAccountId);
+    const view = new WebContentsView({
+      webPreferences: {
+        partition: config.partition,
+        preload: fileURLToPath(config.preload),
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        sandbox: false,
+        backgroundThrottling: false
+      }
+    });
+    view.setVisible(false);
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      if (isOfficialGoofishLoginUrl(url)) {
+        void view.webContents.loadURL(url).catch((error) => this.emitGoofishRuntimeError(accountId, error));
+      }
+      return { action: "deny" };
+    });
+    view.webContents.on("render-process-gone", (_event, details) => {
+      this.emitGoofishRuntimeError(accountId, new Error(`闲鱼页面进程退出: ${details.reason}`));
+    });
+    view.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+      if (isMainFrame && code !== -3) this.emitGoofishRuntimeError(accountId, new Error(`闲鱼页面加载失败: ${description} (${url})`));
+    });
+    view.webContents.once("destroyed", () => {
+      if (this.goofishViews.get(accountId) === view) {
+        this.goofishViews.delete(accountId);
+        this.goofishPrimaryLoads.delete(accountId);
+        this.goofishAttachedWindows.delete(accountId);
+      }
+      this.goofishClient.detachEmbeddedWebContents(clientAccountId, view.webContents);
+    });
+    this.goofishViews.set(accountId, view);
+    const load = (async () => {
+      await this.goofishClient.attachEmbeddedWebContents(clientAccountId, view.webContents);
+      await view.webContents.loadURL(config.url);
+    })();
+    this.goofishPrimaryLoads.set(accountId, load);
+    void load.catch((error) => this.emitGoofishRuntimeError(accountId, error));
+    return view;
+  }
+  liveGoofishWebContentsId(view) {
+    return view && !view.webContents.isDestroyed() ? view.webContents.id : void 0;
+  }
+  async waitForGoofishPrimary(view) {
+    if (view.webContents.isDestroyed()) throw new Error("闲鱼官方页面已关闭");
+    const accountId = [...this.goofishViews].find(([, candidate]) => candidate === view)?.[0];
+    const load = accountId ? this.goofishPrimaryLoads.get(accountId) : void 0;
+    if (load) await load;
+    if (view.webContents.isDestroyed()) throw new Error("闲鱼官方页面已关闭");
+  }
+  async attachPrimaryView(accountId) {
+    const account = this.requireAccount(accountId);
+    const hostWindow = this.hostWindow;
+    if (!hostWindow || hostWindow.isDestroyed()) throw new Error("主工作台窗口尚未就绪");
+    if (account.platform === "goofish") {
+      const view = this.ensureGoofishView(accountId);
+      await this.waitForGoofishPrimary(view);
+      this.detachPrimaryViewsExcept(accountId);
+      const attachedWindow = this.goofishAttachedWindows.get(accountId);
+      if (attachedWindow !== hostWindow) {
+        if (attachedWindow && !attachedWindow.isDestroyed()) {
+          try {
+            attachedWindow.contentView.removeChildView(view);
+          } catch {
+          }
+        }
+        hostWindow.contentView.addChildView(view);
+        this.goofishAttachedWindows.set(accountId, hostWindow);
+      }
+      view.setVisible(true);
+      if (this.primaryViewportBounds) view.setBounds(this.primaryViewportBounds);
+      return;
+    }
+    const cdp = this.ensureSession(accountId);
+    await cdp.open(false);
+    this.detachPrimaryViewsExcept(accountId);
+    cdp.attachPrimaryView();
+    if (this.primaryViewportBounds) cdp.setPrimaryBounds(this.primaryViewportBounds);
+  }
+  detachGoofishView(accountId) {
+    const view = this.goofishViews.get(accountId);
+    const attachedWindow = this.goofishAttachedWindows.get(accountId);
+    if (view && attachedWindow && !attachedWindow.isDestroyed()) {
+      try {
+        attachedWindow.contentView.removeChildView(view);
+      } catch {
+      }
+    }
+    if (view && !view.webContents.isDestroyed()) view.setVisible(false);
+    this.goofishAttachedWindows.delete(accountId);
+  }
+  closeGoofishView(accountId) {
+    const view = this.goofishViews.get(accountId);
+    this.detachGoofishView(accountId);
+    this.goofishViews.delete(accountId);
+    this.goofishPrimaryLoads.delete(accountId);
+    if (!view || view.webContents.isDestroyed()) return;
+    const account = this.state.accounts.find((item) => item.id === accountId);
+    if (account) this.goofishClient.detachEmbeddedWebContents(this.currentGoofishClientAccountId(account), view.webContents);
+    view.webContents.close();
+  }
   ensureSession(accountId) {
     const existing = this.sessions.get(accountId);
     if (existing) return existing;
@@ -3189,9 +3449,81 @@ class PlatformManager {
     return cdp;
   }
   detachPrimaryViewsExcept(accountId) {
-    for (const [id, session] of this.sessions) {
-      if (id !== accountId && session.isPrimaryViewAttached()) session.detachPrimaryView();
+    for (const [id, session2] of this.sessions) {
+      if (id !== accountId && session2.isPrimaryViewAttached()) session2.detachPrimaryView();
     }
+    for (const id of this.goofishViews.keys()) {
+      if (id !== accountId) this.detachGoofishView(id);
+    }
+  }
+  async goofishInvoke(accountId, operation, input) {
+    const transport = this.ensureGoofishTransport(accountId);
+    const view = this.ensureGoofishView(accountId);
+    await this.waitForGoofishPrimary(view);
+    await transport.start();
+    const result = await transport.invoke(operation, input);
+    if (!result.ok) {
+      const error = new Error(result.error.message);
+      error.code = result.error.code;
+      throw error;
+    }
+    return result.data;
+  }
+  onGoofishClientEvent(event) {
+    const payload = asRecord(event.payload);
+    const previousId = scalar(payload.previousAccountId);
+    const nextId = scalar(payload.accountId ?? event.accountId);
+    const account = this.state.accounts.find((item) => item.platform === "goofish" && (previousId && item.goofishClientAccountId === previousId || item.goofishClientAccountId === event.accountId || this.hasGoofishPartition(item, event.accountId)));
+    if (!account) return;
+    if (event.eventType === "account-migrated" && nextId) {
+      account.goofishClientAccountId = nextId;
+      try {
+        account.partition = this.goofishClient.getEmbeddedWebviewConfig(nextId).partition;
+      } catch {
+      }
+      const migrated = asRecord(payload.account);
+      account.authenticated = migrated.status === "authenticated";
+      if (migrated.nickname) account.label = String(migrated.nickname);
+      void this.save();
+      return;
+    }
+    let changed = false;
+    if (event.eventType === "official-login-page") {
+      account.authenticated = false;
+      changed = true;
+    }
+    if (event.eventType === "bridge-ready" || event.eventType === "account-updated") {
+      const metadata = event.eventType === "account-updated" ? payload : asRecord(payload);
+      account.authenticated = metadata.status === "authenticated" || event.eventType === "bridge-ready";
+      if (metadata.nickname && !account.label) account.label = String(metadata.nickname);
+      changed = true;
+      if (account.online && account.authenticated && this.shopRuntimes.snapshot(account.id)?.runtimeState !== "running") {
+        void this.setAccountOnline(account.id, true).catch((error) => {
+          console.error(`[platform-hub] 闲鱼登录后启动监听失败: ${account.id}`, error);
+        });
+      }
+    }
+    if (event.eventType === "connection-error" || event.eventType === "connection-closed" || event.eventType === "load-error") {
+      account.connected = false;
+      changed = true;
+    }
+    if (changed) void this.save();
+  }
+  hasGoofishPartition(account, clientAccountId) {
+    try {
+      return this.goofishClient.getEmbeddedWebviewConfig(clientAccountId).partition === account.partition;
+    } catch {
+      return false;
+    }
+  }
+  emitGoofishRuntimeError(accountId, error) {
+    const account = this.state.accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    const message = error instanceof Error ? error.message : String(error);
+    this.publish({ id: `${accountId}:goofish:${Date.now()}:error`, accountId, platform: account.platform, type: "error", timestamp: Date.now(), payload: { message } });
+  }
+  publish(event) {
+    this.listeners.forEach((listener) => listener(event));
   }
   async invoke(accountId, method, ...args) {
     const cdp = this.sessions.get(accountId);
@@ -3261,7 +3593,7 @@ class PlatformManager {
         payload: { message: payload.message || payload }
       });
     }
-    this.listeners.forEach((listener) => listener(attributedEvent));
+    this.publish(attributedEvent);
   }
   emitRuntimeEvent(event) {
     if (event.type === "hook" && event.payload.event && typeof event.payload.event === "object") {
@@ -3270,16 +3602,36 @@ class PlatformManager {
     }
     const account = this.state.accounts.find((item) => item.id === event.accountId);
     if (!account) return;
-    const payload = event.type === "hook" && event.payload.event && typeof event.payload.event === "object" ? event.payload.event : event.payload;
-    const sourceType = event.type === "hook" && payload && typeof payload === "object" ? String(payload.type || "") : event.type;
-    this.listeners.forEach((listener) => listener({
+    const hookEvent = event.type === "hook" && event.payload.event && typeof event.payload.event === "object" ? event.payload.event : void 0;
+    const rawPayload = hookEvent && typeof hookEvent === "object" ? hookEvent.payload : event.payload;
+    const sourceType = hookEvent && typeof hookEvent === "object" ? String(hookEvent.type || "") : event.type;
+    const hookPayload = asRecord(rawPayload);
+    let payload = sourceType === "message.created" && hookEvent ? { message: toPlatformMessage(hookPayload.message) } : rawPayload;
+    if (sourceType === "auth.changed" && hookEvent && account.platform === "goofish") {
+      const auth = asRecord(hookPayload.auth);
+      account.connected = account.platform === "goofish" ? Boolean(this.liveGoofishWebContentsId(this.goofishViews.get(account.id))) : account.connected;
+      account.authenticated = auth.authenticated === true;
+      const view = this.goofishViews.get(account.id);
+      payload = {
+        accountId: account.id,
+        platform: account.platform,
+        connected: account.connected,
+        authenticated: account.authenticated,
+        url: view?.webContents.getURL() || account.url,
+        title: view?.webContents.getTitle(),
+        message: account.authenticated ? "闲鱼已登录，Runtime 已就绪" : "请在当前闲鱼官方页面完成登录"
+      };
+      void this.save();
+    }
+    const platformEventType = sourceType === "message.created" ? "message" : sourceType.startsWith("order.") ? "order" : sourceType === "auth.changed" || sourceType === "connection" ? "connection" : sourceType === "runtime.error" ? "error" : "log";
+    this.publish({
       id: `${event.accountId}:runtime:${event.timestamp}:${Math.random().toString(16).slice(2)}`,
       accountId: event.accountId,
       platform: account.platform,
-      type: sourceType.startsWith("order.") ? "order" : "log",
+      type: platformEventType,
       timestamp: event.timestamp,
       payload
-    }));
+    });
   }
   async readState(path) {
     try {
@@ -3312,6 +3664,64 @@ class PlatformManager {
     this.saveQueue = operation;
     return operation;
   }
+}
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function scalar(value) {
+  return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+function temporaryGoofishAccountId() {
+  return `${Date.now()}${randomInt(1e5, 1e6)}`;
+}
+function isOfficialGoofishLoginUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && ["goofish.com", "taobao.com", "alipay.com"].some((domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+function toPlatformProduct(product) {
+  return {
+    id: product.id,
+    goodsId: product.externalId,
+    name: product.title,
+    price: product.price?.amount || 0,
+    status: product.status,
+    images: product.images || [],
+    goodsUrl: product.url,
+    description: product.description,
+    updatedAt: product.updatedAt,
+    skuList: product.skus?.map((sku) => ({ skuId: sku.externalId || sku.id, skuName: sku.name, skuPrice: sku.price?.amount || 0 })),
+    platform: "goofish",
+    raw: product.raw && typeof product.raw === "object" ? product.raw : void 0
+  };
+}
+function toPlatformSession(session2) {
+  return {
+    id: session2.id,
+    title: session2.title,
+    unread: session2.unreadCount,
+    lastMessage: session2.lastMessage,
+    updatedAt: session2.updatedAt,
+    avatar: session2.avatarUrl
+  };
+}
+function toPlatformMessage(message) {
+  return {
+    id: message.id,
+    sessionId: message.conversationId,
+    senderId: message.senderId || "",
+    senderName: message.senderName || "",
+    content: message.content,
+    type: message.type,
+    isMine: message.direction === "outbound",
+    direction: message.direction,
+    origin: message.origin,
+    timestamp: message.timestamp,
+    raw: message.raw && typeof message.raw === "object" ? message.raw : void 0
+  };
 }
 class CdpShopTransport {
   constructor(cdp) {
@@ -3508,4 +3918,16 @@ app.whenReady().then(async () => {
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+let shuttingDown = false;
+let shutdownComplete = false;
+app.on("before-quit", (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shuttingDown) return;
+  shuttingDown = true;
+  void manager.dispose().finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
 });

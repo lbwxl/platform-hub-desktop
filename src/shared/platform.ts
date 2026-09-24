@@ -20,6 +20,8 @@ export interface PlatformAccount {
   label: string
   url: string
   partition: string
+  /** Account key owned by an external Native/Legacy adapter, when required. */
+  goofishClientAccountId?: string
   webContentsId?: number
   connected: boolean
   authenticated: boolean

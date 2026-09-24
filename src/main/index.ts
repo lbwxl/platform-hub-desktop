@@ -99,3 +99,16 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+
+let shuttingDown = false
+let shutdownComplete = false
+app.on('before-quit', (event) => {
+  if (shutdownComplete) return
+  event.preventDefault()
+  if (shuttingDown) return
+  shuttingDown = true
+  void manager.dispose().finally(() => {
+    shutdownComplete = true
+    app.quit()
+  })
+})

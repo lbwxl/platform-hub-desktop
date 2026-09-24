@@ -930,7 +930,7 @@ FakeHook 至少模拟：
 
 FakeHook 必须运行真实 Hook Protocol。
 
-完成 `HookTransport` 后，必须先增加 Fake Native / Legacy Transport，再迁移 WeChat Legacy Adapter。当前 `HookTransport 抽象` Phase 不提前迁移 Legacy 平台。
+迁移 WeChat / WeWork / Qianniu Legacy 平台前，必须先增加 Fake Native / Legacy Transport。Goofish 是单独的、需用户明确授权的 Native Transport 任务：优先复用 `packages/goofish-messaging`，不得为了统一形式重写其成熟底层。
 
 ---
 
@@ -990,6 +990,8 @@ Douyin 多账号 / 订单 / Handoff 真实验收
 ↓
 HookTransport 抽象
 ↓
+Goofish Transport / Adapter（仅在用户明确授权时；复用现有 `goofish-messaging`）
+↓
 Fake Native / Legacy Transport
 ↓
 WeChat Legacy Adapter 验证
@@ -1001,13 +1003,13 @@ Aichat React PlatformRuntime 对接
 WeWork / Qianniu Legacy Adapter
 ```
 
-当前已进入：
+当前主阶段：
 
 ```text
 HookTransport 抽象
 ```
 
-Douyin Page Hook 已完成最终真实验收并冻结。当前 Phase 只允许按明确任务推进 `HookTransport` 抽象；不得顺便迁移 WeChat / WeWork / Qianniu、开始 React 对接或推进其他 Page Hook 平台。
+Douyin Page Hook 已完成最终真实验收并冻结。本轮在用户明确授权下执行一个限定子阶段：`Goofish Transport / Adapter Implementation`。该例外只覆盖闲鱼适配与它的 Electron Main 接入，不授权迁移 WeChat / WeWork / Qianniu、开始 React PlatformRuntime 对接或推进其他 Page Hook 平台。
 
 ---
 
@@ -1078,6 +1080,14 @@ Page Hook 不复制旧架构；Legacy / Native / Service 平台则优先复用�
 ```text
 HookTransport 抽象
 ```
+
+本轮明确授权的限定子阶段是：
+
+```text
+Goofish Transport / Adapter Implementation
+```
+
+该子阶段必须通过 `GoofishTransport → GoofishMessagingClient` 复用现有实现。完成本轮后停止；不得将本次授权扩展到其他平台或架构重构。
 
 除非用户明确要求：
 
@@ -1224,6 +1234,8 @@ HookTransport
 `HookHost` 仍是 Page Hook 专用基础设施，负责共享的 HookSession registry 和 WorkerScheduler。`PageHookTransport` 只是 `HookTransport` 到一个现有 `HookSession` 的薄适配层：它拥有一个 Session lifecycle handle，但不拥有也不创建 `HookHost`。
 
 `PageHookTransport.stop()` 只能通过所属 Host 的 `disposeSession(sessionId)` 释放自己的 Session；不得调用 `HookHost.dispose()`，不得停止共享 Scheduler，也不得影响兄弟 Session。
+
+Goofish 采用真实 Native 执行模型：`GoofishTransport` 固定绑定一个 Hub account，并包装成熟的 `GoofishMessagingClient`；多个 Transport 可以共享 Client，但不得切换共享的 current account。闲鱼官方 primary `WebContents` 必须同时作为用户可见工作台与 Client command/event bridge 的页面，并复用 Client 提供的账号 partition、preload 与账号迁移逻辑；不得创建第二套闲鱼消息页面或伪造 Page Hook Runtime。Goofish 未声明的 orders、handoff 与 conversation attention 必须明确返回 `NOT_SUPPORTED`，不得以空实现冒充能力。
 
 除非发现明确 bug 或 Contract incompatibility，后续 `HookTransport` 工作不得随意重构 Douyin runtime、HookSession、HookHost、PersistentPageManager 或 WorkerScheduler。
 

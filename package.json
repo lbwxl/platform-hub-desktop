@@ -6,7 +6,7 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "predev": "pnpm build:hooks",
+    "predev": "pnpm build:packages",
     "dev": "node scripts/dev.mjs",
     "build:hook": "pnpm build:hooks",
     "build:hooks": "pnpm --dir packages/kuaishou-hook build && pnpm --dir packages/douyin-hook build",
@@ -14,9 +14,9 @@
     "pretypecheck": "pnpm build:packages",
     "build": "pnpm typecheck && electron-vite build",
     "preview": "electron-vite preview",
-    "build:foundation": "pnpm --dir packages/hook-sdk build && pnpm --dir packages/hook-host build && pnpm --dir packages/fake-hook build && pnpm --dir packages/hook-transport build",
+    "build:foundation": "pnpm --dir packages/hook-sdk build && pnpm --dir packages/hook-host build && pnpm --dir packages/fake-hook build && pnpm --dir packages/hook-transport build && pnpm --dir packages/goofish-transport build",
     "build:packages": "pnpm build:foundation && pnpm build:hooks",
-    "typecheck": "pnpm --dir packages/hook-sdk typecheck && pnpm --dir packages/hook-host typecheck && pnpm --dir packages/fake-hook typecheck && pnpm --dir packages/hook-transport typecheck && pnpm --dir packages/kuaishou-hook typecheck && pnpm --dir packages/douyin-hook typecheck && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "pnpm --dir packages/hook-sdk typecheck && pnpm --dir packages/hook-host typecheck && pnpm --dir packages/fake-hook typecheck && pnpm --dir packages/hook-transport typecheck && pnpm --dir packages/goofish-transport typecheck && pnpm --dir packages/kuaishou-hook typecheck && pnpm --dir packages/douyin-hook typecheck && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:unit": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-sdk.test.mjs tests/douyin-hook-unit.test.mjs",
     "test:contract": "pnpm build:foundation && pnpm --dir packages/douyin-hook build && node --test tests/hook-phase0.test.mjs tests/douyin-hook-contract.test.mjs",
@@ -29,7 +29,10 @@
     "inspect:douyin:order-events": "electron scripts/inspect-douyin-order-events.mjs"
   },
   "dependencies": {
+    "@idle-fish/goofish-messaging": "workspace:*",
     "@platform-hub/douyin-hook": "workspace:*",
+    "@platform-hub/goofish-transport": "workspace:*",
+    "@platform-hub/hook-sdk": "workspace:*",
     "@platform-hub/kuaishou-hook": "workspace:*",
     "lucide-react": "^1.47.0",
     "react": "^19.3.0",

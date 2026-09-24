@@ -8,9 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@idle-fish/goofish-messaging':
+        specifier: workspace:*
+        version: link:packages/goofish-messaging
       '@platform-hub/douyin-hook':
         specifier: workspace:*
         version: link:packages/douyin-hook
+      '@platform-hub/goofish-transport':
+        specifier: workspace:*
+        version: link:packages/goofish-transport
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:packages/hook-sdk
       '@platform-hub/kuaishou-hook':
         specifier: workspace:*
         version: link:packages/kuaishou-hook
@@ -80,6 +89,16 @@ importers:
       electron:
         specifier: '>=28'
         version: 37.3.1
+
+  packages/goofish-transport:
+    dependencies:
+      '@platform-hub/hook-sdk':
+        specifier: workspace:*
+        version: link:../hook-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   packages/hook-host:
     dependencies:

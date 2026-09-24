@@ -7,6 +7,7 @@ const douyinRuntime = await readFile(new URL('../packages/douyin-hook/src/runtim
 const douyinManifest = await readFile(new URL('../packages/douyin-hook/src/manifest.ts', import.meta.url), 'utf8')
 const douyinPackage = JSON.parse(await readFile(new URL('../packages/douyin-hook/package.json', import.meta.url), 'utf8'))
 const manager = await readFile(new URL('../src/main/cdp/PlatformManager.ts', import.meta.url), 'utf8')
+const goofishPlatform = await readFile(new URL('../src/main/hooks/goofish.ts', import.meta.url), 'utf8')
 const session = await readFile(new URL('../src/main/cdp/CdpSession.ts', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer/src/App.tsx', import.meta.url), 'utf8')
@@ -202,13 +203,37 @@ test('主工作台只展示 Hook primary WebContentsView，不创建 Renderer we
 })
 
 test('主工作台切换只移动 active View，不 reload 或销毁后台店铺 WebContents', () => {
-  assert.match(manager, /previousAccountId.*detachPrimaryView/s)
-  assert.match(manager, /detachPrimaryViewsExcept\(accountId\)/)
-  assert.match(manager, /cdp\.open\(false\)/)
-  assert.doesNotMatch(manager, /open\(accountId\)[\s\S]*?loadURL\(/)
+  const openBody = manager.match(/async open\(accountId: string\): Promise<PlatformAccount> \{([\s\S]*?)\n  \}\n\n  async connect/)?.[1] || ''
+  const attachBody = manager.match(/private async attachPrimaryView\(accountId: string\): Promise<void> \{([\s\S]*?)\n  \}\n\n  private detachGoofishView/)?.[1] || ''
+  assert.match(openBody, /await this\.attachPrimaryView\(accountId\)/)
+  assert.doesNotMatch(openBody, /loadURL\(|webContents\.(?:close|destroy)\(/)
+  assert.match(attachBody, /this\.detachPrimaryViewsExcept\(accountId\)/)
+  assert.match(attachBody, /await cdp\.open\(false\)/)
+  assert.match(attachBody, /contentView\.addChildView\(view\)/)
   const detachBody = session.match(/detachPrimaryView\(\): void \{([\s\S]*?)\n  \}\n\n  setPrimaryBounds/)?.[1] || ''
   assert.match(detachBody, /removeChildView\(view\)/)
   assert.doesNotMatch(detachBody, /webContents\.close\(\)/)
+  const managerDetachBody = manager.match(/private detachPrimaryViewsExcept\(accountId: string\): void \{([\s\S]*?)\n  \}\n\n  private async goofishInvoke/)?.[1] || ''
+  assert.match(managerDetachBody, /session\.detachPrimaryView\(\)/)
+  assert.match(managerDetachBody, /this\.detachGoofishView\(id\)/)
+  assert.doesNotMatch(managerDetachBody, /webContents\.(?:close|destroy)\(/)
+})
+
+test('Goofish Native Transport is wired to Main, ShopRuntimeManager and its visible embedded WebContents', () => {
+  assert.match(goofishPlatform, /executionModel:\s*'native'/)
+  assert.doesNotMatch(goofishPlatform, /script\s*:/)
+  assert.match(manager, /new GoofishMessagingClient\(/)
+  const transportBody = manager.match(/private ensureGoofishTransport\(accountId: string\): GoofishTransport \{([\s\S]*?)\n  \}\n\n  private ensureGoofishView/)?.[1] || ''
+  assert.match(transportBody, /new GoofishTransport\(\{ accountId, clientAccountId, client: this\.goofishClient \}\)/)
+  assert.match(transportBody, /shopRuntimes\.register\(accountId, transport/)
+  const viewBody = manager.match(/private ensureGoofishView\(accountId: string\): WebContentsView \{([\s\S]*?)\n  \}\n\n  private liveGoofishWebContentsId/)?.[1] || ''
+  assert.match(viewBody, /getEmbeddedWebviewConfig\(clientAccountId\)/)
+  assert.match(viewBody, /new WebContentsView\(/)
+  assert.match(viewBody, /attachEmbeddedWebContents\(clientAccountId, view\.webContents\)/)
+  assert.match(viewBody, /partition: config\.partition/)
+  assert.match(viewBody, /preload: fileURLToPath\(config\.preload\)/)
+  assert.match(main, /await manager\.attachMainWindow\(mainWindow\)/)
+  assert.match(main, /manager\.setAccountOnline\(id, online\)/)
 })
 
 test('官方工作台占据主区域，调试信息默认折叠且页面不随 document 滚动', async () => {
