@@ -195,6 +195,8 @@ interface HookMessage {
 | `system` | 平台系统通知 |
 | `unknown` | 证据不足，不做猜测 |
 
+实时出站消息归因规则：由本 Hook `messages.send.*` 成功发送并通过会话、类型和内容与官方消息回显关联的消息标记为 `automation`；官方消息携带明确人工发送标记（例如人工来源字段或 `p:check_Send`）时标记为 `human`。仅知道消息来自店铺客服账号不足以证明是人工；缺少明确来源证据且无法关联到本 Hook 发送的出站消息保持 `unknown`。调用方可按 `message.created` 事件中的 `origin` 分别记录人工、自动和未能归因的消息。
+
 ### 6.2 历史消息
 
 Operation：`messages.history`

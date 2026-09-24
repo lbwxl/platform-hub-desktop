@@ -254,7 +254,9 @@ export default function App() {
     }
     if (event.type === 'message') {
       const message = (payload.message as Record<string, unknown> | undefined) || payload
-      return `收到消息 · ${String(message.content || '新消息')}`
+      const direction = message.direction === 'outbound' || message.isMine === true ? 'outbound' : 'inbound'
+      const origin = message.origin === 'human' ? '人工手动' : message.origin === 'automation' ? 'Hook 自动' : message.origin === 'customer' ? '买家' : message.origin === 'system' ? '平台系统' : '来源未知'
+      return `${direction === 'outbound' ? '发出' : '收到'} · ${origin} · ${String(message.content || '新消息')}`
     }
     return `${event.type} · ${String(payload.message || payload.connected || payload.authenticated || '')}`
   }, [])

@@ -436,11 +436,15 @@ body { min-width: 980px; background: #f5f7fb; }
 .action-button.green { background: #469d76; }
 .result-hint { min-width: 0; overflow: hidden; color: #9aa5b5; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .message-check-list, .recognition-list, .compact-results { display: grid; gap: 5px; margin-top: 10px; }
-.message-check-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px 7px; border: 1px solid #edf0f4; border-radius: 6px; background: #fff; color: #778399; font-size: 10px; }
+.message-check-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 6px 7px; border: 1px solid #edf0f4; border-radius: 6px; background: #fff; color: #778399; font-size: 10px; }
 .message-check-item > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .message-check-item time { color: #b2bac5; font-size: 9px; }
 .message-check-type { color: #5a78d1; font-weight: 600; }
 .message-check-type.mine { color: #45a178; }
+.message-origin { padding: 2px 4px; border-radius: 4px; background: #f0f2f5; color: #7d8796; font-size: 9px; white-space: nowrap; }
+.message-origin.human { background: #e8f7ef; color: #248257; }
+.message-origin.automation { background: #edf2ff; color: #4d68c4; }
+.message-origin.system { background: #fff5e8; color: #a06a2e; }
 .recognition-item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 6px 7px; border: 1px solid #edf0f4; border-radius: 6px; background: #fff; color: #778399; font-size: 10px; }
 .recognition-item > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recognition-tag { flex: none; padding: 3px 5px; color: #5573d2; border-radius: 4px; background: #edf2ff; font-size: 9px; }

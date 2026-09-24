@@ -252,7 +252,7 @@ function messageOrigin(item, ext, direction, system) {
     if (direction === 'inbound')
         return explicitBuyerEvidence(item, ext) ? 'customer' : 'unknown';
     const source = explicitSource(item, ext);
-    return manualSendEvidence(ext) || /(?:^|[._ -])(manual|human|staff|agent)(?:$|[._ -])|人工|客服手动/i.test(source) ? 'human' : 'unknown';
+    return manualSendEvidence(ext) || /(?:^|[._ -])(manual|human|staff)(?:$|[._ -])|人工|客服手动/i.test(source) ? 'human' : 'unknown';
 }
 function explicitSource(item, ext) {
     return [

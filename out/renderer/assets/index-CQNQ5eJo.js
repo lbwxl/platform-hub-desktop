@@ -15182,6 +15182,7 @@ function AcceptanceCenter(props) {
             props.messages.slice(-4).map((message) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "message-check-item", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `message-check-type ${message.isMine ? "mine" : ""}`, children: message.isMine ? "我" : message.senderName || "客户" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: message.content || `[${message.type}]` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `message-origin ${message.origin || "unknown"}`, children: messageOriginLabel(message) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("time", { children: new Date(message.timestamp).toLocaleTimeString() })
             ] }, message.id)),
             !props.messages.length && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "muted-line", children: "监听启动后，最新消息会显示在这里…" })
@@ -15271,6 +15272,13 @@ function normalizeOrderStatus(value) {
   if (status.includes("paid") || status.includes("pay")) return "paid";
   if (status.includes("created") || status.includes("pending") || status.includes("new")) return "created";
   return status;
+}
+function messageOriginLabel(message) {
+  if (message.origin === "human") return "人工手动";
+  if (message.origin === "automation") return "Hook 自动";
+  if (message.origin === "system") return "平台系统";
+  if (message.origin === "customer") return "买家";
+  return "来源未知";
 }
 function PlatformViewport(props) {
   const viewportRef = reactExports.useRef(null);
@@ -15854,7 +15862,9 @@ function App() {
     }
     if (event.type === "message") {
       const message = payload.message || payload;
-      return `收到消息 · ${String(message.content || "新消息")}`;
+      const direction = message.direction === "outbound" || message.isMine === true ? "outbound" : "inbound";
+      const origin = message.origin === "human" ? "人工手动" : message.origin === "automation" ? "Hook 自动" : message.origin === "customer" ? "买家" : message.origin === "system" ? "平台系统" : "来源未知";
+      return `${direction === "outbound" ? "发出" : "收到"} · ${origin} · ${String(message.content || "新消息")}`;
     }
     return `${event.type} · ${String(payload.message || payload.connected || payload.authenticated || "")}`;
   }, []);

@@ -54,6 +54,9 @@ export const douyinHookRuntimeScript = String.raw `(() => {
   let orderListenerStartedAt = listenerStartedAt()
   const processingFingerprints = new Set()
   const processedFingerprints = new Set()
+  const outboundCorrelations = []
+  const automatedOutboundIds = new Set()
+  const OUTBOUND_CORRELATION_TTL_MS = 30_000
   const ORDER_RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000
   const ORDER_RECONCILIATION_LIMIT = 20
   const ORDER_QUERY_RETRY_DELAYS_MS = [0, 300, 1000, 2500]
@@ -124,6 +127,36 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     if (disposed) return
     queue.push({ ...event, timestamp: event.timestamp || Date.now() })
     if (queue.length > 500) queue.splice(0, queue.length - 500)
+  }
+  const trackOutbound = (conversationId, type, content) => {
+    const entry = { conversationId, type, fingerprint: type === 'text' ? text(content).trim() : '', createdAt: Date.now(), serverId: '' }
+    outboundCorrelations.push(entry)
+    if (outboundCorrelations.length > 500) outboundCorrelations.splice(0, outboundCorrelations.length - 500)
+    return entry
+  }
+  const removeOutbound = (entry) => {
+    const index = outboundCorrelations.indexOf(entry)
+    if (index >= 0) outboundCorrelations.splice(index, 1)
+  }
+  const rememberAutomatedOutbound = (id) => {
+    if (!id) return
+    automatedOutboundIds.delete(id)
+    automatedOutboundIds.add(id)
+    while (automatedOutboundIds.size > 5_000) automatedOutboundIds.delete(automatedOutboundIds.values().next().value)
+  }
+  const correlateOutbound = (item) => {
+    if (item.direction !== 'outbound') return item
+    const now = Date.now()
+    while (outboundCorrelations.length && now - outboundCorrelations[0].createdAt > OUTBOUND_CORRELATION_TTL_MS) outboundCorrelations.shift()
+    if (automatedOutboundIds.has(item.id)) return { ...item, origin: 'automation' }
+    const index = outboundCorrelations.findIndex((entry) => entry.conversationId === item.conversationId
+      && entry.type === item.type
+      && (entry.serverId === item.id || ((!entry.fingerprint || entry.fingerprint === text(item.content).trim())
+        && item.timestamp >= entry.createdAt - 5_000 && item.timestamp <= entry.createdAt + OUTBOUND_CORRELATION_TTL_MS)))
+    if (index < 0) return item
+    outboundCorrelations.splice(index, 1)
+    if (item.id && !item.id.startsWith('pending-')) rememberAutomatedOutbound(item.id)
+    return { ...item, origin: 'automation' }
   }
   const error = (code, message, retryable = false) => ({ ok: false, error: { code, message, retryable } })
   const loginError = () => error('LOGIN_REQUIRED', '请在抖店官方页面完成登录后继续')
@@ -654,7 +687,7 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     const source = [ext.send_source, ext.sender_source, ext.operation_source, ext.source, item.sendSource, item.senderSource, item.operationSource, item.source].map(text).filter(Boolean).join(' ')
     const manualSendCheck = Boolean(text(ext['p:check_Send'] || ext['p:check_send'] || ext.p_check_send))
     const buyer = senderRole === '1' || /buyer|customer|买家|消费者/i.test(text(ext['s:sender_biz_role'] || item.senderRole))
-    const origin = system ? 'system' : direction === 'inbound' ? buyer ? 'customer' : 'unknown' : manualSendCheck || /manual|human|staff|agent|人工|客服手动/i.test(source) ? 'human' : 'unknown'
+    const origin = system ? 'system' : direction === 'inbound' ? buyer ? 'customer' : 'unknown' : manualSendCheck || /(?:^|[._ -])(manual|human|staff)(?:$|[._ -])|人工|客服手动/i.test(source) ? 'human' : 'unknown'
     const status = text(item.deliveryStatus || item.sendStatus || item.status).toLowerCase()
     const attachmentUrl = text(item.url || item.uri || item.imageUrl || item.fileUrl || ext.url || ext.image_url || ext.file_url)
     const attachmentName = text(item.fileName || item.name || ext.file_name)
@@ -695,7 +728,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
       try { source = typeof info.messagesByConversationId?.get === 'function' ? info.messagesByConversationId.get(session.id) : info.messagesByConversationId?.[session.id] } catch (_) {}
       const rows = source?.sortedMessages || source?.visibleMessages || source?.value || source
       for (const raw of values(rows)) {
-        const normalized = message(raw, { conversationId: session.id, selfId: text(store()?.selfInfo?.id), conversationTitle: session.title })
+        const parsed = message(raw, { conversationId: session.id, selfId: text(store()?.selfInfo?.id), conversationTitle: session.title })
+        const normalized = parsed ? correlateOutbound(parsed) : undefined
         if (normalized && !result.some((item) => item.id === normalized.id)) result.push(normalized)
       }
     }
@@ -1354,7 +1388,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
         const item = pending.shift()
         if (!item || typeof item !== 'object' || visited.has(item)) continue
         visited.add(item)
-        const normalized = message(item, { selfId: text(store()?.selfInfo?.id) })
+        const parsed = message(item, { selfId: text(store()?.selfInfo?.id) })
+        const normalized = parsed ? correlateOutbound(parsed) : undefined
         if (normalized) rows.push(normalized)
         for (const key of ['message', 'data', 'payload', 'messages', 'items', 'list']) { const nested = item[key]; if (Array.isArray(nested)) pending.push(...nested); else if (nested && typeof nested === 'object') pending.push(nested) }
       }
@@ -1413,9 +1448,13 @@ export const douyinHookRuntimeScript = String.raw `(() => {
           if (!conversationId || !content) return error('INVALID_INPUT', 'conversationId 和 text 必填')
           if (!sessionRows().some((item) => item.id === conversationId)) return error('INVALID_INPUT', '未找到目标会话')
           const api = im(); if (typeof api?.sendText !== 'function') return runtimeError()
-          const value = await api.sendText(conversationId, content, {})
-          if (value?.success === false) return error('PLATFORM_ERROR', text(value.statusMsg || '发送文本失败'), true)
+          const correlation = trackOutbound(conversationId, 'text', content)
+          let value
+          try { value = await api.sendText(conversationId, content, {}) } catch (caught) { removeOutbound(correlation); throw caught }
+          if (value?.success === false) { removeOutbound(correlation); return error('PLATFORM_ERROR', text(value.statusMsg || '发送文本失败'), true) }
           const id = text(value?.serverId || value?.messageId || value?.id)
+          correlation.serverId = id
+          rememberAutomatedOutbound(id)
           const outgoing = { id: id || 'pending-' + Date.now(), conversationId, senderId: text(store()?.selfInfo?.id) || undefined, content, type: 'text', direction: 'outbound', origin: 'automation', deliveryStatus: id || value?.success === true ? 'sent' : 'pending', timestamp: Date.now() }
           return { ok: true, data: outgoing }
         }
@@ -1433,9 +1472,13 @@ export const douyinHookRuntimeScript = String.raw `(() => {
           const uri = URL.createObjectURL(blob)
           const upload = () => new Promise((resolve, reject) => context.customRequestUpload({ file, onSuccess: (response) => { const url = response?.data?.[0]?.url || response?.url || response?.uri; url ? resolve({ uri: url }) : reject(new Error('上传未返回地址')) }, onError: reject }))
           try {
-            const value = await api.sendImage(conversationId, { uri, width: bitmap.width, height: bitmap.height, format: mimeType.split('/')[1] || 'png', size: file.size }, upload, {}, () => {})
-            if (!value) return error('PLATFORM_ERROR', '发送图片失败', true)
+            const correlation = trackOutbound(conversationId, 'image', '')
+            let value
+            try { value = await api.sendImage(conversationId, { uri, width: bitmap.width, height: bitmap.height, format: mimeType.split('/')[1] || 'png', size: file.size }, upload, {}, () => {}) } catch (caught) { removeOutbound(correlation); throw caught }
+            if (!value) { removeOutbound(correlation); return error('PLATFORM_ERROR', '发送图片失败', true) }
             const id = text(value?.serverId || value?.messageId || value?.id)
+            correlation.serverId = id
+            rememberAutomatedOutbound(id)
             return { ok: true, data: { id: id || 'pending-' + Date.now(), conversationId, content: name, type: 'image', direction: 'outbound', origin: 'automation', deliveryStatus: id || value?.success === true ? 'sent' : 'pending', timestamp: Date.now(), attachments: [{ name, mimeType }] } }
           } finally { bitmap.close?.(); URL.revokeObjectURL(uri) }
         }
@@ -1504,6 +1547,8 @@ export const douyinHookRuntimeScript = String.raw `(() => {
     dispose: async () => {
       if (disposed) return
       disposed = true
+      outboundCorrelations.splice(0)
+      automatedOutboundIds.clear()
       conversationAttention.clear()
       applyConversationAttention()
       stopConversationAttentionProjection()

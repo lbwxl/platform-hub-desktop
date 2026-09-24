@@ -63,7 +63,7 @@ export function AcceptanceCenter(props: AcceptanceCenterProps) {
         <div className="acceptance-row"><select value={props.selectedSessionId} onChange={(event) => props.onSelectSession(event.target.value)} disabled={!props.sessions.length || !supportsSessions || !supportsMessageHistory} aria-label="选择验收会话"><option value="">选择会话</option>{props.sessions.map((session) => <option key={session.id} value={session.id}>{session.title}</option>)}</select><button className="mini-button" onClick={props.onRefreshSessions} disabled={!supportsSessions || props.busy === 'sessions'}><RefreshCw size={13} />刷新</button></div>
         <div className="acceptance-row"><input value={props.messageDraft} onChange={(event) => props.onMessageDraftChange(event.target.value)} placeholder="输入一条真人验收消息" disabled={!props.selectedSessionId || !supportsMessageSend} /><button className="send-mini" onClick={props.onSendMessage} disabled={!props.selectedSessionId || !props.messageDraft.trim() || props.busy === 'send' || !supportsMessageSend}><Send size={13} />发送</button></div>
         <div className="acceptance-actions"><button className="action-button" onClick={props.onStartMessages} disabled={!authenticated || props.busy === 'messages-listen' || !supportsMessageListen}>{props.messageListening ? <CheckCircle2 size={14} /> : <Play size={14} />}{props.messageListening ? '监听已启动' : '开始监听消息'}</button><span className="result-hint">{productCards.length ? `已识别 ${productCards.length} 条卡片消息` : '商品卡片消息将在这里标记'}</span></div>
-        {!supportsMessages ? <UnsupportedMessage /> : <><div className="message-check-list">{props.messages.slice(-4).map((message) => <div className="message-check-item" key={message.id}><span className={`message-check-type ${message.isMine ? 'mine' : ''}`}>{message.isMine ? '我' : message.senderName || '客户'}</span><span>{message.content || `[${message.type}]`}</span><time>{new Date(message.timestamp).toLocaleTimeString()}</time></div>)}{!props.messages.length && <span className="muted-line">监听启动后，最新消息会显示在这里…</span>}</div><div className="recognition-list">{productCards.slice(-3).map((message) => <div className="recognition-item" key={message.id}><span className={`recognition-tag ${message.type}`}>{message.type === 'product' ? '商品卡片' : '订单卡片'}</span><span>{message.content || '已识别结构化卡片'}</span></div>)}{!productCards.length && <span className="muted-line">等待客户发送商品/订单卡片…</span>}</div></>}
+        {!supportsMessages ? <UnsupportedMessage /> : <><div className="message-check-list">{props.messages.slice(-4).map((message) => <div className="message-check-item" key={message.id}><span className={`message-check-type ${message.isMine ? 'mine' : ''}`}>{message.isMine ? '我' : message.senderName || '客户'}</span><span>{message.content || `[${message.type}]`}</span><span className={`message-origin ${message.origin || 'unknown'}`}>{messageOriginLabel(message)}</span><time>{new Date(message.timestamp).toLocaleTimeString()}</time></div>)}{!props.messages.length && <span className="muted-line">监听启动后，最新消息会显示在这里…</span>}</div><div className="recognition-list">{productCards.slice(-3).map((message) => <div className="recognition-item" key={message.id}><span className={`recognition-tag ${message.type}`}>{message.type === 'product' ? '商品卡片' : '订单卡片'}</span><span>{message.content || '已识别结构化卡片'}</span></div>)}{!productCards.length && <span className="muted-line">等待客户发送商品/订单卡片…</span>}</div></>}
       </AcceptanceCard>
 
       <AcceptanceCard number="02" icon={<Boxes size={18} />} title="商品全量同步" tone="purple" done={props.productAcceptance.syncState === 'success'} unsupported={!supportsProducts}>
@@ -102,4 +102,12 @@ function normalizeOrderStatus(value: string): string {
   if (status.includes('paid') || status.includes('pay')) return 'paid'
   if (status.includes('created') || status.includes('pending') || status.includes('new')) return 'created'
   return status
+}
+
+function messageOriginLabel(message: PlatformMessage): string {
+  if (message.origin === 'human') return '人工手动'
+  if (message.origin === 'automation') return 'Hook 自动'
+  if (message.origin === 'system') return '平台系统'
+  if (message.origin === 'customer') return '买家'
+  return '来源未知'
 }
